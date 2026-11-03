@@ -1,0 +1,25 @@
+name = "SNMRAEMResolvability"
+uuid = "7c0f1a52-9d3e-4b21-ae55-1f2c6d84b3a0"
+authors = ["Neil Symington"]
+version = "1.0.0"
+
+[deps]
+HiQGA = "01574e87-63b6-4466-925a-334cf7e21b6b"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+PyPlot = "d330b81b-6aea-500a-939a-2ce795aea3ee"
+SMRPInversion = "aec56ffe-cd48-4f37-83c0-3fddfef137dd"
+SNMRForward = "7a571783-2426-4210-b64c-8cc94fde9200"
+
+[compat]
+julia = "1.11"
+
+# SMRPInversion is not registered, and the runs used a BRANCH of it, not main:
+# add-occam-deterministic-inversion carries the hierarchical heteroscedastic
+# noise model and the Occam bootstrap that every result here depends on.
+# Installing main instead silently reproduces different numbers, so the branch
+# and the commit are pinned here rather than left to a README instruction.
+# [sources] needs Julia 1.11; on 1.10 add it by hand with
+#   Pkg.add(url="https://github.com/Neil-Symington/SMRPInversion.jl",
+#           rev="add-occam-deterministic-inversion")
+[sources]
+SMRPInversion = {url = "https://github.com/Neil-Symington/SMRPInversion.jl", rev = "add-occam-deterministic-inversion"}

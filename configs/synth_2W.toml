@@ -1,0 +1,37 @@
+# ---------------------------------------------------------------------
+#  synth_2W.toml  --  synthetic column 2W
+#  test two saline control, bare lineage, 88.6 m loop
+#  Role: saline_control   Priority: secondary
+# ---------------------------------------------------------------------
+# Inherits every key, and every explanatory comment, from ../config.toml.
+# Only what differs for this column is restated here, so a reviewer can
+# see the whole difference between two columns on one screen.
+extends = "../config.toml"
+
+name  = "synth_2W"
+label = "test two saline control, bare lineage, 88.6 m loop"
+
+[data]
+truth  = "data/truth_murray2W.jld2"
+column = "2W"
+parent = "2"           # built from truth_murray2.jld2
+role   = "saline_control"
+snmr_ensemble = ""      # none exists: Stage 2 runs for this column
+stage1_draws = "data/aem_draws_2W.jld2"
+
+[data.loop]
+side       = 88.6
+area_check = 7849.959999999999
+
+[data.snmr]
+noise_tier = "typical"
+
+[output]
+dir = "outputs/synth_2W"
+
+# LINEAGE WARNING. This column belongs to the BARE lineage, which differs
+# from the P lineage in more than the water: an 88.6 m loop against
+# 100.0 m, and a clay-dilution exponent P_CLAY of 1.5 against 3.0. It is
+# a valid control FOR ITS OWN PARENT and nothing else. Any comparison
+# against 3P/2P/3S/2S crosses a survey geometry change as well as a
+# column change. Secondary priority for that reason.

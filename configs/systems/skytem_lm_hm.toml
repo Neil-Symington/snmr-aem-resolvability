@@ -1,0 +1,84 @@
+# ---------------------------------------------------------------------
+#  skytem_lm_hm.toml  --  SkyTEM dual-moment system description
+# ---------------------------------------------------------------------
+# Exported verbatim from HiQGA`s `examples/SkyTEM1D/synth/McMC/
+# electronics_halt.jl`, the AusAEM-realistic electronics-halt pattern this
+# project has used throughout. Exported rather than referenced so the
+# repository runs without HiQGA`s examples tree on disk.
+#
+# THE ON-TIME RAMP IS INCLUDED AND MUST STAY INCLUDED. The waveform tables
+# below carry rows at NEGATIVE time: 6 for the low moment, 4 for the high.
+# Those rows are the transmitter current rising before switch-off. Drop
+# them and modelled late-time amplitudes over-predict by about 50 percent
+# in conductive ground, with NO signature in the misfit -- the error is
+# smooth, so the inversion absorbs it into conductivity. In resistive
+# ground it is nearly invisible, which is how the mistake survives review.
+# `require_on_time` below is asserted at load.
+#
+# Units: times s, ramp current normalised to 1 at full current,
+# lengths m, noise in the same units as the data (1e-12 V/Am^4, i.e. the
+# `units = 1e-12` passed to makenoisydata!).
+
+name = "SkyTEM dual-moment, AusAEM electronics_halt"
+source = "HiQGA examples/SkyTEM1D/synth/McMC/electronics_halt.jl"
+require_on_time = true      # assert both ramps carry rows at t < 0
+
+[geometry]
+r_tx  = 10.4               # m, transmitter loop radius
+r_rx  = 13.0                # m, receiver offset from the transmitter centre
+z_tx  = -40.0               # m, transmitter height (negative = above ground)
+z_rx  = -42.0               # m, receiver height
+# Sign convention: z is positive DOWN with 0 at ground level, so the
+# airborne system sits at negative z.
+
+[filters]
+lowpass_fc = [3.00000000e+05, 4.50000000e+05]   # Hz, receiver low-pass corner frequencies
+
+# --- low moment ------------------------------------------------------
+[low_moment]
+# gate centre times, s, measured from current switch-off
+times = [2.07898052e-05, 2.62677749e-05, 3.31999398e-05, 4.21442285e-05, 5.35474182e-05, 6.79706260e-05, 8.58592220e-05, 1.08219943e-04, 1.36059127e-04, 1.71276052e-04, 2.16443101e-04, 2.73129101e-04, 3.44568043e-04, 4.35018351e-04, 5.48274727e-04, 6.91268404e-04, 8.71607404e-04]
+# noise floor per gate, data units
+noise = [6.40870000e+00, 4.04630000e+00, 4.25260000e+00, 3.05850000e+00, 2.37540000e+00, 2.09710000e+00, 1.79190000e+00, 1.60010000e+00, 1.32990000e+00, 9.67070000e-01, 7.70270000e-01, 7.40840000e-01, 8.11480000e-01, 6.48110000e-01, 6.40590000e-01, 6.34000000e-01, 5.90440000e-01]
+# transmitter waveform: [time_s, normalised_current]. Rows at t < 0 are
+# the ON-TIME. Do not truncate them.
+ramp = [
+  [-8.00000000e-04, 0.00000000],
+  [-7.64730000e-04, 0.06343100],
+  [-6.28180000e-04, 0.24971000],
+  [-4.34970000e-04, 0.47453000],
+  [-9.21970000e-05, 0.89044000],
+  [-2.09290000e-06, 1.00000000],
+  [+6.63000000e-08, 1.00000000],
+  [+6.95600000e-07, 0.97325000],
+  [+2.14800000e-06, 0.79865000],
+  [+3.79410000e-06, 0.53172000],
+  [+5.68220000e-06, 0.27653000],
+  [+7.18290000e-06, 0.15062000],
+  [+8.53850000e-06, 0.07507300],
+  [+1.01360000e-05, 0.03142300],
+  [+1.19760000e-05, 0.00791970],
+  [+1.31380000e-05, 0.00000000],
+  [+1.01818190e-03, 0.00000000],
+]
+
+# --- high moment -----------------------------------------------------
+[high_moment]
+times = [4.03866099e-04, 4.18342570e-04, 4.36305290e-04, 4.58750538e-04, 4.86675031e-04, 5.22040215e-04, 5.67351845e-04, 6.24131401e-04, 6.95749693e-04, 7.86308760e-04, 8.99691990e-04, 1.04282909e-03, 1.22327019e-03, 1.45034031e-03, 1.73698931e-03, 2.09864053e-03, 2.55418914e-03, 3.12835783e-03, 3.85255109e-03, 4.76545887e-03, 5.91627435e-03, 7.36660208e-03, 9.19526486e-03, 1.13379376e-02, 1.36115175e-02]
+noise = [1.06520000e-02, 1.04360000e-02, 1.01850000e-02, 1.00330000e-02, 9.94050000e-03, 9.83200000e-03, 9.69640000e-03, 9.49450000e-03, 9.26930000e-03, 8.93390000e-03, 8.56810000e-03, 8.20230000e-03, 8.41020000e-03, 8.97110000e-03, 8.36850000e-03, 8.13450000e-03, 7.85040000e-03, 7.49640000e-03, 7.05040000e-03, 6.74470000e-03, 6.71600000e-03, 5.89130000e-03, 5.29380000e-03, 4.78870000e-03, 4.38740000e-03]
+ramp = [
+  [-5.00000000e-03, 0.00000000],
+  [-4.86810000e-03, 0.49380000],
+  [-4.70760000e-03, 0.92737000],
+  [-4.69040000e-03, 0.95949000],
+  [+0.00000000e+00, 1.00000000],
+  [+7.20180000e-06, 0.97920000],
+  [+9.99710000e-05, 0.69067000],
+  [+2.87480000e-04, 0.06573400],
+  [+3.02290000e-04, 0.01566100],
+  [+3.05040000e-04, 0.00701460],
+  [+3.07050000e-04, 0.00282480],
+  [+3.11970000e-04, 0.00000000],
+  [+1.50000000e-02, 0.00000000],
+]
+

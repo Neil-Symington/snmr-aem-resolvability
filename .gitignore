@@ -1,0 +1,12 @@
+# outputs and generated inputs are rebuilt by the pipeline and are large
+outputs/
+data/
+*.jld2
+*.bin
+*.log
+figures/*.png
+figures/numbers*.csv
+# local environment
+Manifest.toml
+.venv/
+__pycache__/

@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------
+#  synth_2PJ.toml  --  synthetic column 2P, AEM + galvanic sounding
+#  test two, joint Stage 1
+#  Role: primary   Priority: primary
+# ---------------------------------------------------------------------
+# The SAME column and the SAME AEM data as synth_2P.toml. The only change is
+# that Stage 1 saw a Schlumberger sounding as well, so every difference in
+# Stages 2-5 is attributable to the sounding and to nothing else.
+#
+# Stage 2 runs on the JOINT median kernel: run_conditions.jl builds the SNMR
+# kernel from aem<TAG>/aem_posterior.jld2, and joint_post.jl writes the joint
+# percentiles to aem2PJ/ so that lookup finds the joint column.
+extends = "../config.toml"
+
+name  = "synth_2PJ"
+label = "test two, AEM + galvanic sounding, tier P"
+
+[data]
+truth  = "data/truth_murray2P.jld2"
+column = "2P"
+parent = ""             # same column as synth_2P; not a derived column
+role   = "primary"
+snmr_ensemble = "data/cond_C2_typical2PJT.jld2"
+stage1_draws  = "data/aem_draws_2PJ.jld2"
+
+[data.dc]
+enabled = true
+# array, spacings, noise, seed and forward are all inherited from config.toml;
+# the realisation itself is in dc_sounding_2P.jld2.
+
+[data.loop]
+side       = 100.0
+area_check = 10000.0
+
+[data.snmr]
+noise_tier = "typical"
+
+[output]
+dir = "outputs/synth_2PJ"

@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------------
+#  synth_3S.toml  --  synthetic column 3S
+#  test one saline control, water-only change from 3P
+#  Role: saline_control   Priority: control
+# ---------------------------------------------------------------------
+# Inherits every key, and every explanatory comment, from ../config.toml.
+# Only what differs for this column is restated here, so a reviewer can
+# see the whole difference between two columns on one screen.
+extends = "../config.toml"
+
+name  = "synth_3S"
+label = "test one saline control, water-only change from 3P"
+
+[data]
+truth  = "data/truth_murray3S.jld2"
+column = "3S"
+parent = "3P"           # built from truth_murray3P.jld2
+role   = "saline_control"
+snmr_ensemble = "data/cond_C2_typical3ST.jld2"
+stage1_draws = "data/aem_draws_3S.jld2"
+
+[data.loop]
+side       = 100.0
+area_check = 10000.0
+
+[data.snmr]
+noise_tier = "typical"
+
+[output]
+dir = "outputs/synth_3S"

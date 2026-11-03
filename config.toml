@@ -1,0 +1,576 @@
+# =====================================================================
+#  config.toml  --  the complete input to `julia run_site.jl config.toml`
+# =====================================================================
+#
+# One file describes one SITE: one AEM sounding, one SNMR sounding, one
+# hypothesis, one set of priors. A run is reproducible from this file
+# alone -- nothing is passed on the command line but the path to it.
+#
+# Sections, one per stage of the Section 3 workflow:
+#   [data]        Stage 0   inputs, geometry, noise
+#   [priors]      Stage 0   m, clay product, porosity
+#   [hypothesis]  Stage 3   interval, water criterion, salinity criterion
+#   [gate]        Stage 4   conductance grid, reference level, Delta
+#   [inversion]   Stages 1-2  trans-D draws, chains, convergence targets
+#   [output]      Stage 6   where results land, which formats
+#
+# Every key below carries its UNIT and its ALLOWED VALUES.
+#
+# ---------------------------------------------------------------------
+#  THE TRUTH FIREWALL
+# ---------------------------------------------------------------------
+# No truth values are read by any stage after Stage 0. On a synthetic
+# run, [data].truth is read ONCE, to generate the soundings and the
+# noise; Stage 0 then writes a sealed artefact holding only what a field
+# crew would come home with, and Stages 1-6 open that and this config and
+# nothing else. run_site.jl asserts it: a stage that touches a `truth_*`
+# path aborts the run. The truth may be printed in the Stage 6 table as a
+# SCORE, after every verdict is fixed. That is its only other use.
+#
+# In particular: m is DRAWN FROM [priors].m everywhere theta^m appears.
+# The synthetics no longer use the truth's 1.7 anywhere.
+#
+# ---------------------------------------------------------------------
+#  UNITS, once, everywhere
+# ---------------------------------------------------------------------
+#   conductivity sigma   S/m     (the model vector is log10 sigma, never
+#                                 log10 rho -- see [inversion] note)
+#   conductance  C       S       (= sum of sigma_i * dz_i over an interval)
+#   depth, thickness     m, positive down, 0 at ground level
+#   water content theta  v/v fraction, NOT percent
+#   W = integral theta dz   m    (a water thickness, hence "W >= 2 m")
+#   salinity             mg/L TDS, converted at [priors].mg_per_sm
+#   time                 s
+# ---------------------------------------------------------------------
+
+schema_version = 1       # run_site.jl refuses a version it does not know
+
+# A config may INHERIT from another and override only what differs, so the
+# commented explanation of every key lives in exactly one place and the
+# per-column files stay readable. Paths are relative to the file that
+# names them. Merge is recursive, per key; arrays replace, never append.
+# extends = "../config.toml"
+name  = "synth_3P"       # filesystem-safe; names every output file
+label = "test one, unconfined Loxton-Parilla sands, tier P"
+
+
+# =====================================================================
+#  [data]  --  Stage 0. The only stage permitted to read truth.
+# =====================================================================
+[data]
+# Exactly one of `truth` or `aem_file` must be present.
+#
+# --- synthetic branch ---
+# The generator is shipped, so the data can be rebuilt from the config.
+truth     = "data/truth_murray3P.jld2"
+generator = "tools/truth_murray.jl"     # rebuilds `truth` from scratch
+seed      = 123          # integer. Forward-model and noise seed.
+# LINEAGE, recorded on every output file and in every table. A saline
+# control shares its parent's clay, porosity, theta_total and theta_SMR
+# bit-for-bit and differs ONLY in sigma_w and sigma_bulk -- so a control
+# is meaningless unless the parent it was built from is named. Comparing
+# a control against the wrong parent has already produced one retracted
+# finding here: truth_murray3 and truth_murray3P are DIFFERENT columns
+# (clay 0.063 vs 0.080), 3S was built from 3P, and comparing 3S against 3
+# made a valid control look like a broken one.
+column = "3P"            # this column's tag
+parent = ""              # the column this was derived from; "" if none
+role   = "primary"       # "primary" | "saline_control"
+#   TRAP: HiQGA's `makenoisydata!` reseeds from its own internal rseed and
+#   ignores this unless the patched version is present, so every AEM run
+#   in this project before 13-Oct-2026 shares ONE noise realisation.
+#   run_site.jl checks for the patch and refuses to run without it.
+#
+# --- field branch ---
+# aem_file  = "data/aem/SMR_UD24.dat"      # processed sounding, dB/dt
+# snmr_file = "data/snmr/UD24.mrsd"        # stacked, phase-corrected
+# noise_record = "data/snmr/UD24_noise.json"   # per-gate estimates; if
+#                                          # absent, the hierarchical noise
+#                                          # model infers it (preferred)
+
+# Pre-computed SNMR posterior ensemble for this column, if one exists.
+# Leave "" to RUN STAGE 2 from the generated data -- which the synthetic
+# example must do, because an ensemble-only example never exercises
+# Stage 2 and so never tests it. The field example ships an ensemble
+# (raw FIDs are not ours to release), so between the two examples every
+# stage is covered; README states which example covers which stage.
+#   A saline control shares its parent's theta_SMR bit-for-bit but NOT
+#   its sigma, and the SNMR kernel is conductivity-sensitive, so the
+#   parent's ensemble is NOT reusable for the control. Each needs its own.
+snmr_ensemble = ""       # path, or "" to run Stage 2
+
+# STAGE 1 POSTERIOR DRAWS, the bulk conductivity Stage 5 propagates.
+# Stage 5 takes sigma_bulk from THESE draws inside each draw's Stage 3 window.
+# The gate's Laplace machinery enters Stage 4 and nowhere else: p(C) is a
+# constrained-optimisation object built to locate a band, not a posterior to
+# propagate, and using it put 2P's Stage 5 median 2.31x above the truth.
+#   Point at aem_draws_<tag>.jld2 (600 draws), NOT aem_posterior.jld2 -- the
+#   latter also stores `sigma_aem_truth`, and no stage after Stage 0 may be
+#   able to read a truth array even by accident.
+#   The P and M tiers share one AEM column (they differ only in SNMR noise),
+#   so 3P points at the 3M draws. That mapping is written here rather than
+#   inferred, because inferring it is how a run ends up on the wrong lineage.
+stage1_draws = "data/aem_draws_3M.jld2"
+
+# AEM system description. Referenced by file so one description serves a
+# whole survey.
+system = "configs/systems/skytem_lm_hm.toml"
+#   The waveform in that file MUST include the on-time ramp. Omit it and
+#   late-time amplitudes over-predict by ~50% in conductive ground, with
+#   no signature in the misfit. Invisible in resistive ground, which is
+#   how it survives review.
+
+# SNMR loop geometry. `side` is the HALF-SIDE for a square loop -- the
+# flag that selects square vs circular has been inverted in this code
+# before, so both are stated explicitly and cross-checked against the
+# recorded loop area.
+[data.loop]
+shape      = "square"    # "square" | "circular"
+side       = 100.0       # m, the FULL side length of the square loop.
+#   The forward model does NOT take this: SNMRForward.MRSForward_square
+#   takes the HALF-side, and the code halves `side` before calling it.
+#   The square-vs-circular flag has been inverted in this code before, so
+#   `area_check` below is asserted against shape+side at load time.
+#   TWO CONVENTIONS ARE IN PLAY in this project's synthetics and they are
+#   not interchangeable: the P lineage (3P, 2P, 3S, 2S) uses a 100.0 m
+#   loop; the earlier bare lineage (3, 2, 3W, 2W) uses 88.6 m, the
+#   SMRPI plan section 3 figure. Any comparison across those two is
+#   comparing different surveys as well as different columns.
+area_check = 10000.0     # m^2. run_site.jl asserts shape+side reproduce this.
+turns      = 1           # integer
+
+# Galvanic (DC) sounding, OPTIONAL. Present only on the joint columns; absent
+# or enabled = false everywhere else, and Stage 1 then runs on the AEM alone.
+# The sounding enters Stage 1 as a SECOND DATA TERM beside the AEM, through
+# transD_GP's GenericJointInversion.JointOperator, which sums the two
+# log-likelihoods. Nothing downstream changes: Stages 2-5 read the joint draws
+# exactly as they read the AEM-only ones.
+[data.dc]
+enabled   = false        # true on the *J columns
+array     = "schlumberger"
+ab_2      = [2.0, 300.0] # m, AB/2 range; 20 points, log-spaced
+n_spacing = 20           # integer
+mn_ratio  = 0.1          # MN/2 = mn_ratio * AB/2. NOT the dipole limit:
+                         #   at MN/2 = AB/10 the finite-MN kernel differs from
+                         #   the dipole one by up to 8% on a 10:1 contrast,
+                         #   which is larger than the noise, so the finite-MN
+                         #   form is used for both the data and the forward.
+noise_pct = 0.03         # fractional, Gaussian
+noise_floor_rel = 0.01   # fractional, added in quadrature with noise_pct
+                         #   sigma_i = rho_a_i * sqrt(noise_pct^2 + noise_floor_rel^2)
+                         #          = 3.162% of the datum, everywhere.
+                         #   NOTE the floor is INERT by construction: being
+                         #   relative it scales with the datum and so can never
+                         #   bind. It raises the effective error from 3.00% to
+                         #   3.16% and nothing else. Kept because it is what the
+                         #   brief specifies and it costs nothing.
+                         #   IT REPLACES an absolute 0.5 Ohm.m floor, which on
+                         #   test two (apparent resistivities 2-13 Ohm.m) was
+                         #   5-25% of the datum rather than 3%, and so made the
+                         #   sounding weakest on the column that needed it most.
+                         #   That run is archived under
+                         #   data/absfloor_archive/.
+seed      = 20261103     # integer. One Gaussian realisation per column;
+                         #   the per-column offset is seed + <digit> (+100 for
+                         #   a saline control), recorded in dc_sounding_<tag>.jld2.
+forward   = "synthetics/dc_forward.jl"
+#   HiQGA ships no DC physics, so the forward is the Ghosh linear-filter
+#   method on HiQGA's own 201-point J0/J1 Hankel filters, VERIFIED against the
+#   two-layer analytic Schlumberger series to a worst relative error of
+#   3.3e-5 -- four orders below the noise. `DCForward.selftest()` re-runs it.
+
+# SNMR instrument and field constants.
+[data.snmr]
+dead_time  = 0.0105      # s. At this dead time the instrument sees
+                         #   W = free water + (0.63-0.72)*capillary water,
+                         #   a fraction PREDICTED from T2, not fitted.
+                         #   theta_SMR is therefore neither porosity nor
+                         #   specific yield; [priors].porosity and the
+                         #   clay term reconstruct theta_total.
+larmor_hz  = 2130.0      # Hz
+inclination_deg = -60.0  # degrees, geomagnetic
+noise_tier = "typical"   # "optimistic" | "typical" | "sceptical" | "field"
+                         #   Synthetic noise level. "field" = tier F, the
+                         #   field-derived one pooled SNMR level.
+                         #   The truth column and the noise tier are
+                         #   INDEPENDENT: truth_murray3M and truth_murray3P
+                         #   are the same column at different tiers. Never
+                         #   infer one from the other.
+
+# Inversion depth grid. Log-spaced, so `zall` holds cell BOTTOMS and a
+# cell whose bottom falls inside an interval does not SPAN that interval.
+# Every depth-interval statistic is reported over the cells' support as
+# well as the nominal interval, because the two differ -- 8.82 m against
+# a nominal 10.0 m on test two.
+[data.grid]
+z_first = 1.5            # m, thickness of cell 1
+z_max   = 120.0          # m, bottom of the grid
+growth  = 1.06           # dimensionless, geometric cell growth
+#   Layer 1 is AIR and is owned by the forward model. Write to it and the
+#   SkyTEM forward returns identically zero, silently. Not settable here.
+
+
+# =====================================================================
+#  [priors]  --  Stage 0. Distributions, never point values.
+# =====================================================================
+[priors]
+mg_per_sm = 6400.0       # mg/L TDS per S/m of water conductivity
+
+# --- cementation exponent m, keyed to lithology ---------------------
+# sigma_bulk = sigma_w * theta_total^m + sigma_clay * clay
+# Give EITHER a lithology keyword OR an explicit range, not both.
+m_lithology = "clayey_sand"
+#   "clean_sand"             U(1.3, 1.6)
+#   "clayey_sand"            U(1.5, 1.9)   <- the synthetic sands
+#   "consolidated_sandstone" U(1.8, 2.1)
+# m_range = [1.5, 1.9]     # explicit override, dimensionless
+#   WHY clayey_sand and not clean_sand, which an earlier draft of the
+#   brief specified: these columns carry 6-12% clay with a SAMPLED clay
+#   term, and the paper's own lithology rule therefore puts them in the
+#   clayey-sand band. The truth's 1.7 sits inside U(1.5, 1.9) and outside
+#   U(1.3, 1.6), so clean_sand would have excluded the true value from
+#   the prior's support -- a prior that cannot contain the answer.
+#   Stated in Section 4.2 with this reasoning.
+#   Nothing in this project has ever INFERRED m. Every pre-Nov-2026
+#   synthetic script used the truth's 1.7 directly, which is the truth
+#   firewall leaking in through the rock physics. See docs/choosing_priors.md
+#   for the references behind each lithology range.
+
+# --- total porosity, as a stated formation range --------------------
+porosity_range = [0.25, 0.40]    # v/v, uniform. Synthetic sands.
+#   This is a FORMATION RANGE, declared, not a measurement. Ranges for
+#   other lithologies are tabulated in docs/choosing_priors.md.
+
+# --- clay, as a prior on the PRODUCT sigma_clay * C -----------------
+# The gate cannot separate clay conductance from pore-water conductance,
+# so the prior is placed on the product that actually enters sigma_bulk.
+# Archie with no surface term FAILS on clay-rich ground: it reads clay as
+# salt. This is why the Stage 4 upper edge is converted CLAY-FREE -- that
+# makes the salinity bound conservative (clay can only ADD conductance,
+# so ignoring it OVERSTATES salinity), and conservative is what makes it
+# reportable without knowing the clay.
+[priors.clay]
+# ONE log-uniform prior on the PRODUCT sigma_clay * C, in S/m. This is the
+# only combination that enters sigma_bulk, and it is the only one the data
+# could ever constrain, so putting the prior anywhere else invents structure
+# the measurement cannot see.
+product = [1e-4, 1.0]   # S/m, log-uniform on the product
+#
+# WHY THIS REPLACED a logit-normal clay fraction (median 0.15, logit-SD 1.2,
+# 6 m correlation) times a log-uniform sigma_clay over 0.10-2.0 S/m: that
+# construction put 98.1% of its mass on column 3P in PHYSICALLY IMPOSSIBLE
+# territory. 3P's whole measured conductance is sigma_eff = 0.0129 S/m, while
+# clay 0.15 x sigma_clay median 0.45 S/m gives a clay term of 0.067 S/m --
+# five times the entire conductance. Stage 5's estimate then rested on the
+# surviving 1.9% of draws. A product prior spanning 1e-4 to 1 S/m covers the
+# same physics without concentrating mass above what was measured.
+#
+# ACCEPTANCE RATE. Draws with sigma_clay*C >= C/thickness give a NEGATIVE
+# sigma_w: the clay alone would explain everything observed. Those draws are
+# counted, never clamped, and the acceptance rate (fraction with sigma_w > 0)
+# is a ROW IN THE VERDICT TABLE. Below 10% the Stage 5 estimate is flagged
+# FRAGILE, because it is then a statement about the prior's tail.
+
+
+# =====================================================================
+#  [ceilings]  --  Stage 4. A salinity FLOOR under stated physical
+#                  ceilings. Post-processing only; changes no inversion.
+# =====================================================================
+# The gate's clay-free conversion gives an UPPER bound on salinity and so can
+# only ever PASS or leave the question open. A floor is the mirror image: cap
+# every term that could be explaining the conductance INSTEAD of salt, and
+# whatever conductance is left over must be water. Every number here is a
+# stated ceiling, not a measurement, which is why they live in the config
+# where they can be seen and changed, and why the verdict they produce is
+# labelled "FAIL under stated ceilings" rather than FAIL.
+#
+#   clay ceiling   = sigma_clay_max * C_max(theta),  C_max = c0 * (1 - theta/phi_ref)
+#   sigma_w floor  = (C_lo/L - clay ceiling) / porosity_max^m,  clipped at zero
+#
+# AND ONLY WHEN THE LOWER EDGE IS CLOSED. An OPEN lower edge is set by the
+# solver's sigma_min, not by the data, so there is no measured minimum
+# conductance to work from and the floor is zero by construction. All four
+# synthetic columns are open at the lower edge.
+[ceilings]
+sigma_clay_max = 2.0     # S/m. Ceiling on clay mineral surface conductivity.
+clay_c0        = 0.5     # dimensionless, the C_max intercept
+clay_phi_ref   = 0.45    # v/v, the porosity at which C_max falls to zero
+porosity_max   = 0.45    # v/v.
+#   NOT the Stage 0 cap: [priors].porosity_range is [0.25, 0.40]. 0.45 is a
+#   looser, physical ceiling, and looser is the conservative direction for a
+#   floor -- a larger porosity divides the leftover conductance by more and
+#   so lowers sigma_w. Stated here rather than inherited so the inconsistency
+#   with the Stage 0 prior is visible instead of silent.
+m_for_floor    = "lower" # "lower" | "upper" bound of [priors].m.
+#   sigma_w = X / porosity_max^m with porosity_max < 1, so phi^m SHRINKS as m
+#   grows and sigma_w RISES with m. The lowest sigma_w -- the actual floor --
+#   therefore comes from the LOWER bound of the m prior, m = 1.50, not the
+#   upper. Both are reported; "lower" is the one that is a floor.
+
+
+# =====================================================================
+#  [hypothesis]  --  Stage 3. Pre-registered. Three optional parts.
+# =====================================================================
+# Written before the run and NOT edited after seeing the answer. Any of
+# the three parts may be omitted; the verdict table then reports that
+# criterion as "not asserted" rather than as passed.
+#
+# The interval spec must be BOUNDED. An unbounded screen pins to the base
+# of the grid, where the depth limit has no teeth, and yields a detection
+# claim the data do not support.
+[hypothesis.interval]
+mode      = "search"     # "fixed" | "search"
+# fixed: top = 21.0, base = 31.0        # m, used when mode = "fixed"
+search_step = 0.25       # m, window-edge sweep resolution. Window edges
+                         # are NOT snapped to the depth grid: the integral
+                         # uses a piecewise-linear antiderivative evaluated
+                         # at the real edges, so a nominal 10 m window
+                         # carries 10 m of support and not the 8.8 m that
+                         # whole-cell summing gives on this log-spaced grid.
+L_min     = 8.0          # m, minimum window length
+L_max     = 16.0         # m, maximum window length
+depth_min = 5.0          # m, shallowest allowed window top
+depth_max = 60.0         # m, deepest allowed window base
+#   Every window satisfying this spec is swept ON EVERY DRAW, and the
+#   window maximising P(criterion) is kept. Outputs: posterior on top,
+#   base and length, and P(water criterion).
+
+[hypothesis.water]
+type  = "integral"       # "integral" -> W = integral theta dz >= value
+                         # "pointwise" -> theta > value throughout
+value = 2.0              # m of water for "integral"; v/v for "pointwise"
+#   Use "integral". The integral of theta over a window is far better
+#   determined than theta at any depth -- 8-10x on synthetics, median
+#   2.2x on field data. A pointwise threshold pair moves P(aquifer) from
+#   0.04 to 0.78 on the SAME data, which is a statement about the
+#   threshold and not about the aquifer. "pointwise" is retained only to
+#   reproduce superseded figures.
+
+[hypothesis.salinity]
+direction = "less_than"  # "less_than" | "greater_than"
+value     = 1000.0       # mg/L TDS. Here: fresh water asserted.
+
+
+# =====================================================================
+#  [gate]  --  Stage 4. Defaults fixed, documented, not expected to change.
+# =====================================================================
+[gate]
+# What is forced. The AEM determines CONDUCTANCE, not conductivity.
+#   C = sum over the window of 10^m_i * dz_i
+# nonlinear in the model vector: the constraint row is relinearised at
+# each iterate, the step projected onto its tangent null space, and the
+# model re-projected onto the constraint surface after each accepted step.
+# Forcing the mean of log10 sigma and multiplying by thickness is a
+# DIFFERENT statistic; they differ by the Jensen gap (small on these
+# columns, +/-0.003 dex, but it is not the quantity the data determine).
+forced = "conductance"   # "conductance" | "mean_log_sigma" (superseded)
+
+# The grid runs from the MODEL'S LOWER TO UPPER BOUND, and admissibility
+# is enforced per node rather than by narrowing the grid.
+sigma_bounds = [1e-3, 10.0]   # S/m. The solver's clamp; the coarse grid's span.
+# TWO-PASS GRID. A single pass bound to bound wastes most of its effort: on
+# column 3P only 12-14 of 41 nodes were admissible and 29 pinned on a bound, so
+# two thirds of an 8.8 h sweep was spent on nodes that were then correctly
+# excluded. Instead:
+#   pass 1  n_nodes_coarse nodes bound to bound, at lambda-hat, to locate the
+#           REACHABLE range from bound occupancy
+#   pass 2  n_nodes_fine nodes INSIDE that range, at each lambda2
+# The fine grid's end nodes coincide with coarse nodes already shown to be
+# interior, which is asserted after the sweep.
+#   THE COST: the fine grid cannot see a reachable region lying beyond the
+#   outermost reachable COARSE node, up to one coarse step away. So a band edge
+#   landing on a fine-grid end is reported OPEN, and the coarse step is quoted
+#   as the uncertainty on where that edge really is.
+grid_mode      = "two_pass"   # "two_pass" | "single_pass"
+n_nodes_coarse = 16           # integer, pass 1, bound to bound
+n_nodes_fine   = 15           # integer, pass 2, inside the reachable range
+#   8 coarse nodes was too few: on column 3P it bracketed 0.571 dex when the
+#   band was 1.100 dex wide, so BOTH edges came back open, Delta collapsed from
+#   0.1032 to 0.0039 and the verdict flipped UNDETERMINED -> PASS. The grid had
+#   stopped sampling the region where P disagreed, which is the one thing Delta
+#   exists to test. 16 coarse nodes give a 0.267 dex step, so a 1.1 dex band is
+#   bracketed by several nodes.
+#   With the edges located by BISECTION the fine grid no longer has to resolve
+#   them, so it drops to 15 nodes and the saving stands.
+n_nodes        = 41           # integer, used only when grid_mode = "single_pass"
+n_fine         = 800          # integer, interpolation nodes for p(C)
+# EXCLUDE ANY NODE WITH A CELL ON A BOUND. The cheapest way to reach a
+# target conductance is a uniform sigma, so nodes near the bounds cannot
+# be reached: measured at sigma_eff = 1e-3, eleven cells pinned and the
+# achieved conductance was off by a factor of 9 at the extreme end --
+# and those nodes were previously normalised over as if they were points
+# on L(C). A Laplace expansion also requires an INTERIOR stationary
+# point: at a clamped optimum the gradient does not vanish and
+# logdet(Z'HZ) measures the clamp's curvature, not the posterior's. That
+# was measured at chi2/N = 0.94, so nothing downstream detects it.
+exclude_on_bound = true       # true | false (false reproduces old numbers)
+require_settled  = true       # reject nodes whose solver did not settle
+constraint_tol   = 1e-10      # |achieved C / requested C - 1|, dimensionless
+
+# --- (a) the profile band ------------------------------------------
+[gate.band]
+delta_chi2 = 3.84        # chi2 <= N + delta_chi2, referenced to the
+                         # TARGET misfit, not to the best fit found
+edge_method = "bisect"   # "bisect" | "grid"
+edge_tol    = 5e-3       # dex, bisection tolerance on the edge location
+edge_max_iter = 12       # integer, forward solves per edge
+#   TRUE bisection: each step SOLVES the constrained problem at a new C, rather
+#   than interpolating between grid nodes. That is what lets the fine grid drop
+#   to 15 nodes -- the grid finds the shape, the bisection finds the edges.
+#   ~12 extra solves per edge against ~10 saved grid nodes per lambda2.
+#   The upper edge is converted to a CLAY-FREE salinity through theta
+#   (SNMR draws) and m (prior) -- that is the DATA-ONLY BOUND, the one
+#   number here that owes nothing to the clay prior.
+#   An edge AT the limit of the search is not a measurement: the band is
+#   reported with an open/closed flag per edge. On 19 field soundings the
+#   lower edge ran to the sweep floor at every one, which was being read
+#   as physics when it was the sweep's edge.
+
+# --- (b) the Bayesian curve ----------------------------------------
+[gate.bayes]
+# log L(C) = -Phi*/2 - 1/2 logdet(Z'HZ) + 1/2 logdet(Z'PZ)
+# All three terms are required. -chi2*/2 drops the prior's contribution
+# to the evidence, which GROWS as the forced conductance pulls the window
+# away from the background. The +1/2 logdet(Z'PZ) term cancelled under
+# the old LINEAR constraint (Z fixed across the grid); it does not cancel
+# now, because the conductance constraint's tangent space rotates with C.
+laplace        = "phi_with_prior_det"   # "phi_with_prior_det" | "chi2_only"
+lambda2_ladder = [1.0, 10.0, 100.0, 1e3, 1e4, 1e5, 1e6]
+lambda2_select = "ml2"   # "ml2" (maximise integrated likelihood) | "fixed"
+# lambda2_fixed = 10.0
+beta2          = 0.1     # deep-ramp weight: P = lambda2*(R'R + beta2*I).
+                         # The ramp needs the beta2 factor; without it the
+                         # deep prior is not the documented one.
+prior_on_C     = "flat_in_log_C"        # "flat_in_log_C" | "flat_in_C"
+
+# Robustness. Delta is the MAXIMUM change in P(criterion) across both
+# perturbations below. It separates what the data carried from what the
+# prior carried, and it is the number the verdict label is read from.
+delta_lambda2_factors = [0.1, 1.0, 10.0]   # lambda-hat/10, lambda-hat, x10
+delta_drop_end_nodes  = 1        # integer: drop this many nodes at EACH
+                                 # grid end and recompute
+delta_tol = 0.05         # Delta <= tol -> "data-carried"
+                         # Delta >  tol -> "prior-carried"
+
+
+# =====================================================================
+#  [inversion]  --  Stages 1 and 2. Trans-dimensional throughout.
+# =====================================================================
+[inversion]
+# The model vector is log10(sigma). HiQGA's API is asymmetric and this
+# has cost real debugging time: makenoisydata!(aem, log10rho) takes
+# RESISTIVITY while getresidual(aem, log10sigma) takes CONDUCTIVITY.
+# This pipeline is conductivity-first and converts only at the boundary.
+
+# --- Stage 1, AEM ---------------------------------------------------
+[inversion.aem]
+engine   = "transd"      # "transd" | "occam" (occam cannot do detection:
+                         #   the depth limit loses its teeth and the
+                         #   screen pins to the base of the grid)
+chains   = 4             # integer
+n_samples = 400000       # integer, per chain
+burn_in   = 80000        # integer
+thin      = 20           # integer
+n_draws   = 400          # integer, posterior draws carried to Stage 2
+# CONVERGENCE IS JUDGED ON CONDUCTANCE over the target interval -- not on
+# per-cell conductivity, which is not what the data determine and not
+# what the hypothesis asks about. The split-half statistic is reported on
+# CONDUCTANCE ONLY, for the same reason.
+convergence_statistic = "conductance"    # "conductance" (only supported)
+split_half_tol = 0.02    # dex, max split-half difference in log10 C
+# Per-cell resolution weight, taken from the Jacobian.
+resolution_weight = "jacobian"           # "jacobian" | "none"
+
+# --- Stage 2, SNMR --------------------------------------------------
+[inversion.snmr]
+engine = "transd"        # "transd" | "occam"
+chains = 4
+n_samples = 400000
+burn_in   = 80000
+thin      = 20
+n_draws   = 400          # integer. Draws, NEVER percentile profiles: a
+                         # p10/p50/p90 profile is not a sample from
+                         # anything, does not fit the data, and carries no
+                         # probabilistic meaning through the rock physics.
+hierarchical_noise = true    # true | false. MANDATORY in practice: the
+                         # records are effectively noiseless under a fixed
+                         # noise model and the deep posterior collapses to
+                         # the GP mean.
+# The SNMR kernel depends on conductivity, so each theta draw gets a
+# kernel built from a STAGE 1 DRAW -- not from a single summary profile.
+# This is the paper's Stage 2 rule and what the field work taught us. It
+# is NOT a departure. The one thing it requires is the next key: computing
+# draw-to-data statistics ACROSS kernels is what broke three field
+# diagnostics, so they are computed within kernel and pooled afterwards.
+# Recorded in the report as "diagnostics computed within kernel".
+kernel = "per_draw"      # "per_draw" | "fixed"
+# All draw-to-data statistics are computed WITHIN a kernel and only then
+# pooled. Comparing a residual computed under one kernel with one
+# computed under another is the error that broke those diagnostics.
+statistics_scope = "within_kernel"       # "within_kernel" | "pooled"
+# Depth limit = min(detectability, posterior-responding), where
+# posterior-responding is read as the TERMINAL RUN FROM THE BASE of the
+# grid -- the deepest depth below which the posterior stops responding to
+# the data at all. The depth limit decides the verdict on real data more
+# often than anything else in the workflow, so both components are
+# reported, not just the minimum.
+depth_limit = "min_detect_responding"    # "min_detect_responding" |
+                                         # "detectability" | "fixed"
+# depth_limit_fixed = 60.0               # m, used when "fixed"
+theta_detect = 0.05      # v/v, detectability floor: below this the
+                         # instrument reports noise, not water
+
+# --- validation (expensive; off by default) -------------------------
+[inversion.validation]
+mcmc_gate_check = false  # true -> MCMC on the gate object, to test the
+                         # Laplace approximation
+chains  = 4
+n_iter  = 200000
+burn_in = 40000
+thin    = 20
+ess_min = 500            # integer. Required ESS IN THE TAILS, not overall.
+median_tol_dex = 0.01    # dex. Laplace vs MCMC median agreement required.
+random_restart_upper_edge = false   # true -> restart check at the band's
+                                    # upper edge, to show the edge is the
+                                    # constraint's and not the start's
+
+
+# =====================================================================
+#  [output]  --  Stage 6. The verdict table and what surrounds it.
+# =====================================================================
+[output]
+dir = "outputs/synth_3P"     # created if absent; one directory per site,
+                             # so a re-run cannot half-overwrite the last
+table_format = ["csv", "markdown"]   # "csv" | "json" | "markdown"
+                             # At least one machine-readable format and
+                             # one rendered one.
+# Verdicts are THREE-STATE. "Rejected" and "undetermined" are different
+# failures, and the second is not evidence against the hypothesis.
+verdict_states = ["PASS", "FAIL", "UNDETERMINED"]
+# Rows of the verdict table, in the paper's order. There is deliberately
+# NO "next measurement" row.
+rows = [
+  "hypothesis",              # the three criteria as asserted
+  "interval",                # top, base, length: p50 with p5-p95
+  "water_criterion",         # P(W >= value)
+  "conductance_band",        # edges in S, width in dex, lower_edge_open
+  "salinity_criterion",      # P, Delta, data-carried/prior-carried
+  "data_only_bound",         # TDS at 95%, clay-free, from the upper edge
+  "stage5_estimate",         # p50 with p5-p95, priors printed beside it
+  "verdict",                 # per criterion and overall
+]
+credible_mass = 0.95         # for every p5-p95 above
+# One-at-a-time width decomposition: hold all inputs but one at their
+# median and record each input's share of the spread in P.
+decomposition_inputs = ["band", "clay", "m", "porosity"]
+# Provenance on every output: git SHA, Julia version, config hash, seeds,
+# and [data].column / parent / role, so no table can be read without
+# knowing which column produced it and which parent a control belongs to.
+provenance = true
+record_lineage = true        # true | false (false is not recommended)
+# Scoring against truth happens HERE and nowhere else, after every
+# verdict above is fixed. Omit on field data.
+score_against_truth = true
+# Pre-registered predictions live in REPORT_GATE.md section 0.6 and are
+# NOT restated here -- that table stands and gets filled, not edited.
+prediction_table = "synthetics/REPORT_GATE.md#0.6"

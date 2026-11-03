@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+title: >-
+  Resolving fresh groundwater from clay with AEM and surface NMR:
+  a staged workflow with a truth firewall
+message: If you use this software, please cite it as below.
+type: software
+authors:
+  - given-names: Neil
+    family-names: Symington
+    affiliation: Geoscience Australia
+license: MIT
+repository-code: "https://github.com/Neil-Symington/snmr-aem-resolvability"
+abstract: >-
+  A seven-stage workflow that converts an airborne electromagnetic sounding and
+  a surface NMR sounding into a verdict on a pre-registered aquifer hypothesis.
+  The conductance-to-salinity conversion is clay-free, so the method can certify
+  that pore water is fresh but never that it is saline; a saline verdict follows
+  only from declared physical ceilings and is labelled as such. No stage after
+  the first may read a truth value, and on the synthetic columns that firewall is
+  enforced as a file boundary.
+keywords:
+  - airborne electromagnetics
+  - surface nuclear magnetic resonance
+  - groundwater salinity
+  - trans-dimensional inversion

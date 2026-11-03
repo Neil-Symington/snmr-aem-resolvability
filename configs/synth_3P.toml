@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------------
+#  synth_3P.toml  --  synthetic column 3P
+#  test one, unconfined Loxton-Parilla sands, tier P
+#  Role: primary   Priority: primary
+# ---------------------------------------------------------------------
+# Inherits every key, and every explanatory comment, from ../config.toml.
+# Only what differs for this column is restated here, so a reviewer can
+# see the whole difference between two columns on one screen.
+extends = "../config.toml"
+
+name  = "synth_3P"
+label = "test one, unconfined Loxton-Parilla sands, tier P"
+
+[data]
+truth  = "data/truth_murray3P.jld2"
+column = "3P"
+parent = ""             # a primary column, not derived
+role   = "primary"
+snmr_ensemble = "data/cond_C2_typical3PT.jld2"
+stage1_draws = "data/aem_draws_3M.jld2"
+
+[data.loop]
+side       = 100.0
+area_check = 10000.0
+
+[data.snmr]
+noise_tier = "typical"
+
+[output]
+dir = "outputs/synth_3P"
