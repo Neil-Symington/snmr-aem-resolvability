@@ -4,10 +4,10 @@ Everything here is a *declared* choice. None of it is measured by the survey, an
 of it changes the answer, which is why it lives in `config.toml` where it can be seen
 and argued with rather than buried in a script.
 
-> **Citations are marked `[REF]` and are the author's to fill.** The ranges below are
-> the ones the runs used and the reasoning for each is given in full, but this file
-> does not invent a literature basis for them. Do not publish it with the markers in
-> place.
+> **Citations are pending and are marked `[REF]`.** Every range below is the one the
+> runs actually used, and the reasoning for each is given in full; what is missing is
+> the supporting literature, which has deliberately not been invented. Treat a `[REF]`
+> as "this choice is argued here but not yet cited", not as a gap in the reasoning.
 
 ## The rock-physics model
 
