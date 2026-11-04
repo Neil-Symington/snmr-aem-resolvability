@@ -39,25 +39,27 @@ noise model or the Occam bootstrap that every result here depends on. `Project.t
 pins the branch and `Pkg.instantiate()` will fetch it; if you are on Julia 1.10,
 `[sources]` is ignored and you must add it by hand.
 
-### matplotlib is required, and this is the step that bites
-
-`HiQGA` depends on `PyCall`, `PyPlot` and `Conda`, and its build step bootstraps a
-Miniconda distribution and runs `conda install -y matplotlib`. On a machine with no
-network to the conda channels, behind a proxy, or with a managed Python, that build
-fails and takes the whole install with it — the figure scripts are not the only thing
-affected, nothing installs at all.
-
-Point `PyCall` at a Python that already has matplotlib instead:
+### Install with `install.jl`, not with `Pkg.instantiate()`
 
 ```bash
-PYTHON=/usr/bin/python3 julia --project=. -e 'using Pkg; Pkg.instantiate()'
+julia --project=. install.jl
 ```
 
-Any Python with matplotlib will do. This was verified from a clean clone and an empty
-Julia depot; without it the same clean install fails at `Error building HiQGA`.
+`Pkg.instantiate()` on its own **does not work from a clean Julia depot**, and the
+error it prints points at this repository rather than at the cause. `HiQGA` depends
+on `PyCall`, `PyPlot` and `Conda`; its build runs `Conda.add("matplotlib")`
+unconditionally and then overwrites `ENV["PYTHON"]`, so setting `PYTHON` yourself has
+no effect. `Conda.jl` bootstraps the current Miniconda, which ships `python3.x` and no
+`python` alias, while conda's own launcher begins `#!/usr/bin/env python` — and on
+Debian or Ubuntu there is no `python` on `PATH`, only `python3`. The build dies with
+exit 127 and takes the whole environment with it.
 
-`Manifest.toml` is tracked, so `Pkg.instantiate()` reproduces the exact versions used
-here rather than resolving fresh ones.
+`install.jl` creates the missing alias inside conda's own bin, puts that bin on `PATH`
+for the build, and finishes. It was verified from an empty depot; if your machine
+already has a working conda it is a no-op and takes seconds.
+
+`Manifest.toml` is tracked, so the versions you get are the ones used here rather than
+a fresh resolve.
 
 ## Quick start
 
