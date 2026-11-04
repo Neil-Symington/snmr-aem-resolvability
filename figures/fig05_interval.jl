@@ -7,8 +7,10 @@
 #        so no extra restriction is imposed. Counts on a log axis.
 # (b, e) the W posterior over the representative window Stages 4 and 5 used.
 #
-# Panel letters are a, b and d, e, as the brief labels them; c and f were the
-# bar panels and are dropped.
+# Panel letters run a, b, c, d. The true aquifer is read from the truth file's
+# unit table rather than hardcoded -- test two's Calivil aquifer is 18-34 m,
+# and an earlier version drew 21-31 m, which is that aquifer inset by 3 m and
+# not its extent.
 #
 # EVERY DRAW'S WINDOW IS EXACTLY 16 m LONG on both columns -- L pins at L_max
 # in 100% of draws, which is spec-determined and not inferred -- so (a) and (d)
@@ -19,17 +21,26 @@ const SYN = normpath(joinpath(@__DIR__, "..", "data"))
 const OUT = normpath(joinpath(@__DIR__,"..","outputs"))
 const WMIN = 2.0
 
+"the first unit whose label names an aquifer, as (top, base) in metres"
+function aquifer(T)
+    for u in T["units"]
+        k = u isa Dict ? u : Dict(string(f)=>getfield(u,f) for f in propertynames(u))
+        occursin("AQUIFER", uppercase(string(k["3"]))) && return (Float64(k["1"]), Float64(k["2"]))
+    end
+    error("no aquifer unit in the truth")
+end
 cellsof(z)=(mid=(z[1:end-1].+z[2:end])./2; (top=vcat(0.0,mid), bot=vcat(mid,z[end]+(z[end]-z[end-1])/2)))
 function winw(z,a,b); g=cellsof(z); w=[max(0.0,min(g.bot[i],b)-max(g.top[i],a)) for i in eachindex(z)]
     ix=findall(>(1e-12),w); (ix=ix,w=w[ix]); end
 
 function main()
-    cols = (("3P","3PT", C_FRESH,  "#9dbfe0", (6.0,40.0),  (7.5,23.5)),
-            ("2P","2PT", C_SALINE, "#f3c69b", (21.0,31.0), (17.5,33.5)))
+    cols = (("3P","3PT", C_FRESH,  "#9dbfe0", (7.5,23.5)),
+            ("2P","2PT", C_SALINE, "#f3c69b", (17.5,33.5)))
     fig, axs = FigStyle.newfig(width = MM170, h = 4.4, nrows = 2, ncols = 2)
-    letters = (("a","b"), ("d","e"))
+    letters = (("a","b"), ("c","d"))
     exp_win = Any[]; exp_W = Any[]
-    for (i,(tag, ens, c1, c2, aq, rep)) in enumerate(cols)
+    for (i,(tag, ens, c1, c2, rep)) in enumerate(cols)
+        aq = aquifer(load(joinpath(SYN,"truth_murray$tag.jld2")))
         S3 = load(joinpath(OUT,"synth_$tag","stage3_synth_$tag.jld2"))
         tp, bs = S3["tops"], S3["bases"]
         append!(exp_win, [(tag, tp[k], bs[k]) for k in eachindex(tp)])
@@ -37,6 +48,10 @@ function main()
         # ---- (a, d) preferred window top and base ----
         ax = axs[i, 1]
         FigStyle.aquifer_band(ax, aq[1], aq[2]; horiz = true)
+        # the aquifer's own boundaries, so the band has edges a reader can place
+        for zb in aq
+            ax.axvline(zb, color = "0.45", ls = "--", lw = 0.8, zorder = 2)
+        end
         bins = collect(0.0:0.5:60.0)
         ax.hist(tp, bins = bins, color = c1, lw = 0, label = "top")
         ax.hist(bs, bins = bins, color = c2, lw = 0, label = "base")

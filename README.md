@@ -39,8 +39,25 @@ noise model or the Occam bootstrap that every result here depends on. `Project.t
 pins the branch and `Pkg.instantiate()` will fetch it; if you are on Julia 1.10,
 `[sources]` is ignored and you must add it by hand.
 
-`PyPlot` needs a working matplotlib. Only the figure scripts use it, so the pipeline
-runs without one.
+### matplotlib is required, and this is the step that bites
+
+`HiQGA` depends on `PyCall`, `PyPlot` and `Conda`, and its build step bootstraps a
+Miniconda distribution and runs `conda install -y matplotlib`. On a machine with no
+network to the conda channels, behind a proxy, or with a managed Python, that build
+fails and takes the whole install with it — the figure scripts are not the only thing
+affected, nothing installs at all.
+
+Point `PyCall` at a Python that already has matplotlib instead:
+
+```bash
+PYTHON=/usr/bin/python3 julia --project=. -e 'using Pkg; Pkg.instantiate()'
+```
+
+Any Python with matplotlib will do. This was verified from a clean clone and an empty
+Julia depot; without it the same clean install fails at `Error building HiQGA`.
+
+`Manifest.toml` is tracked, so `Pkg.instantiate()` reproduces the exact versions used
+here rather than resolving fresh ones.
 
 ## Quick start
 

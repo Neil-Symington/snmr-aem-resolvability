@@ -7,6 +7,6 @@ data/
 figures/*.png
 figures/numbers*.csv
 # local environment
-Manifest.toml
+# Manifest.toml IS tracked: it is the version pin a reviewer needs.
 .venv/
 __pycache__/

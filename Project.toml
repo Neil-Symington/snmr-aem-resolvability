@@ -1,8 +1,6 @@
-name = "SNMRAEMResolvability"
-uuid = "7c0f1a52-9d3e-4b21-ae55-1f2c6d84b3a0"
-authors = ["Neil Symington"]
-version = "1.0.0"
-
+# A plain environment, not a package: these are scripts, and declaring a
+# name/uuid here made Julia look for src/SNMRAEMResolvability.jl and warn
+# that it was missing on every instantiate.
 [deps]
 HiQGA = "01574e87-63b6-4466-925a-334cf7e21b6b"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
