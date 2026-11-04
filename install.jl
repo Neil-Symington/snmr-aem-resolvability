@@ -30,6 +30,9 @@ catch
 end
 
 @info "step 2/4  checking conda's python alias"
+# Conda is a DIRECT dependency of this project purely so this line works: it is
+# a transitive dependency of HiQGA, and `using Conda` failed here when it was
+# only transitive.
 using Conda
 bin = joinpath(Conda.ROOTENV, "bin")
 isdir(bin) || error("conda was never bootstrapped at $bin; rerun and read the log")

@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "ad278ab6ff9bde2058dfb2135498202f72f5f9e4"
+project_hash = "67e7fc4da9301f0b58514bc1000d96eb439d9832"
 
 [[deps.ADTypes]]
 deps = ["PrecompileTools"]
@@ -1595,12 +1595,6 @@ repo-rev = "add-occam-deterministic-inversion"
 repo-url = "https://github.com/Neil-Symington/SMRPInversion.jl"
 uuid = "aec56ffe-cd48-4f37-83c0-3fddfef137dd"
 version = "0.1.4"
-
-[[deps.SNMRAEMResolvability]]
-deps = ["HiQGA", "JLD2", "PyPlot", "SMRPInversion", "SNMRForward"]
-path = "."
-uuid = "7c0f1a52-9d3e-4b21-ae55-1f2c6d84b3a0"
-version = "1.0.0"
 
 [[deps.SNMRForward]]
 deps = ["FFTW", "FastGaussQuadrature", "SpecialFunctions"]

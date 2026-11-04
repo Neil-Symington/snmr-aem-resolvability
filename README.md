@@ -73,13 +73,38 @@ take hours** — each is a trans-dimensional MCMC of 100,000–200,000 samples o
 chains — so they run from `tools/` rather than from the driver, and `run_site.jl`
 prints the command instead of starting a job that will outlive your terminal.
 
-Nothing is shipped under `data/`. Rebuild the synthetic inputs first:
+### Where the synthetic columns come from
+
+Generation lives in a separate repository, **[snmr-aem-synthetics](https://github.com/Neil-Symington/snmr-aem-synthetics)** — a
+config-driven generator with a column per TOML file:
 
 ```bash
-julia --project=. tools/truth_murray.jl      # the truth columns
-julia --project=. tools/aem_HYP.jl 200001 2M # Stage 1, hours
-julia --project=. tools/aem_draws.jl 2M      # the posterior draws Stage 5 uses
+git clone https://github.com/Neil-Symington/snmr-aem-synthetics
+cd snmr-aem-synthetics
+julia --project=. -e 'using Pkg; Pkg.instantiate()'
+julia --project=. scripts/build_truth.jl config/confined_aquifer.toml
 ```
+
+It is deterministic: the same config and `seed` give a bit-identical column, so a
+stated parameter set reproduces a stated column exactly. The shipped configs are not
+the parameter sets behind this repository's results — they differ in the porosity and
+clay variances, the correlation length and the clay exponent — so building from them
+demonstrates the method and produces a statistically equivalent column, not the one in
+the paper.
+
+### Reproducing the paper's numbers
+
+Stages 1 and 2 are hours of MCMC each. Their products — the truth columns, the SNMR
+data, the AEM posterior draws and the Stage 2 ensembles — are **21 MB in total** and
+are published with the release. With them in `data/`, Stages 0 and 3–6 run in about an
+hour and reproduce the verdict tables directly:
+
+```bash
+julia --project=. run_site.jl configs/synth_2P.toml --from 3
+```
+
+Without them you can still run `--dry-run` and the tests, but the first real stage is a
+3.5-hour trans-dimensional inversion per column.
 
 ## The stages
 
