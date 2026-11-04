@@ -84,13 +84,6 @@ can be nothing but the water. A control names its parent in `[data].parent` and 
 validator refuses one that does not: comparing a control against the wrong parent has
 already produced one retracted finding in this project.
 
-`configs/synth_2PJ.toml` adds a galvanic (Schlumberger) sounding as a second data term
-in the same trans-dimensional chain, through HiQGA's `JointOperator`. HiQGA ships no
-DC physics, so the forward is in `src/dc_forward.jl`: the Ghosh linear-filter method
-on HiQGA's own Hankel filters, verified against the two-layer analytic series to a
-worst relative error of 3.3e-5, against a 65-layer subdivision of it to 1.4e-13, and
-against an independent adaptive-quadrature implementation to 6.5e-5.
-
 Release of the field data is Geoscience Australia's decision, not this repository's.
 
 ## Configuration

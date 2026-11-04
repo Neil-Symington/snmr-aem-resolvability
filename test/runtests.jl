@@ -3,7 +3,6 @@
 #   julia --project=. test/runtests.jl
 #
 # Each of these guards a bug that actually happened in this project:
-#   dc_forward          the Ghosh filter against the two-layer analytic series
 #   config              inheritance, and every validation rule firing
 #   stage0 roundtrip    the sealed artefact rebuilding the operator exactly
 #   gate solver         the conductance constraint being met at the optimum
@@ -13,16 +12,6 @@ using Test, Printf
 const ROOT = normpath(joinpath(@__DIR__, ".."))
 
 @testset "snmr-aem-resolvability" begin
-    @testset "DC forward against the two-layer analytic" begin
-        include(joinpath(ROOT, "src", "dc_forward.jl"))
-        worst = DCForward.selftest(verbose = false)
-        @test worst < 1e-3
-        # a homogeneous halfspace must come back exactly
-        L = 10 .^ range(log10(2.0), log10(300.0), length = 20)
-        h = DCForward.rho_schlumberger_finite([37.0, 37.0], [10.0], L, L ./ 5)
-        @test maximum(abs.(h .- 37) ./ 37) < 1e-5
-    end
-
     @testset "config inheritance and validation" begin
         include(joinpath(ROOT, "src", "config.jl"))
         for f in readdir(joinpath(ROOT, "configs"); join = true)

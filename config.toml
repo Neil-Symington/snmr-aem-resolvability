@@ -139,46 +139,6 @@ side       = 100.0       # m, the FULL side length of the square loop.
 area_check = 10000.0     # m^2. run_site.jl asserts shape+side reproduce this.
 turns      = 1           # integer
 
-# Galvanic (DC) sounding, OPTIONAL. Present only on the joint columns; absent
-# or enabled = false everywhere else, and Stage 1 then runs on the AEM alone.
-# The sounding enters Stage 1 as a SECOND DATA TERM beside the AEM, through
-# transD_GP's GenericJointInversion.JointOperator, which sums the two
-# log-likelihoods. Nothing downstream changes: Stages 2-5 read the joint draws
-# exactly as they read the AEM-only ones.
-[data.dc]
-enabled   = false        # true on the *J columns
-array     = "schlumberger"
-ab_2      = [2.0, 300.0] # m, AB/2 range; 20 points, log-spaced
-n_spacing = 20           # integer
-mn_ratio  = 0.1          # MN/2 = mn_ratio * AB/2. NOT the dipole limit:
-                         #   at MN/2 = AB/10 the finite-MN kernel differs from
-                         #   the dipole one by up to 8% on a 10:1 contrast,
-                         #   which is larger than the noise, so the finite-MN
-                         #   form is used for both the data and the forward.
-noise_pct = 0.03         # fractional, Gaussian
-noise_floor_rel = 0.01   # fractional, added in quadrature with noise_pct
-                         #   sigma_i = rho_a_i * sqrt(noise_pct^2 + noise_floor_rel^2)
-                         #          = 3.162% of the datum, everywhere.
-                         #   NOTE the floor is INERT by construction: being
-                         #   relative it scales with the datum and so can never
-                         #   bind. It raises the effective error from 3.00% to
-                         #   3.16% and nothing else. Kept because it is what the
-                         #   brief specifies and it costs nothing.
-                         #   IT REPLACES an absolute 0.5 Ohm.m floor, which on
-                         #   test two (apparent resistivities 2-13 Ohm.m) was
-                         #   5-25% of the datum rather than 3%, and so made the
-                         #   sounding weakest on the column that needed it most.
-                         #   That run is archived under
-                         #   data/absfloor_archive/.
-seed      = 20261103     # integer. One Gaussian realisation per column;
-                         #   the per-column offset is seed + <digit> (+100 for
-                         #   a saline control), recorded in dc_sounding_<tag>.jld2.
-forward   = "synthetics/dc_forward.jl"
-#   HiQGA ships no DC physics, so the forward is the Ghosh linear-filter
-#   method on HiQGA's own 201-point J0/J1 Hankel filters, VERIFIED against the
-#   two-layer analytic Schlumberger series to a worst relative error of
-#   3.3e-5 -- four orders below the noise. `DCForward.selftest()` re-runs it.
-
 # SNMR instrument and field constants.
 [data.snmr]
 dead_time  = 0.0105      # s. At this dead time the instrument sees
