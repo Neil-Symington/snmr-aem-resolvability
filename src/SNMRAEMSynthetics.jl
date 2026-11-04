@@ -74,9 +74,13 @@ Geometry can be given as `top` (bottom taken from the next unit) or as
 `thickness` (tops accumulated down the section), or both if they agree. The
 `sd_*` fields are per-unit log-normal spreads for the depth-correlated jitter —
 a clean sand is far more uniform than a weathered profile, so one global number
-for the whole section is usually wrong. `cec` is the cation-exchange capacity
-of the bulk rock in meq/100 g; `NaN` means "derive it as clay × cec_clay from
-the `[petrophysics]` block".
+for the whole section is usually wrong. `σ_clay` is likewise per unit: clay
+conducts at its surfaces in proportion to cation exchange capacity, which
+differs by more than ten times between kaolinite and smectite. `σ_clay` is what
+the Simandoux model uses; `cec` is the cation-exchange capacity of the bulk rock
+in meq/100 g, which Waxman-Smits uses instead, and `NaN` means "derive it as
+clay × cec_clay from the `[petrophysics]` block". A unit carries both so that
+switching `model` does not require re-describing the section.
 
     Unit(top, bot, name, φ, S, clay, σw; sd_φ = 0.10, sd_clay = 0.15, sd_σw = 0.0, cec = NaN)
 """
@@ -91,12 +95,23 @@ struct Unit
     sd_φ::Float64
     sd_clay::Float64
     sd_σw::Float64
-    cec::Float64
+    σ_clay::Float64             # clay surface conductivity, S/m per unit clay (Simandoux)
+    cec::Float64                # bulk cation-exchange capacity, meq/100 g (Waxman-Smits)
 end
-Unit(top, bot, name, φ, S, clay, σw; sd_φ = 0.10, sd_clay = 0.15, sd_σw = 0.0, cec = NaN) =
-    Unit(top, bot, name, φ, S, clay, σw, sd_φ, sd_clay, sd_σw, cec)
+# Convenience constructors. `σ_clay` defaults to the illite-ish 0.5 S/m that is
+# also the section default; a config normally sets it per unit from
+# `clay_mineral`. `cec = NaN` means "derive it from clay x cec_clay".
+# Both defaults must be supplied here: Unit gained a field when the per-unit
+# clay conductivity and the Waxman-Smits CEC were merged, and a constructor
+# that is one argument short fails only at the call site, which is how
+# examples/02 broke before.
+Unit(top, bot, name, φ, S, clay, σw; sd_φ = 0.10, sd_clay = 0.15, sd_σw = 0.0,
+     σ_clay = 0.5, cec = NaN) =
+    Unit(top, bot, name, φ, S, clay, σw, sd_φ, sd_clay, sd_σw, σ_clay, cec)
 Unit(top, bot, name, φ, S, clay, σw, sd_φ, sd_clay, sd_σw) =
-    Unit(top, bot, name, φ, S, clay, σw, sd_φ, sd_clay, sd_σw, NaN)
+    Unit(top, bot, name, φ, S, clay, σw, sd_φ, sd_clay, sd_σw, 0.5, NaN)
+Unit(top, bot, name, φ, S, clay, σw, sd_φ, sd_clay, sd_σw, σ_clay) =
+    Unit(top, bot, name, φ, S, clay, σw, sd_φ, sd_clay, sd_σw, σ_clay, NaN)
 thickness(u::Unit) = u.bot - u.top
 
 "A built synthetic column on a fine depth grid."
@@ -138,6 +153,9 @@ function load_config(path::AbstractString)
     gsdφ = get(v, "log_sd_phi", 0.10)
     gsdc = get(v, "log_sd_clay", 0.15)
     gsdw = get(v, "log_sd_sigma_w", 0.0)   # off by default: keeps σ_w exactly as stated
+    # Section default for clay surface conductivity, used only by units that
+    # name neither a mineral nor a lithology. 0.5 S/m is an illite-ish middle.
+    gσc  = get(get(cfg, "petrophysics", Dict()), "sigma_clay", 0.5)
 
     # ── geometry: resolve tops and bottoms from `top`, `thickness`, or both
     n = length(raw)
@@ -172,7 +190,7 @@ function load_config(path::AbstractString)
     for (i, u) in enumerate(raw)
         nm   = get(u, "name", "unit $i")
         pre  = haskey(u, "lithology") ? lithology(u["lithology"]) :
-               (φ = NaN, clay = NaN, sd_φ = gsdφ, sd_clay = gsdc)
+               (φ = NaN, clay = NaN, sd_φ = gsdφ, sd_clay = gsdc, mineral = "illite")
         φ    = get(u, "phi",  pre.φ)
         clay = get(u, "clay", pre.clay)
         isnan(φ)    && error("unit \"$nm\": needs `phi` or a `lithology`")
@@ -185,10 +203,19 @@ function load_config(path::AbstractString)
         0 < φ < 1     || error("unit \"$nm\": phi $φ is not in (0,1)")
         0 <= clay <= 1 || error("unit \"$nm\": clay $clay is not in [0,1]")
         σw > 0        || error("unit \"$nm\": sigma_w must be positive")
+        # Clay surface conductivity, in order: an explicit value, the mineral
+        # named on the unit, the mineral implied by its lithology, the section
+        # default. Naming both a mineral and a value is a contradiction.
+        haskey(u, "clay_mineral") && haskey(u, "sigma_clay") &&
+            error("unit \"$nm\": give `clay_mineral` or `sigma_clay`, not both")
+        σc = haskey(u, "sigma_clay")   ? u["sigma_clay"] :
+             haskey(u, "clay_mineral") ? sigma_clay_for(u["clay_mineral"]) :
+             haskey(u, "lithology")    ? sigma_clay_for(pre.mineral) : gσc
+        σc > 0 || error("unit \"$nm\": sigma_clay must be positive")
         push!(units, Unit(tops[i], bots[i], nm, φ, get(u, "S", 1.0), clay, σw,
                           get(u, "sd_phi",     haskey(u,"lithology") ? pre.sd_φ    : gsdφ),
                           get(u, "sd_clay",    haskey(u,"lithology") ? pre.sd_clay : gsdc),
-                          get(u, "sd_sigma_w", gsdw),
+                          get(u, "sd_sigma_w", gsdw), σc,
                           Float64(get(u, "cec", NaN))))
     end
     units, cfg
@@ -266,10 +293,10 @@ qv(cec, φ, ρg) = (cec / 100) * ρg * (1 - φ) / φ
 The two contributions to bulk conductivity under the model named in
 `p.model`. Their sum is σ_bulk. Vectorised by broadcasting.
 """
-function conductivity_split(φ, S, clay, σw, cec, p::NamedTuple)
+function conductivity_split(φ, S, clay, σw, cec, σc, p::NamedTuple)
     if p.model == "simandoux"
         θ = φ * S
-        return σw * θ^p.m_archie, p.sigma_clay * clay
+        return σw * θ^p.m_archie, σc * clay   # σc is the unit's own, not the section default
     elseif p.model == "waxman_smits"
         Q = qv(cec, φ, p.rho_grain)
         f = φ^p.m_archie * S^p.n_sat
@@ -349,9 +376,19 @@ function build_column(units::Vector{Unit}, cfg::Dict)
     cec_derived = unit_field(z, units, trans, u -> isnan(u.cec) ? 1.0 : 0.0)
     cec  = cec_derived .* (clay .* p.cec_clay) .+ (1 .- cec_derived) .* cec_unit
 
+    # Surface conduction is a per-unit property now, carried down the section as
+    # a depth profile like the others, so a kaolinitic sand and a smectitic clay
+    # are not forced to conduct alike.
+    σc_z = unit_field(z, units, trans, u -> u.σ_clay)
+
     θ_total = φ .* S
+    # Clay surface conductivity is a depth profile like the others, so a
+    # kaolinitic sand and a smectitic clay are not forced to conduct alike.
+    # Simandoux consumes it directly; Waxman-Smits routes surface conduction
+    # through `cec` instead and ignores it.
+    σc_z    = unit_field(z, units, trans, u -> u.σ_clay)
     θ_SMR   = free_water.(φ, S, clay, cec, Ref(p))
-    split   = conductivity_split.(φ, S, clay, σw, cec, Ref(p))
+    split   = conductivity_split.(φ, S, clay, σw, cec, σc_z, Ref(p))
     σ_water = first.(split); σ_clay = last.(split)
     σ_bulk  = σ_water .+ σ_clay
 
@@ -397,9 +434,10 @@ function Base.show(io::IO, c::Column)
             "unit", "phi", "S", "clay", "sigma_w", "theta_SMR", "sigma_b")
     for u in c.units
         u.bot - u.top < 2 && continue
-        @printf(io, "%-34s %6.2f %6.2f %6.2f %8.3f %9.3f %8.4f\n", u.name,
+        @printf(io, "%-34s %6.2f %6.2f %6.2f %8.2f %8.3f %9.3f %8.4f\n", u.name,
                 unit_mean(c, c.φ, u), unit_mean(c, c.S, u), unit_mean(c, c.clay, u),
-                unit_mean(c, c.σw, u), unit_mean(c, c.θ_SMR, u), unit_mean(c, c.σ_bulk, u))
+                u.σ_clay, unit_mean(c, c.σw, u), unit_mean(c, c.θ_SMR, u),
+                unit_mean(c, c.σ_bulk, u))
     end
 end
 
