@@ -42,8 +42,25 @@ recover salinity is the question these synthetics are built to answer.
 
 ## Quick start
 
+**Julia 1.11 or newer.** Install once with:
+
 ```bash
-julia --project=. -e 'using Pkg; Pkg.instantiate()'     # once, ~5 min
+julia --project=. install.jl
+```
+
+`Pkg.instantiate()` on its own does **not** reliably work from a clean Julia depot,
+and the error it gives points at this repository rather than at the cause. `HiQGA`
+depends on `PyCall`, `PyPlot` and `Conda`, and its build runs
+`Conda.add("matplotlib")`. conda's launcher begins `#!/usr/bin/env python`, and `env`
+resolves `python` through `PATH`; Miniconda ships that `python` inside its own bin,
+but that bin is not on `PATH` while the build runs, and Debian and Ubuntu have no
+system `python`, only `python3`. conda exits 127 and takes the whole environment with
+it. `install.jl` puts conda's bin on `PATH` for the build, which is the fix.
+
+Budget about fifteen minutes on a machine with no Julia depot; on one that already
+has conda and matplotlib it is seconds.
+
+```bash
 
 julia --project=. scripts/build_truth.jl config/confined_aquifer.toml
 julia --project=. scripts/plot_truth.jl  output/confined_aquifer_truth.png
