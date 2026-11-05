@@ -58,13 +58,15 @@ and the error it prints points at this repository rather than at the cause.
 problem, and step 4 is what tells you whether the environment is good. `HiQGA` depends
 on `PyCall`, `PyPlot` and `Conda`; its build runs `Conda.add("matplotlib")`
 unconditionally and then overwrites `ENV["PYTHON"]`, so setting `PYTHON` yourself has
-no effect. `Conda.jl` bootstraps the current Miniconda, which ships `python3.x` and no
-`python` alias, while conda's own launcher begins `#!/usr/bin/env python` — and on
-Debian or Ubuntu there is no `python` on `PATH`, only `python3`. The build dies with
-exit 127 and takes the whole environment with it.
+no effect. conda's own launcher begins `#!/usr/bin/env python`, and `env` resolves `python`
+through `PATH`. Miniconda ships that `python` inside its **own** bin, but that bin is
+not on `PATH` while the HiQGA build runs, and Debian and Ubuntu have no system
+`python`, only `python3`. conda exits 127 before doing anything and takes the whole
+environment with it.
 
-`install.jl` creates the missing alias inside conda's own bin, puts that bin on `PATH`
-for the build, and finishes. It was verified from an empty depot; if your machine
+**Putting conda's bin on `PATH` is the fix**, which is what `install.jl` does. It also
+creates the `python` alias if it is missing, as a fallback for older Miniconda; on
+26.9.4 the installer already ships it and that step is a no-op. It was verified from an empty depot; if your machine
 already has a working conda it is a no-op and takes seconds.
 
 `Manifest.toml` is tracked, so the versions you get are the ones used here rather than

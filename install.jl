@@ -10,15 +10,20 @@
 #   HiQGA's deps/build.jl runs Conda.add("matplotlib") unconditionally, and
 #   then overwrites ENV["PYTHON"] with its own conda python -- so setting
 #   PYTHON yourself does nothing.
-#   Conda.jl bootstraps the current Miniconda, which ships python3.x and NO
-#   `python` alias.
-#   conda's own launcher begins #!/usr/bin/env python.
-#   On Debian and Ubuntu there is no `python` on PATH, only `python3`.
-#   => `conda install -y matplotlib` exits 127, the HiQGA build fails, and
+#   conda's own launcher begins #!/usr/bin/env python, and `env` resolves
+#   `python` through PATH.
+#   Miniconda ships that `python` inside its OWN bin, but that bin is not on
+#   PATH while the HiQGA build runs, and Debian and Ubuntu have no system
+#   `python`, only `python3`.
+#   => conda exits 127 before it does anything, the HiQGA build fails, and
 #      instantiate takes the whole environment down with it.
 #
-# This creates the missing alias inside conda's own bin, puts that bin on PATH
-# for the build, and then finishes. Verified from an empty depot.
+# PUTTING CONDA'S BIN ON PATH IS THE FIX. An earlier version of this file
+# credited the alias it creates in step 2; that was wrong. On Miniconda 26.9.4
+# the installer already ships the alias and step 2 reports "already present",
+# yet the build still fails without the PATH change. The alias step is kept as
+# a fallback for older Miniconda that may genuinely have lacked it.
+# Verified from an empty depot.
 using Pkg
 
 @info "step 1/4  installing packages (the HiQGA build step is expected to fail here)"
@@ -29,7 +34,7 @@ catch
     @info "instantiate stopped at a build step, as expected -- continuing"
 end
 
-@info "step 2/4  checking conda's python alias"
+@info "step 2/4  checking conda's python alias (a fallback; the PATH in step 3 is the fix)"
 # Conda is a DIRECT dependency of this project purely so this line works: it is
 # a transitive dependency of HiQGA, and `using Conda` failed here when it was
 # only transitive.
