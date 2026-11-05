@@ -44,6 +44,110 @@ const PATH_KEYS = ("sites", "snmr_meta", "snmr_dir", "aem_sounds", "aem_nav",
 
 getin(d, ks) = foldl((a, k) -> a === nothing ? nothing : get(a, k, nothing), ks; init = d)
 
+# Every section and key the schema knows. A review found that an unknown
+# section, an unknown key and an out-of-range VALUE were all accepted silently,
+# which for a file whose only job is to state parameters is the worst available
+# failure -- the same defect the truth generator had.
+const KNOWN = Dict(
+    "run"         => ["name", "sites", "stages", "mode", "npar", "minfree_gb",
+                      "mode_overrides", "config_file"],
+    "paths"       => ["sites", "snmr_meta", "snmr_dir", "aem_sounds", "aem_nav",
+                      "aem_system", "outputs", "logs"],
+    "snmr"        => ["mat_preference", "min_pulse_moments", "loop_shape"],
+    "aem"         => ["nominal_unc", "lm_gates", "hm_gates", "lm_ramp_hold",
+                      "hm_ramp_hold", "lowpass_hz", "tx_area_m2", "rx_radius_m",
+                      "rx_dz_m", "max_sep_m"],
+    "grid"        => ["nz", "zstart", "dz", "extendfrac"],
+    "mcmc"        => ["nchains", "tmax", "nsamples", "burninfrac", "save_freq",
+                      "nensembles", "seed_base", "nmin", "nmax", "lambda_gp",
+                      "delta", "fbounds", "smoke"],
+    "noise"       => ["sigma_hat_branch", "s_prior_center", "s_prior_tau",
+                      "s_sdev", "s_bounds_log10"],
+    "kernel"      => ["n_draws"],
+    "occam"       => ["regtype", "w0", "lam2_log10", "beta2", "uncertainty"],
+    "detect"      => ["theta", "min_thick_m", "occam_chi2_max", "doi_widthfrac",
+                      "doi_widthfrac_alt", "metric"],
+    "gate"        => ["thresholds_mgL"],
+    "convergence" => ["rhat", "min_ess", "splithalf_dw", "splithalf_max",
+                      "trend_sigma", "depths_m"],
+)
+
+nearest(k, known) = begin
+    c = [x for x in known if first(x) == first(k) && abs(length(x) - length(k)) <= 2]
+    isempty(c) ? "" : "  did you mean $(join(sort(c), " or "))?"
+end
+
+"Refuse any section or key the schema does not know."
+function check_keys(c::Dict, path)
+    bad = String[]
+    for sec in keys(c)
+        haskey(KNOWN, sec) || (push!(bad, "[$sec] is not a known section$(nearest(sec, collect(keys(KNOWN))))"); continue)
+        c[sec] isa AbstractDict || (push!(bad, "[$sec] is not a table"); continue)
+        for k in keys(c[sec])
+            k in KNOWN[sec] || push!(bad, "[$sec] $k$(nearest(k, KNOWN[sec]))")
+        end
+    end
+    isempty(bad) || error("$path: unknown section(s) or key(s):\n  " * join(bad, "\n  ") *
+        "\n\nAn ignored key changes nothing and warns about nothing, so this is refused.")
+end
+
+"Refuse values that are the right type and the wrong number."
+function check_values(c::Dict, path)
+    bad = String[]
+    chk(cond, msg) = cond || push!(bad, msg)
+    pos(sec, k) = haskey(c[sec], k) && chk(c[sec][k] > 0, "[$sec] $k must be > 0, got $(c[sec][k])")
+    frac(sec, k) = haskey(c[sec], k) && chk(0 < c[sec][k] <= 1, "[$sec] $k must be in (0,1], got $(c[sec][k])")
+
+    for (sec, k) in (("run","npar"), ("run","minfree_gb"), ("grid","nz"), ("grid","dz"),
+                     ("grid","zstart"), ("mcmc","nchains"), ("mcmc","nsamples"),
+                     ("mcmc","save_freq"), ("mcmc","nensembles"), ("kernel","n_draws"),
+                     ("snmr","min_pulse_moments"), ("aem","tx_area_m2"),
+                     ("aem","max_sep_m"), ("convergence","min_ess"))
+        haskey(c, sec) && pos(sec, k)
+    end
+    for (sec, k) in (("aem","nominal_unc"), ("detect","theta"), ("detect","doi_widthfrac"),
+                     ("mcmc","burninfrac"))
+        haskey(c, sec) && frac(sec, k)
+    end
+    haskey(c["grid"], "extendfrac") && chk(c["grid"]["extendfrac"] >= 1,
+        "[grid] extendfrac must be >= 1, got $(c["grid"]["extendfrac"])")
+    haskey(c["mcmc"], "tmax") && chk(c["mcmc"]["tmax"] > 1,
+        "[mcmc] tmax must be > 1 for a temperature ladder, got $(c["mcmc"]["tmax"])")
+    if haskey(c["mcmc"], "nmin") && haskey(c["mcmc"], "nmax")
+        chk(c["mcmc"]["nmin"] < c["mcmc"]["nmax"],
+            "[mcmc] nmin must be < nmax, got $(c["mcmc"]["nmin"]) and $(c["mcmc"]["nmax"])")
+    end
+    for (sec, k) in (("mcmc","fbounds"), ("occam","lam2_log10"), ("noise","s_bounds_log10"))
+        if haskey(c, sec) && haskey(c[sec], k)
+            v = c[sec][k]
+            chk(length(v) == 2 && v[1] < v[2], "[$sec] $k must be [lo, hi] with lo < hi, got $v")
+        end
+    end
+    for (sec, k) in (("aem","lm_gates"), ("aem","hm_gates"))
+        if haskey(c[sec], k)
+            v = c[sec][k]
+            chk(length(v) == 2 && v[1] >= 1 && v[1] <= v[2],
+                "[$sec] $k must be [first, last] gate numbers with 1 <= first <= last, got $v")
+        end
+    end
+    haskey(c["aem"], "lm_ramp_hold") && haskey(c["aem"], "hm_ramp_hold") &&
+        chk(0 < c["aem"]["lm_ramp_hold"] < c["aem"]["hm_ramp_hold"],
+            "[aem] ramp holds must satisfy 0 < lm < hm, got $(c["aem"]["lm_ramp_hold"]) and $(c["aem"]["hm_ramp_hold"])")
+    if haskey(c["gate"], "thresholds_mgL")
+        v = c["gate"]["thresholds_mgL"]
+        chk(!isempty(v) && all(>(0), v) && issorted(v),
+            "[gate] thresholds_mgL must be positive and ascending, got $v")
+    end
+    haskey(c, "detect") && haskey(c["detect"], "metric") &&
+        chk(c["detect"]["metric"] in ("integral", "threshold"),
+            "[detect] metric must be \"integral\" or \"threshold\", got \"$(c["detect"]["metric"])\"")
+    haskey(c["snmr"], "loop_shape") &&
+        chk(c["snmr"]["loop_shape"] in ("square", "circle"),
+            "[snmr] loop_shape must be \"square\" or \"circle\", got \"$(c["snmr"]["loop_shape"])\"")
+
+    isempty(bad) || error("$path: bad value(s):\n  " * join(bad, "\n  "))
+end
+
 """
     load_config(tomlfile) -> Dict
 
@@ -53,9 +157,11 @@ function load_config(tomlfile::AbstractString)
     isfile(tomlfile) || error("no control file at $tomlfile")
     c = TOML.parsefile(tomlfile)
 
+    check_keys(c, tomlfile)
     for ks in REQUIRED
         getin(c, ks) === nothing && error("control file $tomlfile is missing [$(ks[1])] $(ks[2])")
     end
+    check_values(c, tomlfile)
 
     # --- paths ------------------------------------------------------------
     for k in PATH_KEYS

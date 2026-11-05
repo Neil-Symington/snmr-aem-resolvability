@@ -14,16 +14,24 @@ This is a branch under construction. What is here now:
 - `config/udf_example.toml` — the control file, every stage parameter in one place
 - `tools/assemble_example.py` — how `example/` was built, for provenance
 
+- `common/fieldconfig.jl` — the control-file reader, with fifteen validated
+  failure paths
+- `stages/udf_system.jl` — the SkyTEM system, parsed from the shipped `.des`
+  rather than transcribed, and cross-checked against what the control file
+  declares
+
 Still to come, in this order:
 
-1. `common/` and `stages/` — the field stage scripts, ported from
-   `udf_realdata/` and `ek_prerun/` with their absolute paths lifted into
-   `[paths]`. Three known blockers are listed under "Porting notes" below.
+1. The remaining field stage scripts — AEM Occam, AEM trans-D, SNMR trans-D,
+   detection, the profile likelihood and the water-quality gate — ported from
+   `udf_realdata/` with their absolute paths lifted into `[paths]`. Three known
+   blockers are listed under "Porting notes" below.
 2. `run_batch.sh` — the driver, replacing `run_seven.sh`
 3. `reference/` — expected verdicts and conductance quantiles for the two
    sites, so a full run can be checked rather than admired
 
-Until 1 and 2 land, nothing here runs.
+Until 1 and 2 land there is no end-to-end run: what is here reads the control
+file and builds the AEM system, and nothing else.
 
 ## How it will be driven
 
