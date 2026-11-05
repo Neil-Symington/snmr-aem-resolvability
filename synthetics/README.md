@@ -42,23 +42,14 @@ recover salinity is the question these synthetics are built to answer.
 
 ## Quick start
 
-**Julia 1.12 or newer.** `[sources]` needs 1.11, but the pinned `Manifest.toml`
-resolves `PrecompileTools` 1.3.4, which needs `Base.ReinferUtils` or
-`Base.StaticData` — neither exists before 1.12. On 1.11 `install.jl` fails at
-step 2. Install once with:
-
-```bash
-julia --project=. install.jl
-```
-
-`Pkg.instantiate()` on its own does **not** reliably work from a clean Julia depot,
-and the error it gives points at this repository rather than at the cause. `HiQGA`
-depends on `PyCall`, `PyPlot` and `Conda`, and its build runs
-`Conda.add("matplotlib")`. conda's launcher begins `#!/usr/bin/env python`, and `env`
-resolves `python` through `PATH`; Miniconda ships that `python` inside its own bin,
-but that bin is not on `PATH` while the build runs, and Debian and Ubuntu have no
-system `python`, only `python3`. conda exits 127 and takes the whole environment with
-it. `install.jl` puts conda's bin on `PATH` for the build, which is the fix.
+> **This was a separate repository, `snmr-aem-synthetics`, until the two were
+> consolidated.** Install once at the repository root — see the top-level
+> `README.md`; there is no separate environment here. Run everything from the
+> root with the `synthetics/` prefix:
+>
+> ```bash
+> julia --project=. synthetics/scripts/build_truth.jl synthetics/config/confined_aquifer.toml
+> ```
 
 ## Tests
 

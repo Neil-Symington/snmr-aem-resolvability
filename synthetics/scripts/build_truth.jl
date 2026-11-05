@@ -1,11 +1,11 @@
 #!/usr/bin/env julia
 # Build a synthetic column from a TOML scenario and write it to JLD2.
 #
-#   julia --project=. scripts/build_truth.jl config/confined_aquifer.toml
+#   julia --project=. synthetics/scripts/build_truth.jl synthetics/config/confined_aquifer.toml
 #
 # Writes output/<name>_truth.jld2 and prints the section as built.
 using Pkg
-isfile(joinpath(@__DIR__, "..", "Project.toml")) || error("run from the repo root with --project=.")
+isfile(joinpath(@__DIR__, "..", "..", "Project.toml")) || error("run from the repo root with --project=.")
 include(joinpath(@__DIR__, "..", "src", "SNMRAEMSynthetics.jl"))
 using .SNMRAEMSynthetics, JLD2
 

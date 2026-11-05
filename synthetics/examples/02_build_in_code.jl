@@ -1,7 +1,7 @@
 #!/usr/bin/env julia
 # Example 2 — the same thing without a TOML file.
 #
-#   julia --project=. examples/02_build_in_code.jl
+#   julia --project=. synthetics/examples/02_build_in_code.jl
 #
 # Sometimes you want a section generated in a loop rather than written out by
 # hand — a suite of scenarios, a sensitivity sweep, a Monte Carlo over

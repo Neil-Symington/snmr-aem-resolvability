@@ -1,7 +1,7 @@
 #!/usr/bin/env julia
 # Example 3 — why conductivity alone cannot give you salinity.
 #
-#   julia --project=. examples/03_why_clay_matters.jl
+#   julia --project=. synthetics/examples/03_why_clay_matters.jl
 #
 # Takes the aquifer from the minimal section and splits its conductivity into
 # the part carried by the pore water and the part carried by clay surfaces.

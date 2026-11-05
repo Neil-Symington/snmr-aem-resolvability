@@ -1,13 +1,17 @@
 #!/usr/bin/env julia
 # Forward-model the airborne EM and surface NMR responses of a built column.
 #
-#   julia --project=. scripts/forward.jl output/unconfined_aquifer_truth.jld2
+#   julia --project=. synthetics/scripts/forward.jl synthetics/output/unconfined_aquifer_truth.jld2
 #
 # Writes <name>_forward.jld2 with the noisy AEM operator state and the SMR
 # sounding curve, ready for inversion.
 using JLD2, Statistics, Printf, Random, LinearAlgebra
 using HiQGA.transD_GP, SNMRForward
-include(joinpath(@__DIR__, "..", "src", "aem_setup.jl"))
+# One copy, at the repository root. This file used to have its own aem_setup.jl
+# and the two diverged: the noise-seed fix landed here and not there, so every
+# published AEM number came from the wrong realisation for weeks. Consolidating
+# the repositories removed the second copy.
+include(joinpath(@__DIR__, "..", "..", "src", "aem_setup.jl"))
 
 length(ARGS) >= 1 || error("usage: forward.jl <truth.jld2>")
 T = load(ARGS[1]); cfg = T["config"]

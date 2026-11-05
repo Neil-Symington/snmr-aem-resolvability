@@ -1,7 +1,7 @@
 #!/usr/bin/env julia
 # Example 1 — the smallest thing that does something.
 #
-#   julia --project=. examples/01_hello_column.jl
+#   julia --project=. synthetics/examples/01_hello_column.jl
 #
 # Builds a three-unit section from config/minimal.toml and prints what the two
 # instruments would see. Runs in a couple of seconds; no inversion involved.

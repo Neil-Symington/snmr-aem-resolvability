@@ -2,12 +2,10 @@
 #
 #   julia --project=. test/runtests.jl
 #
-# This repository had no tests at all until a review pointed out that its
-# src/aem_setup.jl -- the file whose FIXED copy exposed the broken one in
-# snmr-aem-resolvability -- was guarded by nothing. Each test below guards a
-# bug that actually happened:
+# These were the generator repository's own tests before the two repositories
+# were consolidated. They are run by the suite at the repository root; each
+# guards a bug that actually happened:
 #
-#   noise seed      rseed reaching makenoisydata!, which once silently did not
 #   config keys     an unknown key being ignored, so a typo changed nothing
 #   determinism     the same config giving the same NUMBERS (not the same bytes)
 using Test, Printf
@@ -15,24 +13,12 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
 
 @testset "snmr-aem-synthetics" begin
 
-    @testset "noise seed reaches makenoisydata!" begin
-        # Same guard as the workflow repository's, and for the same reason: a
-        # caller that omits rseed gets HiQGA's own default, 123, whatever seed
-        # it thinks it set. The two copies of aem_setup.jl diverged once
-        # BECAUSE only one of them was tested.
-        strip_comments(s) = join([replace(l, r"#.*$" => "") for l in split(s, '\n')], '\n')
-        sites = 0
-        for f in readdir(joinpath(ROOT, "src"); join = true)
-            endswith(f, ".jl") || continue
-            txt = strip_comments(read(f, String))
-            @test !occursin(r"Random\.seed!\(\s*rseed_noise\s*\)", txt)
-            for m in eachmatch(r"makenoisydata!\((?s:.*?)\)\s*\n", txt)
-                sites += 1
-                @test occursin(r"\brseed\s*=", m.match)
-            end
-        end
-        @test sites >= 1
-    end
+    # The noise-seed guard that used to live here is gone, and deliberately.
+    # It existed because aem_setup.jl existed TWICE, in this repository and in
+    # the workflow one, and the fix landed in only one of them. Consolidation
+    # left a single copy at ../src/aem_setup.jl, which test/test_noise_seed.jl
+    # at the repository root scans along with every other call site. Two guards
+    # over one file is how the first one rotted.
 
     @testset "config keys" begin
         include(joinpath(ROOT, "src", "SNMRAEMSynthetics.jl"))

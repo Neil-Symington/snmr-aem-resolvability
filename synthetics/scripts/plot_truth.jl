@@ -2,7 +2,7 @@
 # Plot a built column: lithology with unit properties, clay, free water and
 # conductivity on a common depth axis.
 #
-#   julia --project=. scripts/plot_truth.jl output/confined_aquifer_truth.jld2
+#   julia --project=. synthetics/scripts/plot_truth.jl synthetics/output/confined_aquifer_truth.jld2
 using JLD2, Statistics, Printf, PyPlot
 const mpl = PyPlot.matplotlib
 length(ARGS) >= 1 || error("usage: plot_truth.jl <truth.jld2> [zmax]")
