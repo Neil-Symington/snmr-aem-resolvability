@@ -51,13 +51,17 @@ recover salinity is the question these synthetics are built to answer.
 > julia --project=. synthetics/scripts/build_truth.jl synthetics/config/confined_aquifer.toml
 > ```
 
+> Paths in backticks below are relative to this directory (`synthetics/`).
+> Runnable commands are written from the repository root, which is where you
+> run everything from.
+
 ## Tests
 
 ```bash
-julia --project=. test/runtests.jl
+julia --project=. test/runtests.jl     # the WHOLE suite, from the repository root
 ```
 
-Twenty checks, no stage outputs needed: the noise seed reaching
+Fifteen checks here, no stage outputs needed: the noise seed reaching
 `makenoisydata!` at every call site, the config validator refusing unknown keys
 while still accepting `[aem]` and `[smr]`, and determinism **by value**.
 
@@ -77,9 +81,9 @@ fresh `JULIA_DEPOT_PATH` does not isolate this.
 
 ```bash
 
-julia --project=. scripts/build_truth.jl config/confined_aquifer.toml
-julia --project=. scripts/plot_truth.jl  output/confined_aquifer_truth.jld2
-julia --project=. scripts/forward.jl     output/confined_aquifer_truth.jld2
+julia --project=. synthetics/scripts/build_truth.jl synthetics/config/confined_aquifer.toml
+julia --project=. synthetics/scripts/plot_truth.jl  synthetics/output/confined_aquifer_truth.jld2
+julia --project=. synthetics/scripts/forward.jl     synthetics/output/confined_aquifer_truth.jld2
 ```
 
 `build_truth.jl` prints the section as built, with the derived observables per
@@ -134,9 +138,9 @@ Three short scripts in `examples/`, none longer than a few seconds and none
 needing an inversion:
 
 ```bash
-julia --project=. examples/01_hello_column.jl      # smallest working section
-julia --project=. examples/02_build_in_code.jl     # same, without TOML
-julia --project=. examples/03_why_clay_matters.jl  # why conductivity != salinity
+julia --project=. synthetics/examples/01_hello_column.jl      # smallest working section
+julia --project=. synthetics/examples/02_build_in_code.jl     # same, without TOML
+julia --project=. synthetics/examples/03_why_clay_matters.jl  # why conductivity != salinity
 ```
 
 The third is the one to read. It infers salinity from a *perfect* conductivity

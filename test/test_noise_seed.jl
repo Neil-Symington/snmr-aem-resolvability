@@ -38,8 +38,12 @@ let
     @test length(sites) >= 2
 
     for (file, call) in sites
-        # the keyword must reach the noise draw, in code and not in a comment
-        @test occursin(r"\brseed\s*=", call)
+        # The keyword must reach the noise draw, in code and not in a comment --
+        # AND it must carry the caller's argument. A review defeated an earlier
+        # version by hard-coding `rseed = 999`, which satisfies "rseed is passed"
+        # while ignoring the argument entirely: the original bug in a new form.
+        # So the value is checked, not just the keyword.
+        @test occursin(r"\brseed\s*=\s*(rseed_noise\b|Int\(seed\)|seed\b)", call)
     end
 
     # --- and the seed that does nothing must not come back ----------------
@@ -65,6 +69,12 @@ let
     for t in ("aem_HYP.jl", "aem_draws.jl", "aem_prior_test.jl")
         s = strip_comments(read(joinpath(ROOT, "tools", t), String))
         @test occursin(r"const NOISE_RSEED\s*=\s*123", s)
-        @test !occursin(r"rseed_noise\s*=\s*SEED\b", s)
+        # Not merely "not SEED": every rseed_noise= in these tools must be
+        # NOISE_RSEED. A review passed a third value and the test stayed green.
+        for m in eachmatch(r"rseed_noise\s*=\s*([A-Za-z_0-9]+)", s)
+            @test m.captures[1] == "NOISE_RSEED"
+        end
+        # and NOISE_RSEED itself must not be reassigned after it is defined
+        @test length(collect(eachmatch(r"NOISE_RSEED\s*=", s))) == 1
     end
 end
