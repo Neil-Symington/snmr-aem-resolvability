@@ -42,7 +42,10 @@ recover salinity is the question these synthetics are built to answer.
 
 ## Quick start
 
-**Julia 1.11 or newer.** Install once with:
+**Julia 1.12 or newer.** `[sources]` needs 1.11, but the pinned `Manifest.toml`
+resolves `PrecompileTools` 1.3.4, which needs `Base.ReinferUtils` or
+`Base.StaticData` — neither exists before 1.12. On 1.11 `install.jl` fails at
+step 2. Install once with:
 
 ```bash
 julia --project=. install.jl
@@ -57,8 +60,14 @@ but that bin is not on `PATH` while the build runs, and Debian and Ubuntu have n
 system `python`, only `python3`. conda exits 127 and takes the whole environment with
 it. `install.jl` puts conda's bin on `PATH` for the build, which is the fix.
 
-Budget about fifteen minutes on a machine with no Julia depot; on one that already
-has conda and matplotlib it is seconds.
+Budget about fifteen minutes on a machine with no Julia depot. Against a depot
+that already has conda and matplotlib, a measured re-install took 46 seconds —
+under a minute, not instant.
+
+**Do not run two installs at once on one machine.** `Conda.jl` downloads its
+installer to a fixed `/tmp/installer.sh`, which is not per-depot, so concurrent
+installs overwrite each other's file and one dies with "text file is busy". A
+fresh `JULIA_DEPOT_PATH` does not isolate this.
 
 ```bash
 

@@ -63,7 +63,7 @@ using TOML, Random, Statistics, LinearAlgebra, Printf
 
 include("Lithology.jl")
 
-export Unit, Column, load_config, build_column, save_column, unit_mean,
+export Unit, Column, load_config, check_keys, build_column, save_column, unit_mean,
        check_column, lithology_names, mgL_to_sigma, sigma_to_mgL,
        conductivity_split
 
@@ -144,8 +144,56 @@ Read a TOML scenario. Each `[[unit]]` may give its material as `lithology`
 in S/m or `sigma_w_mgL` in mg/L, and its geometry as `top`, `thickness`, or
 both. Anything stated explicitly wins over the preset.
 """
+# Every key the schema knows, by section. A key is read with get(..., default)
+# throughout, so an unrecognised one is silently ignored: a review found that a
+# misspelled saturation key produced a bit-identical column with no warning,
+# which is the worst possible failure for a file whose whole job is to state
+# parameters. check_keys refuses it instead.
+const KNOWN_TOP  = Set(["name", "description", "grid", "variability",
+                        "petrophysics", "watertable", "unit"])
+const KNOWN_GRID = Set(["dz", "zmax"])
+const KNOWN_VAR  = Set(["seed", "corr_length", "log_sd_phi", "log_sd_clay",
+                        "log_sd_sigma_w", "transition_min", "transition_max"])
+const KNOWN_PETRO = Set(["model", "smr_model", "m_archie", "p_clay", "n_sat",
+                         "sigma_clay", "cec_clay", "rho_grain", "v_q",
+                         "temperature_C"])
+const KNOWN_WT   = Set(["depth", "fringe", "s_residual"])
+const KNOWN_UNIT = Set(["name", "top", "thickness", "lithology", "phi", "clay",
+                        "S", "sigma_w", "sigma_w_mgL", "sigma_clay",
+                        "clay_mineral", "cec", "sd_phi", "sd_clay",
+                        "sd_sigma_w"])
+
+function nearest(key, known)
+    # cheap edit-distance-free hint: same first letter and similar length
+    c = [k for k in known if first(k) == first(key) && abs(length(k) - length(key)) <= 2]
+    isempty(c) ? "" : "  did you mean $(join(sort(c), " or "))?"
+end
+
+"Refuse any key the schema does not know, naming the section and a near miss."
+function check_keys(cfg, path)
+    bad = String[]
+    seen(d, known, where) = for k in keys(d)
+        k in known || push!(bad, "[$where] $k$(nearest(k, known))")
+    end
+    seen(cfg, KNOWN_TOP, "top level")
+    haskey(cfg, "grid")         && seen(cfg["grid"], KNOWN_GRID, "grid")
+    haskey(cfg, "variability")  && seen(cfg["variability"], KNOWN_VAR, "variability")
+    haskey(cfg, "petrophysics") && seen(cfg["petrophysics"], KNOWN_PETRO, "petrophysics")
+    haskey(cfg, "watertable")   && seen(cfg["watertable"], KNOWN_WT, "watertable")
+    if haskey(cfg, "unit")
+        for (i, u) in enumerate(cfg["unit"])
+            seen(u, KNOWN_UNIT, "[unit]] $i ($(get(u, "name", "unnamed")))")
+        end
+    end
+    isempty(bad) || error("$path: unknown config key(s):\n  " * join(bad, "\n  ") *
+        "\n\nAn ignored key changes nothing and warns about nothing, so this is " *
+        "refused rather than skipped. config/template.toml lists every option.")
+    return nothing
+end
+
 function load_config(path::AbstractString)
     cfg = TOML.parsefile(path)
+    check_keys(cfg, path)
     haskey(cfg, "unit") || error("$path: no [[unit]] entries")
     raw  = cfg["unit"]
     zmax = get(get(cfg, "grid", Dict()), "zmax", 200.0)
