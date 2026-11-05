@@ -1,0 +1,83 @@
+# CI: the platform coverage three manual review rounds could not provide.
+#
+# Every round ran on Ubuntu x86_64 and Julia 1.12.6 only, so macOS, ARM and
+# every other 1.12 patch were untested -- and the conda PATH workaround in
+# install.jl is Debian-and-Ubuntu-specific, so another platform may fail
+# differently or not at all. This runs the real install, not a shortcut.
+#
+# Determinism is checked BY VALUE, never by file hash: a truth .jld2 embeds the
+# Julia version string and a serialised Dict, so its SHA-256 differs between
+# machines and between Julia patch versions while every number is identical.
+# Comparing hashes here would fail for the wrong reason.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  install-and-test:
+    name: ${{ matrix.os }} / Julia ${{ matrix.julia }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        julia: ['1.12', '1.12.6']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.julia }}
+
+      # No depot cache on purpose. The defect this guards is a FIRST install
+      # from an empty depot, which is the only state in which the HiQGA/conda
+      # build failure appears; a warm cache would hide it.
+      - name: install.jl from an empty depot
+        run: julia --project=. install.jl
+
+      - name: the tracked Manifest must not have been modified
+        run: git diff --exit-code -- Manifest.toml Project.toml
+
+      - name: tests
+        run: julia --project=. test/runtests.jl
+
+      - name: build a truth column
+        run: julia --project=. synthetics/scripts/build_truth.jl synthetics/config/confined_aquifer.toml
+
+      - name: forward-model it
+        run: julia --project=. synthetics/scripts/forward.jl synthetics/output/confined_aquifer_truth.jld2
+
+      - name: examples
+        run: |
+          julia --project=. synthetics/examples/01_hello_column.jl
+          julia --project=. synthetics/examples/02_build_in_code.jl
+          julia --project=. synthetics/examples/03_why_clay_matters.jl
+
+      - name: dry run
+        run: julia --project=. run_site.jl configs/synth_2P.toml --dry-run
+
+  reject-old-julia:
+    name: install.jl refuses Julia 1.11
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+      # [compat] julia = "1.12" does NOT enforce anything -- Pkg warns for the
+      # active project and carries on, which is how 1.11 stayed broken through
+      # two review rounds. install.jl refuses at step 0, and this asserts it.
+      - name: must exit non-zero before Pkg starts
+        run: |
+          if julia --project=. install.jl; then
+            echo "install.jl accepted Julia 1.11; the version gate is not working"
+            exit 1
+          fi
+          echo "refused, as intended"
