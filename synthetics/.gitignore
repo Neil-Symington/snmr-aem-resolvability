@@ -1,0 +1,4 @@
+output/
+*.jld2
+*.png
+.DS_Store
