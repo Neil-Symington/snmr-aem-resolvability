@@ -20,14 +20,23 @@ so defensibly rather than to produce a number. Two properties make that possible
 
 ## Install
 
-**Julia 1.11 or newer** — `Project.toml` requires it, and `[sources]`, which pins
-an unregistered dependency below, does not exist before 1.11. Install from
-<https://julialang.org/downloads/> or with `juliaup`; the pinned `Manifest.toml`
-was resolved on 1.12.6.
+**Julia 1.12 or newer.** `[sources]`, which pins an unregistered dependency
+below, needs 1.11 — but the pinned `Manifest.toml` resolves `PrecompileTools`
+1.3.4, which needs `Base.ReinferUtils` or `Base.StaticData`, and neither exists
+before 1.12. On 1.11 `install.jl` fails at step 2. Install from
+<https://julialang.org/downloads/> or with `juliaup`; the `Manifest.toml` was
+resolved on 1.12.6.
 
 **Budget about fifteen minutes and roughly an hour of CPU** for a first install on
 a machine with no Julia depot. Most of it is Miniconda and matplotlib, pulled in by
-`HiQGA`. On a machine that already has those it is seconds.
+`HiQGA`. Against a depot that already has them, a measured re-install took 37
+seconds here and 46 seconds for the generator repository — under a minute, not
+instant.
+
+**Do not run two installs at once on one machine.** `Conda.jl` downloads its
+installer to a fixed `/tmp/installer.sh`, which is not per-depot, so concurrent
+installs overwrite each other's file and one of them dies with "text file is
+busy". A fresh `JULIA_DEPOT_PATH` does not isolate this.
 
 ```julia
 julia --project=. -e 'using Pkg; Pkg.instantiate()'
@@ -78,6 +87,24 @@ a fresh resolve.
 julia --project=. run_site.jl configs/synth_2P.toml --dry-run   # validate, run nothing
 julia --project=. run_site.jl configs/synth_2P.toml --from 3    # the fast half
 ```
+
+### Running Stages 1 and 2 yourself
+
+Neither stage has a `run_site.jl` entry point, and until a review pointed it out
+nothing here named the scripts. The chain, for a tag `<T>` and an optional run
+label `<L>`:
+
+```bash
+julia --project=. tools/aem_HYP.jl 200001 <T> 4 <L>   # Stage 1, trans-D AEM
+julia --project=. tools/aem_draws.jl <T> 600 <L>      # posterior draws
+julia --project=. tools/smr_data.jl transd --tag <T> --label <L>
+julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 --tag <T>T
+```
+
+The `T` on the last line is not a typo: `smr_data.jl`'s trans-D branch writes a
+`T` suffix so the Occam and trans-D kernels cannot collide. Stage 1 at 200,001
+samples takes hours; 2001 samples on 2 chains finishes in minutes and exercises
+every path.
 
 `--from 3` is the usual entry point once Stages 1 and 2 have been run or supplied —
 it skips straight to the part worth re-running. A bare `run_site.jl` starts at
@@ -160,6 +187,11 @@ exponent, the porosity ranges, the clay prior and the ceilings.
 ```bash
 julia --project=. test/runtests.jl
 ```
+
+Reproduction across machines must be compared on **values, not file hashes**. A
+truth `.jld2` embeds the Julia version string and a serialised `Dict`, so its
+SHA-256 differs between machines and between Julia patch versions while every
+number is identical — measured on three machines and two patch versions.
 
 The config and noise-seed tests run anywhere. The four integration tests need stage
 outputs and skip, loudly, without them.

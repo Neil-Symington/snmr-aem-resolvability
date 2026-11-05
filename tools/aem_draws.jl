@@ -20,6 +20,11 @@ const ROOT = normpath(joinpath(HERE, ".."))
 const OUT  = joinpath(HERE, "..", "data")
 const TAG    = length(ARGS) >= 1 ? ARGS[1] : "2M"
 const NDRAW  = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : 600
+# aem_HYP.jl's 4th argument writes to data/aem<TAG><LABEL>/ so a side run
+# cannot overwrite the production posterior. This must take the same label or
+# it looks in the wrong directory: a review hit exactly that, with aem_HYP.jl
+# writing data/aemREV_smoke/ and this failing ENOENT on data/aemREV/.
+const LABEL  = length(ARGS) >= 3 ? ARGS[3] : ""
 const SEED   = 20261012
 # The AEM noise realisation is pinned to HiQGA's makenoisydata! default, 123,
 # NOT to SEED. Until build_skytem_operator passed rseed through, the caller's
@@ -35,7 +40,9 @@ function main()
     T = load(joinpath(OUT, "truth_murray$(TAG).jld2"))
     built = build_skytem_operator(T["σ_bulk"], T["z"]; noise_scale = 1.0, rseed_noise = NOISE_RSEED)
     grid = built.grid
-    rundir = joinpath(OUT, "aem$(TAG)")
+    rundir = joinpath(OUT, "aem$(TAG)$(LABEL)")
+    isdir(rundir) || error("no run directory $rundir -- if aem_HYP.jl was given " *
+                           "a label, pass the same one here as the 3rd argument")
     opt = make_aem_opt(grid.znall, "hypsynth_aem_")
     opt.xall[:] .= grid.znall
     old = pwd(); cd(rundir)

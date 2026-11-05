@@ -64,7 +64,10 @@ const HERE = @__DIR__
 const ROOT = normpath(joinpath(HERE, ".."))
 const OUT  = joinpath(HERE, "..", "data")
 const RUN  = joinpath(OUT, "smr_runs"); mkpath(RUN)
-include(joinpath(ROOT, "ek_prerun", "prerun_config.jl")); const CFG = PrerunConfig
+# Vendored into src/. This include used to point at ../ek_prerun/, which is
+# outside the repository and was never shipped, so Stage 2 -- and therefore
+# every stage after it -- could not start from a clone at all.
+include(joinpath(ROOT, "src", "prerun_config.jl")); const CFG = PrerunConfig
 
 const FB_LINEAR = [0.001 0.45]
 const FB_LOG    = [log10(0.001) log10(0.45)]
@@ -143,7 +146,19 @@ end
 
 function main()
     T = load(joinpath(OUT, "truth_murray$(TTAG).jld2"))
-    D = load(joinpath(OUT, "smr_data_murray$(TAG).jld2"))
+    dpath = joinpath(OUT, "smr_data_murray$(TAG).jld2")
+    isfile(dpath) || error("""
+    no SNMR data at $dpath
+
+      Forward-model it first. For a trans-D Stage 1 under tag <T> and label <L>:
+        julia --project=. tools/aem_HYP.jl 200001 <T> 4 <L>
+        julia --project=. tools/smr_data.jl transd --tag <T> --label <L>
+      That writes smr_data_murray<T>T.jld2, so run this stage with --tag <T>T.
+
+      This file used to have no producer in the release at all, which stopped an
+      independent review dead after Stage 1.
+    """)
+    D = load(dpath)
     # Kernel source, by tag. This was a hardcoded three-way branch in which every
     # tag other than "" and "2T" fell through to aem_occam.jld2 — the TWO-AQUIFER
     # Occam profile. Running tag 3T therefore forward-modelled the SMR data with

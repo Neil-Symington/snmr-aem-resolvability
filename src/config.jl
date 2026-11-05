@@ -179,8 +179,19 @@ function assertvalid(c::AbstractDict; root = pwd(), require_files = true)
     end
 
     # -- files exist ---------------------------------------------------
+    # Two kinds, and conflating them hid a defect: `generator` and `system` are
+    # files the repository ships, so they must be there even on a dry run, while
+    # `truth` and `snmr_ensemble` are built by earlier stages and legitimately
+    # absent. A dry run used to skip both and report "config valid" for a
+    # config naming a generator script that had been deleted.
+    for k in ("generator", "system")
+        v = get(d, k, "")
+        (v isa String && !isempty(v)) || continue
+        push_if(isfile(joinpath(root, v)) || isfile(v),
+                "[data].$k not found: $v (a file this repository should ship)")
+    end
     if require_files
-        for k in ("truth", "generator", "snmr_ensemble", "system")
+        for k in ("truth", "snmr_ensemble")
             v = get(d, k, "")
             (v isa String && !isempty(v)) || continue
             push_if(isfile(joinpath(root, v)) || isfile(v), "[data].$k not found: $v")

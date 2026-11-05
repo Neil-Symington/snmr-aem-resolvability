@@ -61,9 +61,10 @@ label = "test one, unconfined Loxton-Parilla sands, tier P"
 # Exactly one of `truth` or `aem_file` must be present.
 #
 # --- synthetic branch ---
-# The generator is shipped, so the data can be rebuilt from the config.
+# Truth generation lives in a separate repository, snmr-aem-synthetics; there
+# is no generator script here. A `generator` key pointing at tools/truth_murray.jl
+# shipped by mistake and broke `run_site.jl --from 3` for anyone with the data.
 truth     = "data/truth_murray3P.jld2"
-generator = "tools/truth_murray.jl"     # rebuilds `truth` from scratch
 seed      = 123          # integer. Forward-model and noise seed.
 # LINEAGE, recorded on every output file and in every table. A saline
 # control shares its parent's clay, porosity, theta_total and theta_SMR
