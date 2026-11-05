@@ -33,6 +33,13 @@ a machine with no Julia depot. Most of it is Miniconda and matplotlib, pulled in
 seconds here and 46 seconds for the generator repository — under a minute, not
 instant.
 
+**The conda workaround is not covered by CI.** `install.jl` works around a
+`conda` exit-127 failure that reproduces reliably on Debian/Ubuntu developer
+machines but does **not** reproduce on GitHub's runners, even with every
+`python` removed from `PATH` — there, `Pkg.instantiate()` simply succeeds. CI
+asserts the install finishes with no system `python`, which is a weaker
+guarantee. Why the runners differ is not yet understood.
+
 **Do not run two installs at once on one machine.** `Conda.jl` downloads its
 installer to a fixed `/tmp/installer.sh`, which is not per-depot, so concurrent
 installs overwrite each other's file and one of them dies with "text file is

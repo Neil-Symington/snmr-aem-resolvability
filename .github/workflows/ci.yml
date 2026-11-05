@@ -132,14 +132,27 @@ jobs:
           done
           command -v python && { echo "python still on PATH"; exit 1; } || true
           command -v python3 || { echo "python3 is missing too"; exit 1; }
-      - name: install.jl must take the workaround path and still finish
+      # WHAT THIS CAN AND CANNOT PROVE. The first version of this step FAILED
+      # the job when install.jl reported "no workaround needed" -- and that is
+      # exactly what happened: removing every `python` from PATH does NOT
+      # reproduce the conda exit-127 failure on a GitHub runner, though it
+      # reproduces reliably on at least two developer machines. So the trigger
+      # is something else about those machines, and CI cannot currently create
+      # it. Finding out what is an open question.
+      #
+      # So this asserts the guarantee it CAN give -- that the install finishes
+      # with no system `python` at all -- and RECORDS which path was taken
+      # instead of pretending the workaround was exercised.
+      - name: install.jl must finish with no system `python`
         run: |
           out=$(julia --project=. install.jl 2>&1); echo "$out"
           echo "$out" | grep -q "environment ready" || {
-            echo "FAIL: install did not finish"; exit 1; }
-          echo "$out" | grep -q "no workaround needed" && {
-            echo "FAIL: the conda failure did not occur, so the workaround is still untested"
-            exit 1; } || true
-          echo "the workaround path ran and the install finished"
+            echo "FAIL: install did not finish without a system python"; exit 1; }
+          if echo "$out" | grep -q "no workaround needed"; then
+            echo "NOTE: the conda failure did not occur here, so the PATH"
+            echo "      workaround in step 3 is NOT exercised by this job."
+          else
+            echo "the conda failure occurred and the workaround handled it"
+          fi
       - name: tests
         run: julia --project=. test/runtests.jl
