@@ -88,6 +88,24 @@ julia --project=. run_site.jl configs/synth_2P.toml --dry-run   # validate, run 
 julia --project=. run_site.jl configs/synth_2P.toml --from 3    # the fast half
 ```
 
+### Running Stages 1 and 2 yourself
+
+Neither stage has a `run_site.jl` entry point, and until a review pointed it out
+nothing here named the scripts. The chain, for a tag `<T>` and an optional run
+label `<L>`:
+
+```bash
+julia --project=. tools/aem_HYP.jl 200001 <T> 4 <L>   # Stage 1, trans-D AEM
+julia --project=. tools/aem_draws.jl <T> 600 <L>      # posterior draws
+julia --project=. tools/smr_data.jl transd --tag <T> --label <L>
+julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 --tag <T>T
+```
+
+The `T` on the last line is not a typo: `smr_data.jl`'s trans-D branch writes a
+`T` suffix so the Occam and trans-D kernels cannot collide. Stage 1 at 200,001
+samples takes hours; 2001 samples on 2 chains finishes in minutes and exercises
+every path.
+
 `--from 3` is the usual entry point once Stages 1 and 2 have been run or supplied —
 it skips straight to the part worth re-running. A bare `run_site.jl` starts at
 Stage 0, which re-seals the inputs and takes seconds. Stages 0 and 3–6 take minutes. **Stages 1 and 2
@@ -169,6 +187,11 @@ exponent, the porosity ranges, the clay prior and the ceilings.
 ```bash
 julia --project=. test/runtests.jl
 ```
+
+Reproduction across machines must be compared on **values, not file hashes**. A
+truth `.jld2` embeds the Julia version string and a serialised `Dict`, so its
+SHA-256 differs between machines and between Julia patch versions while every
+number is identical — measured on three machines and two patch versions.
 
 The config and noise-seed tests run anywhere. The four integration tests need stage
 outputs and skip, loudly, without them.

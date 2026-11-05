@@ -146,7 +146,19 @@ end
 
 function main()
     T = load(joinpath(OUT, "truth_murray$(TTAG).jld2"))
-    D = load(joinpath(OUT, "smr_data_murray$(TAG).jld2"))
+    dpath = joinpath(OUT, "smr_data_murray$(TAG).jld2")
+    isfile(dpath) || error("""
+    no SNMR data at $dpath
+
+      Forward-model it first. For a trans-D Stage 1 under tag <T> and label <L>:
+        julia --project=. tools/aem_HYP.jl 200001 <T> 4 <L>
+        julia --project=. tools/smr_data.jl transd --tag <T> --label <L>
+      That writes smr_data_murray<T>T.jld2, so run this stage with --tag <T>T.
+
+      This file used to have no producer in the release at all, which stopped an
+      independent review dead after Stage 1.
+    """)
+    D = load(dpath)
     # Kernel source, by tag. This was a hardcoded three-way branch in which every
     # tag other than "" and "2T" fell through to aem_occam.jld2 — the TWO-AQUIFER
     # Occam profile. Running tag 3T therefore forward-modelled the SMR data with

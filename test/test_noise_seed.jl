@@ -1,34 +1,70 @@
-# test_noise_seed.jl -- guards the inert-seed bug.
+# test_noise_seed.jl -- guards the inert-seed bug at EVERY call site.
 #
 # HiQGA's makenoisydata! calls Random.seed!(rseed) ITSELF, immediately before
-# drawing (SkyTEM1DInversion.jl). A caller that seeds beforehand and omits the
-# keyword therefore gets HiQGA's default realisation, 123, no matter what seed
-# it thinks it set. That is what happened here: every tool passed
-# rseed_noise = SEED = 20261012 into a function that dropped it, so every
-# published AEM number came from the 123 draw. The two realisations differ by
-# up to 9% per gate, so the bug was not cosmetic -- and it survived because a
-# second copy of aem_setup.jl in the generator repo was fixed and this one was
-# not.
+# drawing. A caller that seeds beforehand and omits the keyword gets HiQGA's
+# default realisation, 123, whatever seed it thinks it set. That is what
+# happened here: three tools passed rseed_noise = SEED = 20261012 into
+# build_skytem_operator, which dropped it. Every published AEM number came
+# from the 123 draw, and the two realisations differ by a median of about 3%
+# and up to 9-14% per gate, so the pin to 123 is deliberate.
 #
-# The check is textual on purpose. The defect is a dropped keyword argument in
-# one of two copies of a file, which no numerical assertion can localise and
-# which needs neither HiQGA nor a truth file to detect. It proves the call site
-# is still correct, not that the physics is.
-let src = read(joinpath(ROOT, "src", "aem_setup.jl"), String)
-    call = match(r"makenoisydata!\((?s:.*?)\)\n", src)
-    @test call !== nothing
-    body = call === nothing ? "" : call.match
+# The first version of this test read one hardcoded file and matched the call
+# text including its comments. A review defeated it three ways: by leaving the
+# keyword in a comment inside the call, by reassigning rseed_noise just before
+# the call, and by dropping the keyword at the SECOND call site in
+# src/aem_jac.jl, which the test never looked at. All three are closed below.
+#
+# The check is textual on purpose -- the defect is a dropped keyword argument,
+# which needs neither HiQGA nor a truth file to detect -- but it now discovers
+# its own call sites rather than trusting a filename. Comment stripping is
+# line-wise and naive; a `#` inside a string literal would confuse it, and
+# there are none in these files.
+let
+    srcdirs = ("src", "stages", "tools")
+    strip_comments(s) = join([replace(l, r"#.*$" => "") for l in split(s, '\n')], '\n')
 
-    # the keyword must reach the noise draw
-    @test occursin(r"rseed\s*=\s*rseed_noise", body)
+    # --- find every call site, rather than naming one ---------------------
+    sites = Tuple{String,String}[]
+    for d in srcdirs, f in readdir(joinpath(ROOT, d); join = true)
+        endswith(f, ".jl") || continue
+        txt = strip_comments(read(f, String))
+        occursin("makenoisydata!", txt) || continue
+        for m in eachmatch(r"makenoisydata!\((?s:.*?)\)\s*\n", txt)
+            push!(sites, (relpath(f, ROOT), m.match))
+        end
+    end
 
-    # and the seed that does nothing must not have come back
-    @test !occursin(r"Random\.seed!\(\s*rseed_noise\s*\)", src)
+    # If this drops to zero the test has stopped testing anything.
+    @test length(sites) >= 2
 
-    # the tools pin the published realisation rather than passing their MCMC seed
+    for (file, call) in sites
+        # the keyword must reach the noise draw, in code and not in a comment
+        @test occursin(r"\brseed\s*=", call)
+    end
+
+    # --- and the seed that does nothing must not come back ----------------
+    for d in srcdirs, f in readdir(joinpath(ROOT, d); join = true)
+        endswith(f, ".jl") || continue
+        txt = strip_comments(read(f, String))
+        @test !occursin(r"Random\.seed!\(\s*rseed_noise\s*\)", txt)
+    end
+
+    # --- nor may the argument be overwritten before it is used ------------
+    setup = strip_comments(read(joinpath(ROOT, "src", "aem_setup.jl"), String))
+    body = match(r"function build_skytem_operator(?s:.*?)\nend", setup)
+    @test body !== nothing
+    if body !== nothing
+        # an assignment to rseed_noise anywhere in the body is a reassignment:
+        # the keyword itself is in the signature, which this match excludes
+        # only after the first newline, so allow the signature's default
+        inner = replace(body.match, r"^function build_skytem_operator(?s:.*?)\)\s*\n" => "")
+        @test !occursin(r"\brseed_noise\s*=", inner)
+    end
+
+    # --- the tools pin the published realisation, not their MCMC seed -----
     for t in ("aem_HYP.jl", "aem_draws.jl", "aem_prior_test.jl")
-        s = read(joinpath(ROOT, "tools", t), String)
+        s = strip_comments(read(joinpath(ROOT, "tools", t), String))
         @test occursin(r"const NOISE_RSEED\s*=\s*123", s)
-        @test !occursin(r"rseed_noise\s*=\s*SEED", s)
+        @test !occursin(r"rseed_noise\s*=\s*SEED\b", s)
     end
 end
