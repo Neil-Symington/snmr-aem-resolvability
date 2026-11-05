@@ -1,9 +1,14 @@
 # CI: the platform coverage three manual review rounds could not provide.
 #
-# Every round ran on Ubuntu x86_64 and Julia 1.12.6 only, so macOS, ARM and
-# every other 1.12 patch were untested -- and the conda PATH workaround in
-# install.jl is Debian-and-Ubuntu-specific, so another platform may fail
-# differently or not at all. This runs the real install, not a shortcut.
+# Every manual round ran on Ubuntu x86_64 and Julia 1.12.6 only, so macOS and
+# every other 1.12 patch were untested, and the conda PATH workaround in
+# install.jl is Debian-and-Ubuntu-specific. This runs the real install, not a
+# shortcut.
+#
+# COVERAGE, stated precisely: macos-latest is Apple Silicon, so macOS on ARM is
+# covered here. What is NOT covered is Linux on ARM, macOS on Intel, and
+# Windows. An earlier version of this comment called ARM a gap, which a review
+# corrected.
 #
 # Determinism is checked BY VALUE, never by file hash: a truth .jld2 embeds the
 # Julia version string and a serialised Dict, so its SHA-256 differs between
@@ -41,8 +46,15 @@ jobs:
       - name: install.jl from an empty depot
         run: julia --project=. install.jl
 
-      - name: the tracked Manifest must not have been modified
-        run: git diff --exit-code -- Manifest.toml Project.toml
+      # `git diff --exit-code` alone passes when the file is DELETED in the
+      # commit or untracked, which a review pointed out, so existence is
+      # asserted first and tracking second.
+      - name: the tracked Manifest must exist and be unmodified
+        run: |
+          test -f Manifest.toml || { echo "Manifest.toml is missing"; exit 1; }
+          git ls-files --error-unmatch Manifest.toml >/dev/null \
+            || { echo "Manifest.toml is not tracked"; exit 1; }
+          git diff --exit-code -- Manifest.toml Project.toml
 
       - name: tests
         run: julia --project=. test/runtests.jl
@@ -74,10 +86,60 @@ jobs:
       # [compat] julia = "1.12" does NOT enforce anything -- Pkg warns for the
       # active project and carries on, which is how 1.11 stayed broken through
       # two review rounds. install.jl refuses at step 0, and this asserts it.
-      - name: must exit non-zero before Pkg starts
+      # Inverting the exit status is not enough: a review deleted the gate and
+      # this job still passed, because install.jl failed anyway -- 4m11s later,
+      # inside PrecompileTools. So assert the GATE's own message, and assert it
+      # happened fast enough to have come from step 0 rather than from the
+      # failure it is meant to prevent.
+      - name: must refuse at step 0, with the gate's own message
         run: |
-          if julia --project=. install.jl; then
-            echo "install.jl accepted Julia 1.11; the version gate is not working"
-            exit 1
+          start=$(date +%s)
+          set +e
+          out=$(julia --project=. install.jl 2>&1); rc=$?
+          set -e
+          elapsed=$(( $(date +%s) - start ))
+          echo "$out"
+          echo "--- exit $rc after ${elapsed}s"
+          if [ "$rc" -eq 0 ]; then
+            echo "FAIL: install.jl accepted Julia 1.11"; exit 1
           fi
-          echo "refused, as intended"
+          echo "$out" | grep -q "needs Julia 1.12 or newer" || {
+            echo "FAIL: exited non-zero but not from the version gate"; exit 1; }
+          if [ "$elapsed" -gt 60 ]; then
+            echo "FAIL: took ${elapsed}s, so it did not stop at step 0"; exit 1
+          fi
+          echo "refused at step 0, as intended"
+
+  conda-workaround:
+    # THE JOB THE REVIEW SAID WAS MISSING. On GitHub's runners `python` is
+    # already on PATH, so step 1 reported "instantiate completed with no
+    # workaround needed" on all four install jobs -- the conda failure that
+    # install.jl exists to work around never happened, and CI would have stayed
+    # green with the PATH fix deleted. This removes `python` from PATH first, so
+    # the failure is real and the workaround is what gets tested.
+    name: install.jl handles a machine with no `python`
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.12'
+      - name: remove every `python` from PATH, leaving python3
+        run: |
+          while p=$(command -v python 2>/dev/null); do
+            echo "removing $p"; sudo rm -f "$p"
+          done
+          command -v python && { echo "python still on PATH"; exit 1; } || true
+          command -v python3 || { echo "python3 is missing too"; exit 1; }
+      - name: install.jl must take the workaround path and still finish
+        run: |
+          out=$(julia --project=. install.jl 2>&1); echo "$out"
+          echo "$out" | grep -q "environment ready" || {
+            echo "FAIL: install did not finish"; exit 1; }
+          echo "$out" | grep -q "no workaround needed" && {
+            echo "FAIL: the conda failure did not occur, so the workaround is still untested"
+            exit 1; } || true
+          echo "the workaround path ran and the install finished"
+      - name: tests
+        run: julia --project=. test/runtests.jl

@@ -17,6 +17,12 @@ column = "2P"
 parent = ""             # a primary column, not derived
 role   = "primary"
 snmr_ensemble = "data/cond_C2_typical2PT.jld2"
+# NOT aem_draws_2P: the Stage 1 AEM run for this column is tagged 2M.
+# truth_murray2M and truth_murray2P have IDENTICAL sigma_bulk, clay, sigma_w
+# and phi and differ only in theta_SMR, and Stage 1 sees only sigma_bulk,
+# so the 2M draws are this column's draws. The saline and water-table
+# variants use their own tags, which makes this one look like a typo. It is
+# not, and a review lost time to it.
 stage1_draws = "data/aem_draws_2M.jld2"
 
 [data.loop]

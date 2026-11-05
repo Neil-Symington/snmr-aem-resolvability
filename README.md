@@ -94,6 +94,17 @@ Neither stage has a `run_site.jl` entry point, and until a review pointed it out
 nothing here named the scripts. The chain, for a tag `<T>` and an optional run
 label `<L>`:
 
+Stage 1 reads `data/truth_murray<T>.jld2`, and nothing automates getting a
+generator-built column there under that name — a reviewer had to work that out
+twice. Do it explicitly:
+
+```bash
+mkdir -p data
+cp synthetics/output/<name>_truth.jld2 data/truth_murray<T>.jld2
+```
+
+Then:
+
 ```bash
 julia --project=. tools/aem_HYP.jl 200001 <T> 4 <L>   # Stage 1, trans-D AEM
 julia --project=. tools/aem_draws.jl <T> 600 <L>      # posterior draws
