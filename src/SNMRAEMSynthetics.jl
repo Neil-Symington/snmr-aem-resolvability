@@ -150,7 +150,14 @@ both. Anything stated explicitly wins over the preset.
 # which is the worst possible failure for a file whose whole job is to state
 # parameters. check_keys refuses it instead.
 const KNOWN_TOP  = Set(["name", "description", "grid", "variability",
-                        "petrophysics", "watertable", "unit"])
+                        "petrophysics", "watertable", "unit", "aem", "smr"])
+# [aem] and [smr] are not read here -- scripts/forward.jl reads them off the
+# stored config -- but a column config legitimately carries them, so refusing
+# them broke forward.jl's own inputs. A review caught that: a validator that
+# rejects a working config is worse than one that misses a typo.
+const KNOWN_AEM  = Set(["noise_scale", "noise_frac", "rseed"])
+const KNOWN_SMR  = Set(["loop_side", "Be_nT", "inclination_deg", "z_first",
+                        "z_last", "dz", "q", "rseed", "noise_nV", "noise_domain"])
 const KNOWN_GRID = Set(["dz", "zmax"])
 const KNOWN_VAR  = Set(["seed", "corr_length", "log_sd_phi", "log_sd_clay",
                         "log_sd_sigma_w", "transition_min", "transition_max"])
@@ -180,9 +187,18 @@ function check_keys(cfg, path)
     haskey(cfg, "variability")  && seen(cfg["variability"], KNOWN_VAR, "variability")
     haskey(cfg, "petrophysics") && seen(cfg["petrophysics"], KNOWN_PETRO, "petrophysics")
     haskey(cfg, "watertable")   && seen(cfg["watertable"], KNOWN_WT, "watertable")
+    haskey(cfg, "aem")          && seen(cfg["aem"], KNOWN_AEM, "aem")
+    haskey(cfg, "smr")          && seen(cfg["smr"], KNOWN_SMR, "smr")
     if haskey(cfg, "unit")
+        # `[unit]` instead of `[[unit]]` parses as a single table, not an array
+        # of them. Iterating it yields Pairs and every downstream get() throws
+        # MethodError; a review hit exactly that. Say what is wrong instead.
+        cfg["unit"] isa AbstractVector || error(
+            "$path: units must be written as [[unit]], an array of tables, not " *
+            "[unit]. Each unit gets its own [[unit]] header.")
         for (i, u) in enumerate(cfg["unit"])
-            seen(u, KNOWN_UNIT, "[unit]] $i ($(get(u, "name", "unnamed")))")
+            u isa AbstractDict || error("$path: [[unit]] $i is not a table")
+            seen(u, KNOWN_UNIT, "[[unit]] $i ($(get(u, "name", "unnamed")))")
         end
     end
     isempty(bad) || error("$path: unknown config key(s):\n  " * join(bad, "\n  ") *

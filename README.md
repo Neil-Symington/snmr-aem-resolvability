@@ -60,6 +60,21 @@ but that bin is not on `PATH` while the build runs, and Debian and Ubuntu have n
 system `python`, only `python3`. conda exits 127 and takes the whole environment with
 it. `install.jl` puts conda's bin on `PATH` for the build, which is the fix.
 
+## Tests
+
+```bash
+julia --project=. test/runtests.jl
+```
+
+Twenty checks, no stage outputs needed: the noise seed reaching
+`makenoisydata!` at every call site, the config validator refusing unknown keys
+while still accepting `[aem]` and `[smr]`, and determinism **by value**.
+
+Compare reproduction on values, not file hashes. A truth `.jld2` embeds the
+Julia version string and a serialised `Dict`, so its SHA-256 differs between
+machines and between Julia patch versions while every number is identical —
+measured on three machines and two patch versions.
+
 Budget about fifteen minutes on a machine with no Julia depot. Against a depot
 that already has conda and matplotlib, a measured re-install took 46 seconds —
 under a minute, not instant.

@@ -24,6 +24,27 @@
 # yet the build still fails without the PATH change. The alias step is kept as
 # a fallback for older Miniconda that may genuinely have lacked it.
 # Verified from an empty depot.
+# STEP 0: refuse Julia before 1.12. [compat] julia = "1.12" does NOT enforce
+# this -- Pkg prints a warning for the active project and carries on, which a
+# review proved by installing on 1.11.7 and crashing deep inside
+# PrecompileTools with an UndefVarError for Base.StaticData. The pinned
+# Manifest resolves PrecompileTools 1.3.4, whose src/invalidations.jl wants
+# Base.ReinferUtils or Base.StaticData, and neither exists before 1.12. So the
+# check has to be here, where it can actually stop.
+if VERSION < v"1.12"
+    println("""
+    ERROR: this project needs Julia 1.12 or newer; you are on $VERSION.
+
+      Why: the pinned Manifest.toml resolves PrecompileTools 1.3.4, which
+      needs Base.ReinferUtils or Base.StaticData. Neither exists before
+      1.12, so the install fails inside PrecompileTools rather than here.
+
+      Get 1.12 with juliaup:  juliaup add 1.12 && juliaup default 1.12
+      or from https://julialang.org/downloads/
+    """)
+    exit(1)
+end
+
 using Pkg
 
 @info "step 1/4  installing packages (the HiQGA build step is expected to fail here)"
