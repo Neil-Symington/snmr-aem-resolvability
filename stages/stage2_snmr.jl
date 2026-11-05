@@ -64,7 +64,10 @@ const HERE = @__DIR__
 const ROOT = normpath(joinpath(HERE, ".."))
 const OUT  = joinpath(HERE, "..", "data")
 const RUN  = joinpath(OUT, "smr_runs"); mkpath(RUN)
-include(joinpath(ROOT, "ek_prerun", "prerun_config.jl")); const CFG = PrerunConfig
+# Vendored into src/. This include used to point at ../ek_prerun/, which is
+# outside the repository and was never shipped, so Stage 2 -- and therefore
+# every stage after it -- could not start from a clone at all.
+include(joinpath(ROOT, "src", "prerun_config.jl")); const CFG = PrerunConfig
 
 const FB_LINEAR = [0.001 0.45]
 const FB_LOG    = [log10(0.001) log10(0.45)]

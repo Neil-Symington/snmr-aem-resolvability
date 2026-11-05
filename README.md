@@ -20,14 +20,23 @@ so defensibly rather than to produce a number. Two properties make that possible
 
 ## Install
 
-**Julia 1.11 or newer** — `Project.toml` requires it, and `[sources]`, which pins
-an unregistered dependency below, does not exist before 1.11. Install from
-<https://julialang.org/downloads/> or with `juliaup`; the pinned `Manifest.toml`
-was resolved on 1.12.6.
+**Julia 1.12 or newer.** `[sources]`, which pins an unregistered dependency
+below, needs 1.11 — but the pinned `Manifest.toml` resolves `PrecompileTools`
+1.3.4, which needs `Base.ReinferUtils` or `Base.StaticData`, and neither exists
+before 1.12. On 1.11 `install.jl` fails at step 2. Install from
+<https://julialang.org/downloads/> or with `juliaup`; the `Manifest.toml` was
+resolved on 1.12.6.
 
 **Budget about fifteen minutes and roughly an hour of CPU** for a first install on
 a machine with no Julia depot. Most of it is Miniconda and matplotlib, pulled in by
-`HiQGA`. On a machine that already has those it is seconds.
+`HiQGA`. Against a depot that already has them, a measured re-install took 37
+seconds here and 46 seconds for the generator repository — under a minute, not
+instant.
+
+**Do not run two installs at once on one machine.** `Conda.jl` downloads its
+installer to a fixed `/tmp/installer.sh`, which is not per-depot, so concurrent
+installs overwrite each other's file and one of them dies with "text file is
+busy". A fresh `JULIA_DEPOT_PATH` does not isolate this.
 
 ```julia
 julia --project=. -e 'using Pkg; Pkg.instantiate()'
