@@ -161,7 +161,7 @@ exponent, the porosity ranges, the clay prior and the ceilings.
 julia --project=. test/runtests.jl
 ```
 
-The forward and config tests run anywhere. The four integration tests need stage
+The config and noise-seed tests run anywhere. The four integration tests need stage
 outputs and skip, loudly, without them.
 
 ## Citing and licence

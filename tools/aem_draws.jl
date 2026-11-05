@@ -21,12 +21,19 @@ const OUT  = joinpath(HERE, "..", "data")
 const TAG    = length(ARGS) >= 1 ? ARGS[1] : "2M"
 const NDRAW  = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : 600
 const SEED   = 20261012
+# The AEM noise realisation is pinned to HiQGA's makenoisydata! default, 123,
+# NOT to SEED. Until build_skytem_operator passed rseed through, the caller's
+# seed was silently ignored and every run drew the 123 realisation -- which is
+# therefore the realisation behind every published number. Pinning it here
+# keeps those reproducible now that the keyword is honoured; vary it only to
+# test sensitivity to the noise draw, never to reproduce the paper.
+const NOISE_RSEED = 123
 include(joinpath(ROOT, "src", "aem_setup.jl"))
 using HiQGA.transD_GP
 
 function main()
     T = load(joinpath(OUT, "truth_murray$(TAG).jld2"))
-    built = build_skytem_operator(T["σ_bulk"], T["z"]; noise_scale = 1.0, rseed_noise = SEED)
+    built = build_skytem_operator(T["σ_bulk"], T["z"]; noise_scale = 1.0, rseed_noise = NOISE_RSEED)
     grid = built.grid
     rundir = joinpath(OUT, "aem$(TAG)")
     opt = make_aem_opt(grid.znall, "hypsynth_aem_")

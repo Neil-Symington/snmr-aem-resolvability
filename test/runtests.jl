@@ -4,6 +4,7 @@
 #
 # Each of these guards a bug that actually happened in this project:
 #   config              inheritance, and every validation rule firing
+#   noise seed          rseed reaching makenoisydata!, which once silently did not
 #   stage0 roundtrip    the sealed artefact rebuilding the operator exactly
 #   gate solver         the conductance constraint being met at the optimum
 #   stage3 integral     the window integral against a direct sum
@@ -24,6 +25,10 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
             # finding in this project; the validator must refuse it
             i.role == "saline_control" && @test !isempty(i.parent)
         end
+    end
+
+    @testset "noise seed reaches makenoisydata!" begin
+        include(joinpath(@__DIR__, "test_noise_seed.jl"))
     end
 
     for (name, script, needs) in (

@@ -30,6 +30,13 @@ const LABEL    = length(ARGS) >= 4 ? ARGS[4] : ""
 const TMAX     = 2.5
 const NDRAWS   = 30
 const SEED     = 20261012
+# The AEM noise realisation is pinned to HiQGA's makenoisydata! default, 123,
+# NOT to SEED. Until build_skytem_operator passed rseed through, the caller's
+# seed was silently ignored and every run drew the 123 realisation -- which is
+# therefore the realisation behind every published number. Pinning it here
+# keeps those reproducible now that the keyword is honoured; vary it only to
+# test sensitivity to the noise draw, never to reproduce the paper.
+const NOISE_RSEED = 123
 
 # aem_setup.jl includes HiQGA's electronics_halt by absolute path, so this works
 # from anywhere — but the include must stay at top level, because that nested
@@ -50,7 +57,7 @@ function main()
     # The truth runs to 200 m on a 0.25 m grid; pass it straight in so the AEM
     # sees the full column rather than the SMR grid's 147 m truncation.
     built = build_skytem_operator(T["σ_bulk"], T["z"]; noise_scale = 1.0,
-                                  rseed_noise = SEED)
+                                  rseed_noise = NOISE_RSEED)
     aem, grid = built.aem, built.grid
     @printf("AEM operator: %d LM + %d HM gates; truth σ interpolated to %d AEM cells\n",
             length(aem.dlow), length(aem.dhigh), length(grid.z))
@@ -69,7 +76,7 @@ function main()
         dlow = aem.dlow, dhigh = aem.dhigh,
         σlow = aem.σlow, σhigh = aem.σhigh,
         nsamples = NSAMPLES, nchains = NCHAINS, Tmax = TMAX,
-        noise_scale = 1.0, rseed_noise = SEED)
+        noise_scale = 1.0, rseed_noise = NOISE_RSEED)
 
     opt = make_aem_opt(grid.znall, "hypsynth_aem_")
     old = pwd(); cd(rundir)
