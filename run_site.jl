@@ -60,8 +60,7 @@ function main()
         s1 = joinpath(HERE, cfg["data"]["stage1_draws"]); s2 = cfg["data"]["snmr_ensemble"]
         isfile(s1) || @printf("""
   STAGE 1 INPUT MISSING: %s
-    run  julia --project=. tools/aem_HYP.jl 200001 <tag>        (AEM only)
-    or   julia --project=. tools/aem_dc_joint.jl 200001 <tag>   (AEM + sounding)
+    run  julia --project=. tools/aem_HYP.jl 200001 <tag>
     then julia --project=. tools/aem_draws.jl <tag>
 
 """, cfg["data"]["stage1_draws"])

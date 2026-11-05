@@ -17,8 +17,6 @@ julia = "1.11"
 # noise model and the Occam bootstrap that every result here depends on.
 # Installing main instead silently reproduces different numbers, so the branch
 # and the commit are pinned here rather than left to a README instruction.
-# [sources] needs Julia 1.11; on 1.10 add it by hand with
-#   Pkg.add(url="https://github.com/Neil-Symington/SMRPInversion.jl",
-#           rev="add-occam-deterministic-inversion")
+# [sources] needs Julia 1.11, which is why [compat] requires it.
 [sources]
 SMRPInversion = {url = "https://github.com/Neil-Symington/SMRPInversion.jl", rev = "add-occam-deterministic-inversion"}

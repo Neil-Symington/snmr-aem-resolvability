@@ -20,7 +20,14 @@ so defensibly rather than to produce a number. Two properties make that possible
 
 ## Install
 
-Julia 1.10 or newer.
+**Julia 1.11 or newer** — `Project.toml` requires it, and `[sources]`, which pins
+an unregistered dependency below, does not exist before 1.11. Install from
+<https://julialang.org/downloads/> or with `juliaup`; the pinned `Manifest.toml`
+was resolved on 1.12.6.
+
+**Budget about fifteen minutes and roughly an hour of CPU** for a first install on
+a machine with no Julia depot. Most of it is Miniconda and matplotlib, pulled in by
+`HiQGA`. On a machine that already has those it is seconds.
 
 ```julia
 julia --project=. -e 'using Pkg; Pkg.instantiate()'
@@ -36,8 +43,7 @@ Three dependencies are geophysics packages rather than general ones:
 
 `SMRPInversion`'s `main` branch does **not** carry the hierarchical heteroscedastic
 noise model or the Occam bootstrap that every result here depends on. `Project.toml`
-pins the branch and `Pkg.instantiate()` will fetch it; if you are on Julia 1.10,
-`[sources]` is ignored and you must add it by hand.
+pins the branch and `Pkg.instantiate()` will fetch it.
 
 ### Install with `install.jl`, not with `Pkg.instantiate()`
 
@@ -45,8 +51,11 @@ pins the branch and `Pkg.instantiate()` will fetch it; if you are on Julia 1.10,
 julia --project=. install.jl
 ```
 
-`Pkg.instantiate()` on its own **does not work from a clean Julia depot**, and the
-error it prints points at this repository rather than at the cause. `HiQGA` depends
+`Pkg.instantiate()` on its own **does not reliably work from a clean Julia depot**,
+and the error it prints points at this repository rather than at the cause.
+`install.jl` expects that first attempt to fail and recovers from it — a red
+`Error building HiQGA` scrolling past during step 1 is the normal path, not a
+problem, and step 4 is what tells you whether the environment is good. `HiQGA` depends
 on `PyCall`, `PyPlot` and `Conda`; its build runs `Conda.add("matplotlib")`
 unconditionally and then overwrites `ENV["PYTHON"]`, so setting `PYTHON` yourself has
 no effect. `Conda.jl` bootstraps the current Miniconda, which ships `python3.x` and no
@@ -68,7 +77,9 @@ julia --project=. run_site.jl configs/synth_2P.toml --dry-run   # validate, run 
 julia --project=. run_site.jl configs/synth_2P.toml --from 3    # the fast half
 ```
 
-`--from 3` is the usual entry point. Stages 0 and 3–6 take minutes. **Stages 1 and 2
+`--from 3` is the usual entry point once Stages 1 and 2 have been run or supplied —
+it skips straight to the part worth re-running. A bare `run_site.jl` starts at
+Stage 0, which re-seals the inputs and takes seconds. Stages 0 and 3–6 take minutes. **Stages 1 and 2
 take hours** — each is a trans-dimensional MCMC of 100,000–200,000 samples over four
 chains — so they run from `tools/` rather than from the driver, and `run_site.jl`
 prints the command instead of starting a job that will outlive your terminal.
@@ -95,9 +106,10 @@ the paper.
 ### Reproducing the paper's numbers
 
 Stages 1 and 2 are hours of MCMC each. Their products — the truth columns, the SNMR
-data, the AEM posterior draws and the Stage 2 ensembles — are **21 MB in total** and
-are published with the release. With them in `data/`, Stages 0 and 3–6 run in about an
-hour and reproduce the verdict tables directly:
+data, the AEM posterior draws and the Stage 2 ensembles — come to **21 MB in total**.
+They are **not published yet**: there is no release asset and no DOI, so ask the
+authors for them. With them in `data/`, Stages 0 and 3–6 run in about an hour and
+reproduce the verdict tables directly:
 
 ```bash
 julia --project=. run_site.jl configs/synth_2P.toml --from 3
@@ -147,7 +159,7 @@ exponent, the porosity ranges, the clay prior and the ceilings.
 julia --project=. test/runtests.jl
 ```
 
-The forward and config tests run anywhere. The three integration tests need stage
+The forward and config tests run anywhere. The four integration tests need stage
 outputs and skip, loudly, without them.
 
 ## Citing and licence
