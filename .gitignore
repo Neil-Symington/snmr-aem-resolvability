@@ -10,3 +10,6 @@ figures/numbers*.csv
 # Manifest.toml IS tracked: it is the version pin a reviewer needs.
 .venv/
 __pycache__/
+
+# the truth generator writes here (subtree kept its own output dir name)
+synthetics/output/

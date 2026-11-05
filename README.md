@@ -115,37 +115,21 @@ prints the command instead of starting a job that will outlive your terminal.
 
 ### Where the synthetic columns come from
 
-Generation lives in a separate repository, **[snmr-aem-synthetics](https://github.com/Neil-Symington/snmr-aem-synthetics)** — a
-config-driven generator with a column per TOML file:
+Generation lives in **`synthetics/`**, which was the separate repository
+`snmr-aem-synthetics` until the two were consolidated. There is no second
+environment: one `install.jl`, one `Manifest.toml`, one `test/runtests.jl`.
 
 ```bash
-git clone https://github.com/Neil-Symington/snmr-aem-synthetics
-cd snmr-aem-synthetics
-julia --project=. -e 'using Pkg; Pkg.instantiate()'
-julia --project=. scripts/build_truth.jl config/confined_aquifer.toml
+julia --project=. synthetics/scripts/build_truth.jl synthetics/config/confined_aquifer.toml
+julia --project=. synthetics/scripts/plot_truth.jl  synthetics/output/confined_aquifer_truth.jld2
+julia --project=. synthetics/scripts/forward.jl     synthetics/output/confined_aquifer_truth.jld2
 ```
 
-It is deterministic: the same config and `seed` give a bit-identical column, so a
-stated parameter set reproduces a stated column exactly. The shipped configs are not
-the parameter sets behind this repository's results — they differ in the porosity and
-clay variances, the correlation length and the clay exponent — so building from them
-demonstrates the method and produces a statistically equivalent column, not the one in
-the paper.
-
-### Reproducing the paper's numbers
-
-Stages 1 and 2 are hours of MCMC each. Their products — the truth columns, the SNMR
-data, the AEM posterior draws and the Stage 2 ensembles — come to **21 MB in total**.
-They are **not published yet**: there is no release asset and no DOI, so ask the
-authors for them. With them in `data/`, Stages 0 and 3–6 run in about an hour and
-reproduce the verdict tables directly:
-
-```bash
-julia --project=. run_site.jl configs/synth_2P.toml --from 3
-```
-
-Without them you can still run `--dry-run` and the tests, but the first real stage is a
-3.5-hour trans-dimensional inversion per column.
+`synthetics/README.md` documents the config schema. The two were merged because
+`src/aem_setup.jl` existed in both and diverged: the noise-seed fix landed in
+one copy and not the other, so every published AEM number came from the wrong
+realisation for weeks. There is now one copy, guarded by
+`test/test_noise_seed.jl`, which scans every call site rather than a named file.
 
 ## The stages
 
