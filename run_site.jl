@@ -71,6 +71,20 @@ function main()
 """, s2)
     end
 
+    # Stage 4 reads Stage 0's sealed artefact, so --from 3 and --from 4 only work
+    # once Stage 0 has run for this site. The README called --from 3 "the usual
+    # entry point" without saying so, and on a clean tree it fails with an
+    # ArgumentError from inside Stage 4 that names a path and not a fix.
+    if opt["from"] > 0 && !opt["dry"]
+        s0 = joinpath(HERE, cfg["output"]["dir"], "stage0_$(name).jld2")
+        isfile(s0) || error(
+            "Stage 0 has not been run for this site: " * s0 * " is missing.\n\n" *
+            "  Stage 4 reads that artefact, so --from " * string(opt["from"]) *
+            " cannot work yet. Run Stage 0\n" *
+            "  once first -- it takes seconds and re-seals the inputs:\n\n" *
+            "    julia --project=. run_site.jl " * cfgpath * " --to 0\n\n" *
+            "  then --from " * string(opt["from"]) * " works for every later re-run.")
+    end
     steps = [(0, "stages/stage0_inputs.jl"),
              (3, "stages/stage3_hypothesis.jl"),
              (4, "stages/stage4_gate_v2.jl"),

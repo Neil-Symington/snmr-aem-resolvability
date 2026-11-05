@@ -41,6 +41,12 @@ const TAG    = get(ARG, "tag", "")
 # The "T" suffix selects the trans-D SMR data and output, but the TRUTH column
 # is the same two-aquifer one either way — truth_murray2.jld2, not 2T.
 const TTAG   = replace(TAG, "T" => "")
+# aem_HYP.jl's 4th argument writes data/aem<TAG><LABEL>/, so a labelled Stage 1
+# run must be named here too. Without this the kernel lookup below misses and
+# the stage dies on "kernel source not found" -- the same defect a review found
+# in aem_draws.jl, which was fixed there and nowhere else. Every path that
+# builds a run directory from a tag now takes the label.
+const LABEL  = get(ARG, "label", "")
 const CONDS  = split(get(ARG, "conds", "C1,C2"), ",")
 const NSAMP  = parse(Int, get(ARG, "nsamples", "100001"))
 const NENS   = 4
@@ -168,10 +174,16 @@ function main()
     # generically: a "T" suffix means the trans-D p50 of THAT column, no suffix
     # means that column's Occam profile.
     kernelfile = TAG == "" ? joinpath(OUT, "aem", "aem_posterior.jld2") :
-                 endswith(TAG, "T") ? joinpath(OUT, "aem$(TTAG)", "aem_posterior.jld2") :
+                 endswith(TAG, "T") ? joinpath(OUT, "aem$(TTAG)$(LABEL)", "aem_posterior.jld2") :
                  TTAG == "2" ? joinpath(OUT, "aem_occam.jld2") :
                                joinpath(OUT, "aem_occam$(TTAG).jld2")
-    isfile(kernelfile) || error("kernel source not found: $kernelfile")
+    isfile(kernelfile) || error("""
+    kernel source not found: $kernelfile
+
+      If Stage 1 was run with a label, pass the same one:  --label <L>
+      aem_HYP.jl's 4th argument writes data/aem<TAG><LABEL>/, and this stage
+      has to look in the same place.
+    """)
     A = load(kernelfile)
     global QGRID = D["qgrid"]
 

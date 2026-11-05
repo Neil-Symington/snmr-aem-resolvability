@@ -12,8 +12,12 @@ const HERE = @__DIR__; const ROOT = normpath(joinpath(HERE, ".."))
 include(joinpath(ROOT, "src", "aem_setup.jl"))
 const OUT = joinpath(HERE, "..", "data")
 
+# An optional run label, matching aem_HYP.jl's 4th argument, which writes
+# data/aem<TAG><LABEL>/. Without it a labelled Stage 1 run is invisible here.
+const LABEL = length(ARGS) >= 1 ? ARGS[1] : ""
+
 for tag in ("3M", "2M", "3S", "2S")
-    rundir = joinpath(OUT, "aem$tag")
+    rundir = joinpath(OUT, "aem$tag$LABEL")
     isdir(rundir) || (@printf("%-3s no chain directory\n", tag); continue)
     S = load(joinpath(rundir, "aem_setup.jld2"))
     znall = S["znall_aem"]; zall = S["zall_aem"]

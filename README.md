@@ -124,12 +124,31 @@ The `T` on the last line is not a typo: `smr_data.jl`'s trans-D branch writes a
 samples takes hours; 2001 samples on 2 chains finishes in minutes and exercises
 every path.
 
-`--from 3` is the usual entry point once Stages 1 and 2 have been run or supplied —
-it skips straight to the part worth re-running. A bare `run_site.jl` starts at
-Stage 0, which re-seals the inputs and takes seconds. Stages 0 and 3–6 take minutes. **Stages 1 and 2
-take hours** — each is a trans-dimensional MCMC of 100,000–200,000 samples over four
-chains — so they run from `tools/` rather than from the driver, and `run_site.jl`
-prints the command instead of starting a job that will outlive your terminal.
+**Run Stage 0 first, once.** A bare `run_site.jl` starts there; it re-seals the
+inputs and takes seconds. Only then does `--from 3` work, because Stage 4 reads
+Stage 0's sealed artefact — on a clean tree `--from 3` used to fail inside Stage
+4 with a path and no explanation, and `run_site.jl` now refuses with the fix
+instead. After that, `--from 3` is the entry point for every re-run: it skips
+straight to the part worth repeating.
+
+**Stages 1 and 2 take hours** — each is a trans-dimensional MCMC of
+100,000–200,000 samples over four chains — so they run from `tools/` rather than
+from the driver, and `run_site.jl` prints the command instead of starting a job
+that will outlive your terminal.
+
+**Stage 4 is not an MCMC, and `--nsamples` does nothing to it.** Its cost is an
+Occam solve per conductance node, so a 2001-sample "smoke" run still spent over
+28 minutes in the pass-1 solve and was killed. To make Stages 4–6 finish in
+minutes, cut the grid instead:
+
+```toml
+[gate]
+n_nodes_coarse = 4      # production: 16
+n_nodes_fine   = 3      # production: 15
+```
+
+Stages 0 and 3 take seconds to minutes; Stages 5 and 6 are quick once Stage 4
+has run.
 
 ### Where the synthetic columns come from
 
