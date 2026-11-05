@@ -137,9 +137,17 @@ from the driver, and `run_site.jl` prints the command instead of starting a job
 that will outlive your terminal.
 
 **Stage 4 is not an MCMC, and `--nsamples` does nothing to it.** Its cost is an
-Occam solve per conductance node, so a 2001-sample "smoke" run still spent over
-28 minutes in the pass-1 solve and was killed. To make Stages 4–6 finish in
-minutes, cut the grid instead:
+Occam solve per conductance node, plus a λ² sweep at each node and a bisection
+for the band edges. Measured, on one machine:
+
+| `[gate]` grid | outcome |
+|---|---|
+| 16 coarse + 15 fine (production) | still in the pass-1 solve at 28 minutes |
+| 4 coarse + 3 fine | reached the final edge bisection at 28 minutes |
+
+So cutting the grid helps but **does not give Stage 4 a minutes-long mode** —
+the cost is per node, not in the node count. There is no fast path here; budget
+an hour or more, and reduce the grid only to shorten it:
 
 ```toml
 [gate]
@@ -147,8 +155,8 @@ n_nodes_coarse = 4      # production: 16
 n_nodes_fine   = 3      # production: 15
 ```
 
-Stages 0 and 3 take seconds to minutes; Stages 5 and 6 are quick once Stage 4
-has run.
+Stages 0 and 3 take seconds to minutes, and Stages 5 and 6 are quick once Stage
+4 has run.
 
 ### Where the synthetic columns come from
 
