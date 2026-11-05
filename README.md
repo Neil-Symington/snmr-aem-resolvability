@@ -63,7 +63,7 @@ has conda and matplotlib it is seconds.
 ```bash
 
 julia --project=. scripts/build_truth.jl config/confined_aquifer.toml
-julia --project=. scripts/plot_truth.jl  output/confined_aquifer_truth.png
+julia --project=. scripts/plot_truth.jl  output/confined_aquifer_truth.jld2
 julia --project=. scripts/forward.jl     output/confined_aquifer_truth.jld2
 ```
 
