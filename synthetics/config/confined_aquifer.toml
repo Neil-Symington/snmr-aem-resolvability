@@ -20,6 +20,14 @@ sigma_clay = 0.5   # SECTION DEFAULT only, for units naming neither a mineral
                    # section gives a clean kaolinitic sand the same surface
                    # conduction as a smectitic clay — about 10x wrong.
 
+# SNMR acquisition. These are written into the truth file and read by the
+# inversion stages, so stating them here keeps nothing implicit -- without this
+# block the defaults apply and LOOP_SIDE in particular silently becomes 88.6.
+[smr]
+loop_side       = 100.0     # m, square loop; the forward takes the HALF-side
+Be_nT           = 58000.0   # Earth field magnitude -> Larmor 2469.5 Hz
+inclination_deg = -66.5     # southern hemisphere
+
 [variability]
 seed            = 20261012
 corr_length     = 6.0    # m, correlation length of the porosity/clay jitter

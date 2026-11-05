@@ -21,5 +21,12 @@ check_column(col)
 
 name = get(cfg, "name", splitext(basename(cfgpath))[1])
 out  = joinpath(outdir, "$(name)_truth.jld2")
-save_column(col, out)
+
+# The SNMR grid comes from the inversion's own grid definition, so a column
+# built here is a drop-in for the stages. See smr_acquisition's docstring for
+# why it is this grid and not [smr]'s uniform one.
+include(joinpath(@__DIR__, "..", "..", "src", "prerun_config.jl"))
+zsmr = PrerunConfig.grid()[3]        # cell BOUNDARIES, 1.0 -> 147.438 m
+
+save_column(col, out; zsmr = zsmr)
 println("\nwrote ", out)

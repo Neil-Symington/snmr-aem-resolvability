@@ -63,7 +63,8 @@ using TOML, Random, Statistics, LinearAlgebra, Printf
 
 include("Lithology.jl")
 
-export Unit, Column, load_config, check_keys, build_column, save_column, unit_mean,
+export Unit, Column, load_config, check_keys, build_column, save_column,
+       smr_acquisition, unit_mean,
        check_column, lithology_names, mgL_to_sigma, sigma_to_mgL,
        conductivity_split
 
@@ -616,9 +617,54 @@ function check_column(c::Column; theta_bar = 0.15, theta_int_bar = 2.0, io = std
     warn
 end
 
-"Write the column to JLD2 for the forward-modelling and inversion steps."
-function save_column(c::Column, path::AbstractString)
+"""
+    smr_acquisition(c, zsmr)
+
+The SNMR-side fields a truth file has to carry for the inversion stages to
+consume it: the SNMR depth grid, the truth sampled onto it, and the acquisition
+geometry.
+
+WHY THIS EXISTS. `tools/smr_data.jl` reads `zsmr`, `θ_smrgrid`, `BE_T`,
+`INC_DEG` and `LOOP_SIDE`, and `zsmr` alone is read by twelve files across
+stages, tools and figures. A generator-built column had none of them, so an
+independent reviewer got through Stage 1 and then died on
+`KeyError: "zsmr"` with Stages 2 to 6 unreachable.
+
+WHICH GRID, AND WHY IT MATTERS. `zsmr` is the SNMR layer grid -- NOT the
+uniform `z_first:dz:z_last` in `[smr]`, which only `scripts/forward.jl` uses
+for its standalone reference forward. It is the geometric trans-D grid from
+`src/prerun_config.jl` (`setupz(ZSTART, EXTENDFRAC; dz, n)`, returning
+boundaries 1.0 to 147.438 m, 1 m cells at the top growing to 4.96 m at the
+base). That is what the kernel is built on and what the posterior reports
+against, so writing the uniform grid instead would not error -- it would
+silently misalign every truth-versus-posterior comparison by a grid.
+
+The sampling is a +/-1.5 m box mean about each node, matching the builder that
+produced the paper's truth files exactly.
+"""
+function smr_acquisition(c::Column, zsmr::AbstractVector)
+    smr_cfg  = get(c.cfg, "smr", Dict{String,Any}())
+    be_nT    = Float64(get(smr_cfg, "Be_nT", 58000.0))
+    smr_at(x) = [mean(x[findall(zi -> abs(zi - zs) <= 1.5, c.z)]) for zs in zsmr]
+    (zsmr = collect(zsmr),
+     θ_smrgrid = smr_at(c.θ_SMR),
+     σ_smrgrid = smr_at(c.σ_bulk),
+     BE_T      = be_nT * 1e-9,
+     INC_DEG   = Float64(get(smr_cfg, "inclination_deg", -66.5)),
+     LOOP_SIDE = Float64(get(smr_cfg, "loop_side", 88.6)),
+     LARMOR_HZ = 0.0425774 * be_nT)
+end
+
+"""
+Write the column to JLD2 for the forward-modelling and inversion steps.
+
+Pass `zsmr` to include the SNMR grid and acquisition fields the inversion
+stages need; without it the file is petrophysics only and Stage 2 onward cannot
+read it.
+"""
+function save_column(c::Column, path::AbstractString; zsmr = nothing)
     @eval Main using JLD2
+    a = zsmr === nothing ? (;) : smr_acquisition(c, zsmr)
     Base.invokelatest(Main.jldsave, path;
         z = c.z, dz = c.dz, φ = c.φ, S = c.S, clay = c.clay, σw = c.σw, cec = c.cec,
         θ_total = c.θ_total, θ_SMR = c.θ_SMR, σ_bulk = c.σ_bulk,
@@ -627,7 +673,8 @@ function save_column(c::Column, path::AbstractString)
         trans = c.trans, config = c.cfg,
         petro_model = c.petro.model, smr_model = c.petro.smr_model,
         p_clay = c.petro.p_clay, m_archie = c.petro.m_archie,
-        sigma_clay = c.petro.sigma_clay, cec_clay = c.petro.cec_clay)
+        sigma_clay = c.petro.sigma_clay, cec_clay = c.petro.cec_clay,
+        a...)
     path
 end
 
