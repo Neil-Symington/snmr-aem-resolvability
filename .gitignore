@@ -1,5 +1,4 @@
 output/
 *.jld2
 *.png
-Manifest.toml
 .DS_Store
