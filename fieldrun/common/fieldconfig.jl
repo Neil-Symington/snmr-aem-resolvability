@@ -95,8 +95,51 @@ end
 function check_values(c::Dict, path)
     bad = String[]
     chk(cond, msg) = cond || push!(bad, msg)
+    # Sections that are not in REQUIRED are optional by the schema, but
+    # check_values indexed c["aem"] and c["snmr"] unguarded, so deleting either
+    # gave a raw KeyError instead of a message. A review found both. Sections
+    # the code genuinely needs are now named as required, and everything else
+    # is probed with haskey.
+    for sec in ("aem", "snmr", "grid", "mcmc", "gate", "detect")
+        haskey(c, sec) || push!(bad, "[$sec] is missing, and $(sec == "aem" ?
+            "stages/udf_system.jl reads it" : "the stages read it")")
+    end
+    isempty(bad) || error("$path: missing section(s):\n  " * join(bad, "\n  "))
     pos(sec, k) = haskey(c[sec], k) && chk(c[sec][k] > 0, "[$sec] $k must be > 0, got $(c[sec][k])")
     frac(sec, k) = haskey(c[sec], k) && chk(0 < c[sec][k] <= 1, "[$sec] $k must be in (0,1], got $(c[sec][k])")
+
+    # TYPES FIRST. A review got nz = true, nz = 2.5, npar = 1.5, dz = inf and
+    # seed_base = "abc" past every numeric check, and nz = "60" produced a raw
+    # MethodError rather than a message. Bool is checked before Integer on
+    # purpose: in Julia `true isa Integer` is true.
+    ints   = (("run","npar"), ("run","minfree_gb"), ("grid","nz"), ("mcmc","nchains"),
+              ("mcmc","nsamples"), ("mcmc","save_freq"), ("mcmc","nensembles"),
+              ("mcmc","seed_base"), ("mcmc","nmin"), ("mcmc","nmax"),
+              ("kernel","n_draws"), ("snmr","min_pulse_moments"),
+              ("convergence","min_ess"))
+    reals  = (("grid","dz"), ("grid","zstart"), ("grid","extendfrac"), ("mcmc","tmax"),
+              ("mcmc","burninfrac"), ("aem","nominal_unc"), ("aem","tx_area_m2"),
+              ("aem","rx_radius_m"), ("aem","rx_dz_m"), ("aem","max_sep_m"),
+              ("aem","lm_ramp_hold"), ("aem","hm_ramp_hold"), ("detect","theta"),
+              ("detect","min_thick_m"), ("detect","occam_chi2_max"),
+              ("detect","doi_widthfrac"), ("convergence","rhat"),
+              ("convergence","splithalf_dw"), ("convergence","splithalf_max"),
+              ("convergence","trend_sigma"), ("noise","s_prior_center"),
+              ("noise","s_prior_tau"), ("occam","w0"), ("occam","beta2"))
+    for (sec, k) in ints
+        haskey(c, sec) && haskey(c[sec], k) || continue
+        v = c[sec][k]
+        v isa Bool && (chk(false, "[$sec] $k must be an integer, got the boolean $v"); continue)
+        v isa Integer || chk(false, "[$sec] $k must be an integer, got $(repr(v))")
+    end
+    for (sec, k) in reals
+        haskey(c, sec) && haskey(c[sec], k) || continue
+        v = c[sec][k]
+        v isa Bool && (chk(false, "[$sec] $k must be a number, got the boolean $v"); continue)
+        (v isa Real && isfinite(v)) ||
+            chk(false, "[$sec] $k must be a finite number, got $(repr(v))")
+    end
+    isempty(bad) || error("$path: bad type(s):\n  " * join(bad, "\n  "))
 
     for (sec, k) in (("run","npar"), ("run","minfree_gb"), ("grid","nz"), ("grid","dz"),
                      ("grid","zstart"), ("mcmc","nchains"), ("mcmc","nsamples"),
@@ -144,6 +187,42 @@ function check_values(c::Dict, path)
     haskey(c["snmr"], "loop_shape") &&
         chk(c["snmr"]["loop_shape"] in ("square", "circle"),
             "[snmr] loop_shape must be \"square\" or \"circle\", got \"$(c["snmr"]["loop_shape"])\"")
+
+    # Checks a review found entirely absent.
+    haskey(c["run"], "name") && chk(!isempty(strip(c["run"]["name"])),
+        "[run] name must not be empty")
+    chk(length(unique(c["run"]["sites"])) == length(c["run"]["sites"]),
+        "[run] sites contains duplicates: $(c["run"]["sites"])")
+    chk(!isempty(c["run"]["stages"]), "[run] stages must not be empty")
+    chk(length(unique(c["run"]["stages"])) == length(c["run"]["stages"]),
+        "[run] stages contains duplicates: $(c["run"]["stages"])")
+    for k in ("outputs", "logs")
+        haskey(c["paths"], k) && chk(!isempty(strip(string(c["paths"][k]))),
+            "[paths] $k must not be empty")
+    end
+    if haskey(c["gate"], "thresholds_mgL")
+        v = c["gate"]["thresholds_mgL"]
+        chk(length(unique(v)) == length(v), "[gate] thresholds_mgL contains duplicates: $v")
+    end
+    if haskey(c["aem"], "lowpass_hz")
+        chk(all(x -> x isa Real && isfinite(x) && x > 0, c["aem"]["lowpass_hz"]),
+            "[aem] lowpass_hz must all be positive and finite, got $(c["aem"]["lowpass_hz"])")
+    end
+    for (sec, k) in (("occam","regtype"), ("occam","uncertainty"),
+                     ("noise","sigma_hat_branch"))
+        haskey(c, sec) && haskey(c[sec], k) &&
+            chk(c[sec][k] isa AbstractString && !isempty(c[sec][k]),
+                "[$sec] $k must be a non-empty string, got $(repr(c[sec][k]))")
+    end
+    haskey(c["snmr"], "mat_preference") &&
+        chk(c["snmr"]["mat_preference"] isa AbstractVector &&
+            !isempty(c["snmr"]["mat_preference"]),
+            "[snmr] mat_preference must be a non-empty list of patterns")
+    # Keys this module WRITES, which a config must not supply.
+    for k in ("mode_overrides", "config_file")
+        haskey(c["run"], k) && chk(false,
+            "[run] $k is written by the loader and must not be set in a config")
+    end
 
     isempty(bad) || error("$path: bad value(s):\n  " * join(bad, "\n  "))
 end
@@ -197,6 +276,13 @@ function load_config(tomlfile::AbstractString)
         end
     end
     delete!(c["mcmc"], "smoke")
+    # RE-CHECK AFTER THE OVERLAY, and BEFORE the loader writes its own keys.
+    # check_values runs before the overlay, so every value the overlay
+    # introduced was unvalidated: a review got nsamples = -5, nchains = 0,
+    # kernel_draws = -3 and nsamples = "many" through. The ordering matters --
+    # re-checking after setting mode_overrides made the "written by the loader,
+    # do not supply it" rule fire on the loader's own output.
+    isempty(applied) || check_values(c, tomlfile * " [after the mcmc.smoke overlay]")
     c["run"]["mode_overrides"] = applied
 
     # --- sites ------------------------------------------------------------

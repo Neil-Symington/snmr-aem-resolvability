@@ -14,8 +14,8 @@ This is a branch under construction. What is here now:
 - `config/udf_example.toml` — the control file, every stage parameter in one place
 - `tools/assemble_example.py` — how `example/` was built, for provenance
 
-- `common/fieldconfig.jl` — the control-file reader, with fifteen validated
-  failure paths
+- `common/fieldconfig.jl` — the control-file reader, whose failure paths are each
+  negative-tested
 - `stages/udf_system.jl` — the SkyTEM system, parsed from the shipped `.des`
   rather than transcribed, and cross-checked against what the control file
   declares
@@ -40,9 +40,13 @@ file and builds the AEM system, and nothing else.
 ```
 
 `mode = "smoke"` in `[run]` cuts the chains to 2,001 samples on 2 chains with a
-single kernel draw. It finishes in minutes, exercises every stage and every file
-path, and proves nothing about a posterior — it is what a reader runs first, and
-what CI runs. `mode = "full"` is the committed parameter set.
+single kernel draw. It is what a reader runs first: it exercises every stage and
+every file path and proves nothing about a posterior. `mode = "full"` is the
+committed parameter set.
+
+**No CI job runs any fieldrun stage**, because the stages do not exist yet. An
+earlier version of this file said smoke mode "is what CI runs", which was never
+true — a review caught it.
 
 Stage order matters and the driver enforces it: detection must precede the
 profile likelihood, because the profile reads the detected interval. An earlier
