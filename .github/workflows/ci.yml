@@ -111,48 +111,51 @@ jobs:
           echo "refused at step 0, as intended"
 
   conda-workaround:
-    # THE JOB THE REVIEW SAID WAS MISSING. On GitHub's runners `python` is
-    # already on PATH, so step 1 reported "instantiate completed with no
-    # workaround needed" on all four install jobs -- the conda failure that
-    # install.jl exists to work around never happened, and CI would have stayed
-    # green with the PATH fix deleted. This removes `python` from PATH first, so
-    # the failure is real and the workaround is what gets tested.
-    name: install.jl handles a machine with no `python`
+    # THE JOB THAT NOW TESTS WHAT IT CLAIMS. Two earlier versions did not.
+    #
+    # The failure install.jl works around is a PATH-LENGTH effect, not an
+    # operating-system one: conda writes `#!/usr/bin/env python` as its
+    # launcher's shebang when the absolute path to its own python would exceed
+    # conda's 127-character limit, and `env` then resolves `python` through
+    # PATH. A runner's default depot python path is about 49 characters, so it
+    # gets an absolute shebang and can NEVER trigger the failure -- which is
+    # why the first version of this job reported "no workaround needed", and
+    # why the second version's "remove every python from PATH" step tested
+    # nothing at all: a short path never consults PATH.
+    #
+    # An independent review measured the boundary at 125 characters (absolute,
+    # works) versus 126 (env python, fails). So this job forces a long depot
+    # and the failure becomes real.
+    name: install.jl handles a long depot path
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.12'
-      - name: remove every `python` from PATH, leaving python3
+      - name: a depot path long enough to trigger the env-python shebang
         run: |
-          while p=$(command -v python 2>/dev/null); do
-            echo "removing $p"; sudo rm -f "$p"
-          done
-          command -v python && { echo "python still on PATH"; exit 1; } || true
-          command -v python3 || { echo "python3 is missing too"; exit 1; }
-      # WHAT THIS CAN AND CANNOT PROVE. The first version of this step FAILED
-      # the job when install.jl reported "no workaround needed" -- and that is
-      # exactly what happened: removing every `python` from PATH does NOT
-      # reproduce the conda exit-127 failure on a GitHub runner, though it
-      # reproduces reliably on at least two developer machines. So the trigger
-      # is something else about those machines, and CI cannot currently create
-      # it. Finding out what is an open question.
-      #
-      # So this asserts the guarantee it CAN give -- that the install finishes
-      # with no system `python` at all -- and RECORDS which path was taken
-      # instead of pretending the workaround was exercised.
-      - name: install.jl must finish with no system `python`
+          deep="$HOME/$(printf 'depot_padding_%.0s' {1..8})d"
+          mkdir -p "$deep"
+          echo "JULIA_DEPOT_PATH=$deep" >> "$GITHUB_ENV"
+          echo "depot path is ${#deep} characters: $deep"
+          if [ ${#deep} -lt 100 ]; then
+            echo "FAIL: too short to trigger the failure this job exists to test"
+            exit 1
+          fi
+      - name: install.jl must hit the conda failure AND recover from it
         run: |
+          echo "depot: $JULIA_DEPOT_PATH (${#JULIA_DEPOT_PATH} chars)"
           out=$(julia --project=. install.jl 2>&1); echo "$out"
           echo "$out" | grep -q "environment ready" || {
-            echo "FAIL: install did not finish without a system python"; exit 1; }
+            echo "FAIL: install did not finish"; exit 1; }
           if echo "$out" | grep -q "no workaround needed"; then
-            echo "NOTE: the conda failure did not occur here, so the PATH"
-            echo "      workaround in step 3 is NOT exercised by this job."
-          else
-            echo "the conda failure occurred and the workaround handled it"
+            echo "FAIL: the conda failure did not occur, so the workaround is"
+            echo "      still untested. Is the depot path long enough, or has"
+            echo "      conda changed its shebang rule?"
+            exit 1
           fi
+          echo "the conda failure occurred and the workaround handled it"
       - name: tests
         run: julia --project=. test/runtests.jl

@@ -10,13 +10,26 @@
 #   HiQGA's deps/build.jl runs Conda.add("matplotlib") unconditionally, and
 #   then overwrites ENV["PYTHON"] with its own conda python -- so setting
 #   PYTHON yourself does nothing.
-#   conda's own launcher begins #!/usr/bin/env python, and `env` resolves
-#   `python` through PATH.
-#   Miniconda ships that `python` inside its OWN bin, but that bin is not on
-#   PATH while the HiQGA build runs, and Debian and Ubuntu have no system
-#   `python`, only `python3`.
+#   conda writes its launcher's shebang one of two ways, and the choice is made
+#   by PATH LENGTH, not by the operating system: if `#!<abs path to conda's own
+#   python>` would exceed conda's 127-character limit it writes
+#   `#!/usr/bin/env python` instead, and `env` then resolves `python` through
+#   PATH. Measured boundary, same machine and Manifest either side: a depot
+#   python path of 125 characters gets the absolute shebang and works with NO
+#   python on PATH at all; 126 and above gets `env python` and fails.
+#   A short depot -- ~/.julia is about 57 characters -- therefore never hits
+#   this, which is why GitHub's runners install cleanly and a deep project-local
+#   or scratch depot does not.
 #   => conda exits 127 before it does anything, the HiQGA build fails, and
 #      instantiate takes the whole environment down with it.
+#
+#   AND A SYSTEM `python` DOES NOT FIX IT. With `env python` resolving to
+#   /usr/bin/python3, conda fails differently: ModuleNotFoundError: No module
+#   named 'conda'. Only CONDA'S OWN python can run conda. So what step 3 does
+#   is not "supply a python" -- it is "put conda's python where env will find
+#   it". An earlier version of this comment blamed Debian and Ubuntu having no
+#   system python; that was a wrong explanation of a real failure, and an
+#   independent review measured the actual cause.
 #
 # PUTTING CONDA'S BIN ON PATH IS THE FIX. An earlier version of this file
 # credited the alias it creates in step 2; that was wrong. On Miniconda 26.9.4

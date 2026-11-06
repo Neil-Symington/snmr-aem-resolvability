@@ -1,80 +1,112 @@
-# test_noise_seed.jl -- guards the inert-seed bug at EVERY call site.
+# test_noise_seed.jl -- the noise seed must REACH the draw. Behavioural.
 #
-# HiQGA's makenoisydata! calls Random.seed!(rseed) ITSELF, immediately before
-# drawing. A caller that seeds beforehand and omits the keyword gets HiQGA's
-# default realisation, 123, whatever seed it thinks it set. That is what
-# happened here: three tools passed rseed_noise = SEED = 20261012 into
-# build_skytem_operator, which dropped it. Every published AEM number came
-# from the 123 draw, and the two realisations differ by a median of about 3%
-# and up to 9-14% per gate, so the pin to 123 is deliberate.
+# HiQGA's makenoisydata! calls Random.seed!(rseed) itself, immediately before
+# drawing, so a caller that seeds beforehand and omits the keyword gets HiQGA's
+# default realisation, 123, whatever seed it thinks it set. Three tools passed
+# rseed_noise = SEED = 20261012 into a function that dropped it, so every
+# published AEM number came from the 123 draw. The realisations differ by a
+# median of about 3% and up to 9-14% per gate.
 #
-# The first version of this test read one hardcoded file and matched the call
-# text including its comments. A review defeated it three ways: by leaving the
-# keyword in a comment inside the call, by reassigning rseed_noise just before
-# the call, and by dropping the keyword at the SECOND call site in
-# src/aem_jac.jl, which the test never looked at. All three are closed below.
+# WHY THIS IS NO LONGER A TEXT CHECK. Three successive versions of this file
+# matched the source of the call site, and a reviewer defeated every one of
+# them -- sixteen distinct mutations in total: `rseed = seed+1` (matched
+# `seed\b`), `rseed_noise += 1` (not `=`), a decoy keyword inside a nested
+# argument, an aliased makenoisydata!, a new call site in a subdirectory
+# readdir never visited, a new call site in a directory the test did not scan.
+# Each patch closed the exact spelling used and left the class open, which is
+# the signature of testing the wrong thing.
 #
-# The check is textual on purpose -- the defect is a dropped keyword argument,
-# which needs neither HiQGA nor a truth file to detect -- but it now discovers
-# its own call sites rather than trusting a filename. Comment stripping is
-# line-wise and naive; a `#` inside a string literal would confuse it, and
-# there are none in these files.
-let
-    srcdirs = ("src", "stages", "tools")
-    strip_comments(s) = join([replace(l, r"#.*$" => "") for l in split(s, '\n')], '\n')
+# So this builds the operator and compares the DATA. Any mutation that stops
+# the caller's seed reaching the draw -- dropped, hardcoded, reassigned,
+# aliased, or routed through a new call site in the same path -- changes the
+# answer below. Spelling is irrelevant.
+using Random
 
-    # --- find every call site, rather than naming one ---------------------
-    sites = Tuple{String,String}[]
-    for d in srcdirs, f in readdir(joinpath(ROOT, d); join = true)
-        endswith(f, ".jl") || continue
-        txt = strip_comments(read(f, String))
-        occursin("makenoisydata!", txt) || continue
-        for m in eachmatch(r"makenoisydata!\((?s:.*?)\)\s*\n", txt)
-            push!(sites, (relpath(f, ROOT), m.match))
+let
+    # A minimal two-layer section. No truth file, no config, no scenario: the
+    # question is only whether the seed propagates.
+    zb = collect(0.0:5.0:150.0)
+    σ  = fill(0.05, length(zb)); σ[zb .>= 40.0] .= 0.5
+
+    data(op) = vcat(vec(op.aem.dlow), vec(op.aem.dhigh))
+
+    a1 = data(build_skytem_operator(σ, zb; rseed_noise = 123))
+    a2 = data(build_skytem_operator(σ, zb; rseed_noise = 123))
+    b  = data(build_skytem_operator(σ, zb; rseed_noise = 20261012))
+
+    # the same seed must give the same realisation ...
+    @test a1 == a2
+    # ... and a different seed a different one. If this fails, the keyword is
+    # not reaching makenoisydata! and every "different seed" is the same draw.
+    @test a1 != b
+    # not merely different: the realisations are worth percent, not epsilon
+    @test maximum(abs.((a1 .- b) ./ max.(abs.(b), eps()))) > 0.01
+
+    # AND IT MUST BE THE REALISATION ASKED FOR, not merely a reproducible one.
+    # "seeds matter" is too weak: a review mutated the call to `rseed = seed+1`,
+    # which keeps different seeds giving different data while silently drawing
+    # the wrong realisation. So the operator built at 123 is compared against
+    # makenoisydata! invoked at 123 directly. Version-independent -- no
+    # hardcoded fingerprint to rot when HiQGA changes.
+    op = build_skytem_operator(σ, zb; rseed_noise = 123)
+    ref = deepcopy(op.aem)
+    transD_GP.SkyTEM1DInversion.makenoisydata!(ref,
+        log10.(op.ρ_aem_truth[2:end]); rseed = 123, showplot = false,
+        noisefrac = 0.03, σ_halt_low = LM_noise, σ_halt_high = HM_noise,
+        units = 1e-12)
+    @test vec(ref.dlow) == vec(op.aem.dlow)
+    @test vec(ref.dhigh) == vec(op.aem.dhigh)
+
+    # the Jacobian operator is a SECOND path to the same draw, and a review
+    # mutated it without this file noticing
+    T = Dict{String,Any}("z" => zb, "σ_bulk" => σ)
+    J = build_aem_jac(T, 123)
+    j1 = J.aem
+    j2 = build_aem_jac(T, 20261012).aem
+    @test vec(j1.dlow) != vec(j2.dlow)
+
+    # The SAME identity check as above, and it is needed: the first version of
+    # this file checked only that different seeds differ, and a review's
+    # `rseed = Int(seed)+1` mutation passed it -- different seeds still differ
+    # while the realisation drawn is not the one asked for. Checking variation
+    # is not checking identity.
+    jref = deepcopy(j1)
+    transD_GP.SkyTEM1DInversion.makenoisydata!(jref,
+        log10.((1.0 ./ J.σt)[2:end]); rseed = 123, showplot = false,
+        noisefrac = 0.03, σ_halt_low = LM_noise, σ_halt_high = HM_noise,
+        units = 1e-12)
+    @test vec(jref.dlow) == vec(j1.dlow)
+    @test vec(jref.dhigh) == vec(j1.dhigh)
+end
+
+# --- policy, which is genuinely textual -----------------------------------
+# Which realisation the TOOLS pin is a decision, not a behaviour: 123 is the
+# draw behind every published number, so the tools must pin it and must not
+# pass their MCMC seed. Recursive, because a reviewer added a call site in a
+# subdirectory that a flat readdir never saw.
+let
+    strip_comments(s) = join([replace(l, r"#.*$" => "") for l in split(s, '\n')], '\n')
+    jlfiles(dir) = let out = String[]
+        for (root, _, files) in walkdir(dir), f in files
+            endswith(f, ".jl") && push!(out, joinpath(root, f))
+        end
+        out
+    end
+
+    for d in ("src", "stages", "tools", "synthetics")
+        for f in jlfiles(joinpath(ROOT, d))
+            txt = strip_comments(read(f, String))
+            # the inert seed must not come back anywhere
+            @test !occursin(r"Random\.seed!\(\s*rseed_noise\s*\)", txt)
         end
     end
 
-    # If this drops to zero the test has stopped testing anything.
-    @test length(sites) >= 2
-
-    for (file, call) in sites
-        # The keyword must reach the noise draw, in code and not in a comment --
-        # AND it must carry the caller's argument. A review defeated an earlier
-        # version by hard-coding `rseed = 999`, which satisfies "rseed is passed"
-        # while ignoring the argument entirely: the original bug in a new form.
-        # So the value is checked, not just the keyword.
-        @test occursin(r"\brseed\s*=\s*(rseed_noise\b|Int\(seed\)|seed\b)", call)
-    end
-
-    # --- and the seed that does nothing must not come back ----------------
-    for d in srcdirs, f in readdir(joinpath(ROOT, d); join = true)
-        endswith(f, ".jl") || continue
-        txt = strip_comments(read(f, String))
-        @test !occursin(r"Random\.seed!\(\s*rseed_noise\s*\)", txt)
-    end
-
-    # --- nor may the argument be overwritten before it is used ------------
-    setup = strip_comments(read(joinpath(ROOT, "src", "aem_setup.jl"), String))
-    body = match(r"function build_skytem_operator(?s:.*?)\nend", setup)
-    @test body !== nothing
-    if body !== nothing
-        # an assignment to rseed_noise anywhere in the body is a reassignment:
-        # the keyword itself is in the signature, which this match excludes
-        # only after the first newline, so allow the signature's default
-        inner = replace(body.match, r"^function build_skytem_operator(?s:.*?)\)\s*\n" => "")
-        @test !occursin(r"\brseed_noise\s*=", inner)
-    end
-
-    # --- the tools pin the published realisation, not their MCMC seed -----
     for t in ("aem_HYP.jl", "aem_draws.jl", "aem_prior_test.jl")
         s = strip_comments(read(joinpath(ROOT, "tools", t), String))
         @test occursin(r"const NOISE_RSEED\s*=\s*123", s)
-        # Not merely "not SEED": every rseed_noise= in these tools must be
-        # NOISE_RSEED. A review passed a third value and the test stayed green.
-        for m in eachmatch(r"rseed_noise\s*=\s*([A-Za-z_0-9]+)", s)
-            @test m.captures[1] == "NOISE_RSEED"
-        end
-        # and NOISE_RSEED itself must not be reassigned after it is defined
         @test length(collect(eachmatch(r"NOISE_RSEED\s*=", s))) == 1
+        for m in eachmatch(r"rseed_noise\s*=\s*([^,;\)\n]+)", s)
+            @test strip(m.captures[1]) == "NOISE_RSEED"
+        end
     end
 end

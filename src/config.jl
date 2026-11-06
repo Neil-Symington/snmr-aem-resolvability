@@ -191,10 +191,19 @@ function assertvalid(c::AbstractDict; root = pwd(), require_files = true)
                 "[data].$k not found: $v (a file this repository should ship)")
     end
     if require_files
+        # These are products of earlier stages, so "not found" on a clean clone
+        # is the normal case and the message has to say what produces them. A
+        # review hit the README's own quick-start line and got two paths and no
+        # remedy.
+        made_by = Dict(
+            "truth" => "synthetics/scripts/build_truth.jl, then copied to data/truth_murray<T>.jld2",
+            "snmr_ensemble" => "stages/stage2_snmr.jl (which needs tools/smr_data.jl first)")
         for k in ("truth", "snmr_ensemble")
             v = get(d, k, "")
             (v isa String && !isempty(v)) || continue
-            push_if(isfile(joinpath(root, v)) || isfile(v), "[data].$k not found: $v")
+            push_if(isfile(joinpath(root, v)) || isfile(v),
+                    "[data].$k not found: $v\n      produced by $(made_by[k])" *
+                    "\n      run run_site.jl with --dry-run to see the whole chain")
         end
     end
 

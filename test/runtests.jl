@@ -9,7 +9,7 @@
 #   stage0 roundtrip    the sealed artefact rebuilding the operator exactly
 #   gate solver         the conductance constraint being met at the optimum
 #   stage3 integral     the window integral against a direct sum
-# The last three need stage outputs and are skipped, loudly, without them.
+# Each names the files it needs and skips, loudly, when they are absent.
 using Test, Printf
 const ROOT = normpath(joinpath(@__DIR__, ".."))
 
@@ -29,6 +29,10 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
     end
 
     @testset "noise seed reaches makenoisydata!" begin
+        # The seed test is behavioural now, so it needs the operator builders.
+        # These includes are what the integration tests use too.
+        include(joinpath(ROOT, "src", "aem_setup.jl"))
+        include(joinpath(ROOT, "src", "aem_jac.jl"))
         include(joinpath(@__DIR__, "test_noise_seed.jl"))
     end
 

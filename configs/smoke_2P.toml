@@ -1,0 +1,65 @@
+# smoke_2P.toml -- the smallest config that drives the whole pipeline.
+#
+# SHIPPED BECAUSE EVERY READER HAD TO INVENT IT. Two independent reviewers wrote
+# their own copy of synth_2P.toml to run a smoke test, and a wrong guess -- the
+# 2M stage1_draws tag, or forgetting the [gate] grid -- costs about an hour. One
+# of them recommended shipping this. It is NOT a result: the sample counts and
+# gate grid are far too small for a number worth quoting.
+#
+#   julia --project=. synthetics/scripts/build_truth.jl synthetics/config/confined_aquifer.toml
+#   mkdir -p data
+#   cp synthetics/output/confined_aquifer_truth.jld2 data/truth_murray2P.jld2
+#   julia --project=. tools/aem_HYP.jl 2001 2P 2 _smoke
+#   julia --project=. tools/aem_draws.jl 2P 50 _smoke
+#   julia --project=. tools/smr_data.jl transd --tag 2P --label _smoke
+#   julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 \
+#         --tag 2PT --label _smoke --nsamples 2001 --nchains 2
+#   julia --project=. run_site.jl configs/smoke_2P.toml
+#
+# Differs from synth_2P.toml only in stage1_draws (the 2P tag, not the paper's
+# 2M, because a smoke Stage 1 runs under 2P) and the [gate] grid below.
+# Measured: Stages 3-6 took 35 min at this grid on one machine, 90 on another.
+
+# ---------------------------------------------------------------------
+#  synth_2P.toml  --  synthetic column 2P
+#  test two, confined Calivil/Renmark aquifers, tier P
+#  Role: primary   Priority: primary
+# ---------------------------------------------------------------------
+# Inherits every key, and every explanatory comment, from ../config.toml.
+# Only what differs for this column is restated here, so a reviewer can
+# see the whole difference between two columns on one screen.
+extends = "../config.toml"
+
+name  = "synth_2P"
+label = "test two, confined Calivil/Renmark aquifers, tier P"
+
+[data]
+truth  = "data/truth_murray2P.jld2"
+column = "2P"
+parent = ""             # a primary column, not derived
+role   = "primary"
+snmr_ensemble = "data/cond_C2_typical2PT.jld2"
+# NOT aem_draws_2P: the Stage 1 AEM run for this column is tagged 2M.
+# truth_murray2M and truth_murray2P have IDENTICAL sigma_bulk, clay, sigma_w
+# and phi and differ only in theta_SMR, and Stage 1 sees only sigma_bulk,
+# so the 2M draws are this column's draws. The saline and water-table
+# variants use their own tags, which makes this one look like a typo. It is
+# not, and a review lost time to it.
+stage1_draws = "data/aem_draws_2P.jld2"
+
+[data.loop]
+side       = 100.0
+area_check = 10000.0
+
+[data.snmr]
+noise_tier = "typical"
+
+[output]
+dir = "outputs/synth_2P"
+
+# A gate grid small enough to finish. Stage 4's cost is an Occam solve, a
+# lambda-squared sweep and a bisection PER node, so --nsamples does nothing to
+# it and there is no fast mode; this only shortens it.
+[gate]
+n_nodes_coarse = 4      # production: 16
+n_nodes_fine   = 3      # production: 15
