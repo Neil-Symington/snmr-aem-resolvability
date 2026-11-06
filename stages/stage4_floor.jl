@@ -45,7 +45,30 @@ function theta_snmr(ensfile, a, b)
     median([sum(Θ[ww.ix,j] .* ww.w)/L for j in 1:size(Θ,2)])
 end
 
+# This stage is a multi-column aggregator, so it works on COLUMN TAGS and
+# derives both its config and its output directory from them: configs/synth_<tag>.toml
+# and outputs/synth_<tag>/. Every other stage takes --config instead, so the
+# convention is a silent requirement -- a site whose output directory is not
+# named synth_<column> fails here with an ArgumentError naming a path and no
+# reason. The paper's six configs all satisfy it; a hand-made one need not.
+function require_convention(tag)
+    cfgp = joinpath(ROOT, "configs", "synth_$tag.toml")
+    outp = joinpath(OUT, "synth_$tag", "stage4post_synth_$tag.jld2")
+    isfile(cfgp) || error(
+        "stage4_floor expects configs/synth_" * tag * ".toml, which is missing.\n\n" *
+        "  This stage derives its paths from the COLUMN tag, not from --config:\n" *
+        "  the config must be configs/synth_<column>.toml and the outputs must be\n" *
+        "  in outputs/synth_<column>/. Rename, or set [data].column to match.")
+    isfile(outp) || error(
+        "stage4_floor expects " * outp * ", which is missing.\n\n" *
+        "  Either Stage 4 has not run for column " * tag * ", or the site's output\n" *
+        "  directory is not named synth_" * tag * ". This stage requires that\n" *
+        "  convention; every other stage takes --config and does not.")
+    nothing
+end
+
 function floorfor(tag; cfgpath = joinpath(ROOT,"configs","synth_$tag.toml"))
+    require_convention(tag)
     cfg = SiteConfig.resolve(cfgpath)
     ce  = cfg["ceilings"]; pr = cfg["priors"]
     mlo, mhi = SiteConfig.assertvalid(cfg; root=ROOT, require_files=false).m_prior
