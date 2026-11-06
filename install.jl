@@ -61,11 +61,20 @@ end
 using Pkg
 
 @info "step 1/4  installing packages (the HiQGA build step is expected to fail here)"
+# The catch used to be bare, so NOTHING about the cause reached the log and a
+# reviewer found the real CI log contained zero occurrences of "rror". The
+# README said "a red `Error building HiQGA` scrolling past is the normal path";
+# on these depots it does not scroll past, because this swallowed it.
+const STEP1 = Ref{Union{Nothing,Exception}}(nothing)
 try
     Pkg.instantiate()
     @info "instantiate completed with no workaround needed"
-catch
+catch e
+    STEP1[] = e
     @info "instantiate stopped at a build step, as expected -- continuing"
+    for l in split(sprint(showerror, e), "\n")[1:min(end, 12)]
+        isempty(strip(l)) || println("    | ", l)
+    end
 end
 
 @info "step 2/4  checking conda's python alias (a fallback; the PATH in step 3 is the fix)"
@@ -74,7 +83,21 @@ end
 # only transitive.
 using Conda
 bin = joinpath(Conda.ROOTENV, "bin")
-isdir(bin) || error("conda was never bootstrapped at $bin; rerun and read the log")
+# "rerun and read the log" pointed at a log with nothing in it, because step 1's
+# bare catch had eaten the reason. The commonest cause is a SPACE in the depot
+# path: Conda.jl refuses outright on any platform (`' ' in PREFIX`), so conda
+# never gets as far as bootstrapping. A reviewer hit this and could not tell
+# what to do.
+if !isdir(bin)
+    why = STEP1[] === nothing ? "" :
+          "\n\n  step 1 failed with:\n    " *
+          replace(first(split(sprint(showerror, STEP1[]), "\n"), 3) |> x -> join(x, "\n    "), "\r" => "")
+    hint = occursin(" ", Conda.ROOTENV) ?
+        "\n\n  THE DEPOT PATH CONTAINS A SPACE:\n    $(Conda.ROOTENV)\n" *
+        "  Conda.jl refuses to bootstrap into a path with a space, on every\n" *
+        "  platform. Use a depot path without spaces, or set CONDA_JL_HOME." : ""
+    error("conda was never bootstrapped at $bin" * hint * why)
+end
 if isfile(joinpath(bin, "python")) || islink(joinpath(bin, "python"))
     @info "  alias already present"
 else

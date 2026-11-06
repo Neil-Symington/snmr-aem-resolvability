@@ -51,7 +51,9 @@ def subset_csv(src, dst, id_col, ids, drop=()):
     if missing:
         sys.exit(f"{src}: no row for {sorted(missing)}")
     cols = [c for c in rows[0] if c not in drop]
-    with open(dst, "w", newline="") as fh:
+    # newline="\n", not "": the default gave CRLF on every shipped CSV, so
+    # "two rows, verbatim" was not true even though the values were unchanged.
+    with open(dst, "w", newline="\n") as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
         for r in sorted(keep, key=lambda r: r[id_col]):
@@ -63,8 +65,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sites", nargs="+", default=["SMR_UD21", "SMR_UD24"])
     ap.add_argument("--radius", type=float, default=1000.0)
+    # The three source roots were hardcoded to the author's machine with no way
+    # to override them, so a reader holding the deliveries had to edit the file.
+    ap.add_argument("--udf", default=UDF, help="the udf_realdata working directory")
+    ap.add_argument("--snmr-archive", default=SNMR_ARCHIVE)
+    ap.add_argument("--aem-system", default=AEM_SYSTEM, help="path stem, no extension")
     a = ap.parse_args()
     ids = set(a.sites)
+    global UDF, SNMR_ARCHIVE, AEM_SYSTEM
+    UDF, SNMR_ARCHIVE, AEM_SYSTEM = a.udf, a.snmr_archive, a.aem_system
 
     for d in ("snmr", "aem/soundings", "aem/system"):
         os.makedirs(os.path.join(OUT, d), exist_ok=True)
@@ -88,10 +97,23 @@ def main():
         written.append((f"snmr/{name}", f"{os.path.getsize(src)} B, chosen by preference order"))
 
     # 3. the extracted AEM soundings and their manifest
+    # The manifest's `csv` column holds the AUTHOR's source-tree path,
+    # aem_soundings/<ID>.csv, while the shipped files are at aem/soundings/.
+    # Copying the rows unchanged left a path that resolves to nothing, which a
+    # reviewer found. Rewrite it to where the file actually is.
+    man_dst = os.path.join(OUT, "aem", "soundings", "manifest.csv")
     n, _ = subset_csv(os.path.join(UDF, "aem_soundings", "manifest.csv"),
-                      os.path.join(OUT, "aem", "soundings", "manifest.csv"),
-                      "field_id", ids)
-    written.append(("aem/soundings/manifest.csv", f"{n} rows"))
+                      man_dst, "field_id", ids)
+    with open(man_dst, newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    for r in rows:
+        if r.get("csv"):
+            r["csv"] = "aem/soundings/" + os.path.basename(r["csv"])
+    with open(man_dst, "w", newline="\n") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        w.writeheader(); w.writerows(rows)
+    written.append(("aem/soundings/manifest.csv",
+                    f"{n} rows, csv column repointed at aem/soundings/"))
     for sid in sorted(ids):
         src = os.path.join(UDF, "aem_soundings", f"{sid}.csv")
         dst = os.path.join(OUT, "aem", "soundings", f"{sid}.csv")
@@ -111,6 +133,10 @@ def main():
     sub = nav[keep].reset_index(drop=True)
     p = os.path.join(OUT, "aem", "nav_clip.parquet")
     sub.to_parquet(p, index=False)
+    # Plain Parquet, not GeoParquet: the file carries pandas metadata and no
+    # `geo` key, which a reviewer checked. It is also not byte-reproducible --
+    # pyarrow and pandas versions are embedded -- so its checksum is a record of
+    # what shipped, not a target to reproduce.
     written.append(("aem/nav_clip.parquet",
                     f"{len(sub)} of {len(nav)} rows, {sub.Line.nunique()} lines, "
                     f"within {a.radius:.0f} m"))
@@ -122,10 +148,15 @@ def main():
         written.append((f"aem/system/{os.path.basename(src)}", f"{os.path.getsize(src)} B"))
 
     # 6. checksums over everything shipped
+    # PROVENANCE.md is written by hand, not by this script, and it lives in the
+    # same directory -- so a naive walk hashed it and a re-run produced 12 lines
+    # against the 11 shipped. A reviewer tried to reproduce the checksums and
+    # could not. Only the files this script writes are hashed.
+    SKIP = {"SHA256SUMS", "PROVENANCE.md"}
     lines, total = [], 0
     for root, _, files in os.walk(OUT):
         for f in sorted(files):
-            if f == "SHA256SUMS":
+            if f in SKIP:
                 continue
             fp = os.path.join(root, f)
             rel = os.path.relpath(fp, OUT)

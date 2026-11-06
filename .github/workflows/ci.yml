@@ -144,18 +144,57 @@ jobs:
             echo "FAIL: too short to trigger the failure this job exists to test"
             exit 1
           fi
+      # A review showed the previous version proved only the ABSENCE of one
+      # string: any exception inside install.jl's try prints "as expected", so a
+      # renamed message or an unrelated failure passed the job. It also ran
+      # under `bash -e` with `out=$(julia ...)`, so a hard failure aborted the
+      # step BEFORE the echo and the log never said why.
+      #
+      # So: tee the output as it happens (nothing is lost if it dies), and probe
+      # the CAUSE directly -- conda's launcher shebang -- rather than inferring
+      # it from a message.
       - name: install.jl must hit the conda failure AND recover from it
         run: |
+          set +e
           echo "depot: $JULIA_DEPOT_PATH (${#JULIA_DEPOT_PATH} chars)"
-          out=$(julia --project=. install.jl 2>&1); echo "$out"
-          echo "$out" | grep -q "environment ready" || {
-            echo "FAIL: install did not finish"; exit 1; }
-          if echo "$out" | grep -q "no workaround needed"; then
-            echo "FAIL: the conda failure did not occur, so the workaround is"
-            echo "      still untested. Is the depot path long enough, or has"
-            echo "      conda changed its shebang rule?"
+          julia --project=. install.jl 2>&1 | tee install.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "--- install.jl exit $rc"
+
+          # 1. the direct evidence: conda wrote an env-python shebang, which is
+          #    the failure's actual mechanism and not a message about it
+          launcher=$(find "$JULIA_DEPOT_PATH" -path '*/conda/*/bin/conda' -type f 2>/dev/null | head -1)
+          if [ -z "$launcher" ]; then
+            echo "FAIL: no conda launcher found under the depot; cannot verify the cause"
             exit 1
           fi
+          shebang=$(head -1 "$launcher")
+          pypath="$(dirname "$launcher")/python"
+          echo "launcher shebang : $shebang"
+          echo "python path      : ${#pypath} characters"
+          case "$shebang" in
+            *"/usr/bin/env python"*)
+              echo "the long path produced an env-python shebang, as intended" ;;
+            *)
+              echo "FAIL: shebang is absolute, so the conda failure CANNOT have"
+              echo "      occurred and the workaround is untested. Either the"
+              echo "      depot is too short (${#pypath} chars) or conda changed"
+              echo "      its rule."
+              exit 1 ;;
+          esac
+
+          # 2. and the install still has to have finished
+          grep -q "environment ready" install.log || {
+            echo "FAIL: install did not finish; the log above says why"; exit 1; }
+          [ "$rc" -eq 0 ] || { echo "FAIL: install.jl exited $rc"; exit 1; }
           echo "the conda failure occurred and the workaround handled it"
+      - name: keep the install log even when the step above fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conda-workaround-install-log
+          path: install.log
+          if-no-files-found: warn
       - name: tests
         run: julia --project=. test/runtests.jl
