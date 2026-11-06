@@ -69,9 +69,12 @@ julia --project=. install.jl
 
 `Pkg.instantiate()` on its own **does not reliably work from a clean Julia depot**,
 and the error it prints points at this repository rather than at the cause.
-`install.jl` expects that first attempt to fail and recovers from it — a red
-`Error building HiQGA` scrolling past during step 1 is the normal path, not a
-problem, and step 4 is what tells you whether the environment is good. `HiQGA` depends
+`install.jl` expects that first attempt to fail and recovers from it. Step 1
+prints the reason it stopped, indented under a `|`, and step 4 is what tells you
+whether the environment is good. An earlier version of this paragraph promised a
+red `Error building HiQGA` scrolling past; a reviewer found that the exception
+was swallowed by a bare `catch`, so the log contained no occurrence of "rror" at
+all. It does now. `HiQGA` depends
 on `PyCall`, `PyPlot` and `Conda`; its build runs `Conda.add("matplotlib")`
 unconditionally and then overwrites `ENV["PYTHON"]`, so setting `PYTHON` yourself has
 no effect. conda chooses its launcher's shebang by **path length**, not by operating
