@@ -9,6 +9,11 @@
 #   config keys     an unknown key being ignored, so a typo changed nothing
 #   determinism     the same config giving the same NUMBERS (not the same bytes)
 using Test, Printf
+# JLD2 at TOP level on purpose: save_column does `@eval Main using JLD2` and
+# then invokelatest, which cannot see a binding created in the same world age
+# when it is called from inside a @testset. Loading it here means Main.jldsave
+# already exists by then.
+using JLD2
 const ROOT = normpath(joinpath(@__DIR__, ".."))
 
 @testset "snmr-aem-synthetics" begin
@@ -53,6 +58,46 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
         # to throw MethodError from inside the checker
         @test_throws Exception S.load_config(write_tmp(
             "name = \"t\"\n[unit]\ntop = 0.0\nphi = 0.3\n"))
+    end
+
+    @testset "a saved column carries what the stages read" begin
+        # tools/smr_data.jl reads zsmr, θ_smrgrid, BE_T, INC_DEG and LOOP_SIDE,
+        # and zsmr alone is read by twelve files across stages, tools and
+        # figures. A generated column had none of them, so a reviewer got
+        # through Stage 1 and died on KeyError: "zsmr" with Stages 2 to 6
+        # unreachable. This asserts the contract rather than the symptom.
+        include(joinpath(ROOT, "src", "SNMRAEMSynthetics.jl"))
+        S = SNMRAEMSynthetics
+        include(joinpath(ROOT, "..", "src", "prerun_config.jl"))
+        zsmr = PrerunConfig.grid()[3]
+
+        units, cfg = S.load_config(joinpath(ROOT, "config", "confined_aquifer.toml"))
+        col = S.build_column(units, cfg)
+        a = S.smr_acquisition(col, zsmr)
+
+        for k in (:zsmr, :θ_smrgrid, :σ_smrgrid, :BE_T, :INC_DEG, :LOOP_SIDE, :LARMOR_HZ)
+            @test hasproperty(a, k)
+        end
+        # the SNMR grid must be the inversion's grid, not [smr]'s uniform one:
+        # writing the wrong one would not error, it would silently misalign
+        # every truth-versus-posterior comparison
+        @test a.zsmr == collect(zsmr)
+        @test length(a.θ_smrgrid) == length(zsmr)
+        @test all(isfinite, a.θ_smrgrid)
+        @test all(isfinite, a.σ_smrgrid)
+        # acquisition must come from the config, not a silent fallback
+        @test a.LOOP_SIDE == 100.0
+        @test a.BE_T ≈ 58000.0 * 1e-9
+        @test a.INC_DEG == -66.5
+
+        # and it must actually reach the file
+        p = tempname() * ".jld2"
+        S.save_column(col, p; zsmr = zsmr)
+        d = JLD2.load(p)
+        for k in ("zsmr", "θ_smrgrid", "BE_T", "INC_DEG", "LOOP_SIDE")
+            @test haskey(d, k)
+        end
+        rm(p, force = true)
     end
 
     @testset "determinism, by value" begin

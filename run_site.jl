@@ -58,19 +58,46 @@ function main()
     # Stages 1 and 2 are not driven from here; report whether their products exist.
     if opt["from"] <= 3
         s1 = joinpath(HERE, cfg["data"]["stage1_draws"]); s2 = cfg["data"]["snmr_ensemble"]
-        isfile(s1) || @printf("""
-  STAGE 1 INPUT MISSING: %s
-    run  julia --project=. tools/aem_HYP.jl 200001 <tag>
-    then julia --project=. tools/aem_draws.jl <tag>
+        # These used to print partial commands -- aem_HYP.jl without its chain
+        # count or label, Stage 2 without --label or the sample counts, and no
+        # mention of the cp or of smr_data.jl at all -- so a reader following
+        # them ran Stage 2 at its 100,001-sample default for hours. A review
+        # had to reconstruct the chain twice. The whole chain, once:
+        chain = """
+  THE CHAIN, for a tag <T> and an optional run label <L>:
 
-""", cfg["data"]["stage1_draws"])
-        (isempty(s2) || isfile(joinpath(HERE, s2))) || @printf("""
-  STAGE 2 INPUT MISSING: %s
-    run  julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 --tag <tag>
+    julia --project=. synthetics/scripts/build_truth.jl synthetics/config/confined_aquifer.toml
+    mkdir -p data
+    cp synthetics/output/<name>_truth.jld2 data/truth_murray<T>.jld2
+    julia --project=. tools/aem_HYP.jl 200001 <T> 4 <L>
+    julia --project=. tools/aem_draws.jl <T> 600 <L>
+    julia --project=. tools/smr_data.jl transd --tag <T> --label <L>
+    julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 --tag <T>T --label <L>
 
-""", s2)
+  For a SMOKE run use configs/smoke_2P.toml, which ships for this purpose, and
+  add --nsamples 2001 --nchains 2 to the two MCMC steps. Stage 2's default is
+  100,001 samples and takes hours.
+"""
+        isfile(s1) || @printf("\n  STAGE 1 INPUT MISSING: %s%s",
+                              cfg["data"]["stage1_draws"], chain)
+        (isempty(s2) || isfile(joinpath(HERE, s2))) ||
+            @printf("\n  STAGE 2 INPUT MISSING: %s%s", s2, chain)
     end
 
+    # Stage 4 reads Stage 0's sealed artefact, so --from 3 and --from 4 only work
+    # once Stage 0 has run for this site. The README called --from 3 "the usual
+    # entry point" without saying so, and on a clean tree it fails with an
+    # ArgumentError from inside Stage 4 that names a path and not a fix.
+    if opt["from"] > 0 && !opt["dry"]
+        s0 = joinpath(HERE, cfg["output"]["dir"], "stage0_$(name).jld2")
+        isfile(s0) || error(
+            "Stage 0 has not been run for this site: " * s0 * " is missing.\n\n" *
+            "  Stage 4 reads that artefact, so --from " * string(opt["from"]) *
+            " cannot work yet. Run Stage 0\n" *
+            "  once first -- it takes seconds and re-seals the inputs:\n\n" *
+            "    julia --project=. run_site.jl " * cfgpath * " --to 0\n\n" *
+            "  then --from " * string(opt["from"]) * " works for every later re-run.")
+    end
     steps = [(0, "stages/stage0_inputs.jl"),
              (3, "stages/stage3_hypothesis.jl"),
              (4, "stages/stage4_gate_v2.jl"),
@@ -87,7 +114,16 @@ function main()
         @printf("-- stage 4  floor under stated ceilings\n")
         run(`$(Base.julia_cmd()) --project=$HERE $(joinpath(HERE,"stages","stage4_floor.jl")) $(cfg["data"]["column"])`)
     end
-    opt["dry"] ? println("\ndry run: config valid, nothing executed") :
-                 println("\ndone. verdict table: ", joinpath(cfg["output"]["dir"], "verdict_$name.md"))
+    vt = joinpath(cfg["output"]["dir"], "verdict_$name.md")
+    if opt["dry"]
+        println("\ndry run: config valid, nothing executed")
+    elseif opt["to"] >= 6 && isfile(joinpath(HERE, vt))
+        println("\ndone. verdict table: ", vt)
+    else
+        # --to 0 used to announce a verdict table it had not written, which a
+        # review caught. Say what actually happened.
+        @printf("\ndone, stages %d-%d. the verdict table needs stage 6.\n",
+                opt["from"], opt["to"])
+    end
 end
 main()

@@ -33,6 +33,13 @@ a machine with no Julia depot. Most of it is Miniconda and matplotlib, pulled in
 seconds here and 46 seconds for the generator repository — under a minute, not
 instant.
 
+**The conda workaround is covered by CI through a long depot path.** The failure
+needs a depot python path over 127 characters, so the CI job sets
+`JULIA_DEPOT_PATH` to a deliberately long directory; a runner's default depot is
+far too short to trigger it. Removing `python` from `PATH` — which an earlier
+version of that job did — tests nothing, because a short path gets an absolute
+shebang that never consults `PATH`.
+
 **Do not run two installs at once on one machine.** `Conda.jl` downloads its
 installer to a fixed `/tmp/installer.sh`, which is not per-depot, so concurrent
 installs overwrite each other's file and one of them dies with "text file is
@@ -67,11 +74,19 @@ and the error it prints points at this repository rather than at the cause.
 problem, and step 4 is what tells you whether the environment is good. `HiQGA` depends
 on `PyCall`, `PyPlot` and `Conda`; its build runs `Conda.add("matplotlib")`
 unconditionally and then overwrites `ENV["PYTHON"]`, so setting `PYTHON` yourself has
-no effect. conda's own launcher begins `#!/usr/bin/env python`, and `env` resolves `python`
-through `PATH`. Miniconda ships that `python` inside its **own** bin, but that bin is
-not on `PATH` while the HiQGA build runs, and Debian and Ubuntu have no system
-`python`, only `python3`. conda exits 127 before doing anything and takes the whole
-environment with it.
+no effect. conda chooses its launcher's shebang by **path length**, not by operating
+system: if `#!<absolute path to conda's own python>` would exceed conda's
+127-character limit it writes `#!/usr/bin/env python` instead, and `env` then resolves
+`python` through `PATH`. Measured on one machine, everything else held fixed: a depot
+python path of **125 characters gets the absolute shebang and works with no `python`
+on `PATH` at all; 126 and above gets `env python` and fails** with exit 127.
+
+`~/.julia` is about 57 characters, so a default depot never hits this — which is why
+GitHub's runners install cleanly and a deep project-local or scratch depot does not.
+A **system `python` does not rescue it** either: with `env python` resolving to
+`/usr/bin/python3`, conda fails differently with `ModuleNotFoundError: No module named
+'conda'`. Only conda's own python can run conda, so what `install.jl` does is not
+"supply a python" but "put conda's python where `env` will find it".
 
 **Putting conda's bin on `PATH` is the fix**, which is what `install.jl` does. It also
 creates the `python` alias if it is missing, as a fallback for older Miniconda; on
@@ -84,9 +99,33 @@ a fresh resolve.
 ## Quick start
 
 ```bash
-julia --project=. run_site.jl configs/synth_2P.toml --dry-run   # validate, run nothing
-julia --project=. run_site.jl configs/synth_2P.toml --from 3    # the fast half
+julia --project=. run_site.jl configs/smoke_2P.toml --dry-run   # validate, run nothing
 ```
+
+**That is the only command that works on a fresh clone.** `--from 3` needs
+Stage 1 and 2 products, which are not published, so on a clean tree it stops and
+names what produces them. The second line used to be `--from 3` with no warning,
+and two reviewers in a row hit it and got a path with no remedy.
+
+To actually compute something, build a column and drive the chain yourself —
+`configs/smoke_2P.toml` ships for exactly this, with a reduced gate grid:
+
+```bash
+julia --project=. synthetics/scripts/build_truth.jl synthetics/config/confined_aquifer.toml
+mkdir -p data
+cp synthetics/output/confined_aquifer_truth.jld2 data/truth_murray2P.jld2
+julia --project=. tools/aem_HYP.jl 2001 2P 2 _smoke
+julia --project=. tools/aem_draws.jl 2P 50 _smoke
+julia --project=. tools/smr_data.jl transd --tag 2P --label _smoke
+julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 \
+      --tag 2PT --label _smoke --nsamples 2001 --nchains 2
+julia --project=. run_site.jl configs/smoke_2P.toml
+```
+
+That reaches a verdict table. It is **not a result** — 2001 samples and 50 draws
+moved the Stage 5 TDS median by 50% between two machines — but every stage runs
+and every file path is exercised. Reckon on 45 minutes to an hour and a half,
+nearly all of it Stage 4.
 
 ### Running Stages 1 and 2 yourself
 
@@ -117,12 +156,39 @@ The `T` on the last line is not a typo: `smr_data.jl`'s trans-D branch writes a
 samples takes hours; 2001 samples on 2 chains finishes in minutes and exercises
 every path.
 
-`--from 3` is the usual entry point once Stages 1 and 2 have been run or supplied —
-it skips straight to the part worth re-running. A bare `run_site.jl` starts at
-Stage 0, which re-seals the inputs and takes seconds. Stages 0 and 3–6 take minutes. **Stages 1 and 2
-take hours** — each is a trans-dimensional MCMC of 100,000–200,000 samples over four
-chains — so they run from `tools/` rather than from the driver, and `run_site.jl`
-prints the command instead of starting a job that will outlive your terminal.
+**Run Stage 0 first, once.** A bare `run_site.jl` starts there; it re-seals the
+inputs and takes seconds. Only then does `--from 3` work, because Stage 4 reads
+Stage 0's sealed artefact — on a clean tree `--from 3` used to fail inside Stage
+4 with a path and no explanation, and `run_site.jl` now refuses with the fix
+instead. After that, `--from 3` is the entry point for every re-run: it skips
+straight to the part worth repeating.
+
+**Stages 1 and 2 take hours** — each is a trans-dimensional MCMC of
+100,000–200,000 samples over four chains — so they run from `tools/` rather than
+from the driver, and `run_site.jl` prints the command instead of starting a job
+that will outlive your terminal.
+
+**Stage 4 is not an MCMC, and `--nsamples` does nothing to it.** Its cost is an
+Occam solve per conductance node, plus a λ² sweep at each node and a bisection
+for the band edges. Measured, on one machine:
+
+| `[gate]` grid | outcome |
+|---|---|
+| 16 coarse + 15 fine (production) | still in the pass-1 solve at 28 minutes |
+| 4 coarse + 3 fine | reached the final edge bisection at 28 minutes |
+
+So cutting the grid helps but **does not give Stage 4 a minutes-long mode** —
+the cost is per node, not in the node count. There is no fast path here; budget
+an hour or more, and reduce the grid only to shorten it:
+
+```toml
+[gate]
+n_nodes_coarse = 4      # production: 16
+n_nodes_fine   = 3      # production: 15
+```
+
+Stages 0 and 3 take seconds to minutes, and Stages 5 and 6 are quick once Stage
+4 has run.
 
 ### Where the synthetic columns come from
 

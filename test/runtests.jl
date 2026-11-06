@@ -9,7 +9,7 @@
 #   stage0 roundtrip    the sealed artefact rebuilding the operator exactly
 #   gate solver         the conductance constraint being met at the optimum
 #   stage3 integral     the window integral against a direct sum
-# The last three need stage outputs and are skipped, loudly, without them.
+# Each names the files it needs and skips, loudly, when they are absent.
 using Test, Printf
 const ROOT = normpath(joinpath(@__DIR__, ".."))
 
@@ -29,6 +29,10 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
     end
 
     @testset "noise seed reaches makenoisydata!" begin
+        # The seed test is behavioural now, so it needs the operator builders.
+        # These includes are what the integration tests use too.
+        include(joinpath(ROOT, "src", "aem_setup.jl"))
+        include(joinpath(ROOT, "src", "aem_jac.jl"))
         include(joinpath(@__DIR__, "test_noise_seed.jl"))
     end
 
@@ -38,16 +42,24 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
     # consume its output.
     include(joinpath(ROOT, "synthetics", "test", "runtests.jl"))
 
+    # Each integration test names the FILES it needs, not a directory. The gate
+    # used to be `isdir(ROOT/outputs)`, which is not what any of them read: as
+    # soon as a pipeline run created outputs/, two of them fired and died on a
+    # missing data/truth_murray3.jld2. Two guard themselves internally and two
+    # do not, and the directory check hid the difference.
     for (name, script, needs) in (
-            ("Stage 0 roundtrip", "test_stage0_roundtrip.jl", "outputs"),
-            ("gate solver",       "test_gate_solver.jl",      "outputs"),
-            ("conductance constraint", "test_cond_constraint.jl", "outputs"),
-            ("Stage 3 integral",  "test_stage3_integral.jl",  "outputs"))
+            ("Stage 0 roundtrip", "test_stage0_roundtrip.jl", String[]),
+            ("gate solver",       "test_gate_solver.jl",      ["data/truth_murray3.jld2"]),
+            ("conductance constraint", "test_cond_constraint.jl", ["data/truth_murray3.jld2"]),
+            ("Stage 3 integral",  "test_stage3_integral.jl",  String[]))
         f = joinpath(@__DIR__, script)
-        if isfile(f) && isdir(joinpath(ROOT, needs))
-            @testset "$name" begin; include(f); end
+        missing_inputs = [n for n in needs if !isfile(joinpath(ROOT, n))]
+        if !isfile(f)
+            @printf("  SKIPPED %-26s script not present\n", name)
+        elseif !isempty(missing_inputs)
+            @printf("  SKIPPED %-26s needs %s\n", name, join(missing_inputs, ", "))
         else
-            @printf("  SKIPPED %-26s needs stage outputs (%s)\n", name, needs)
+            @testset "$name" begin; include(f); end
         end
     end
 end
