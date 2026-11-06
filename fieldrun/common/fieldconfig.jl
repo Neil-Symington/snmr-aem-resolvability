@@ -112,12 +112,20 @@ function check_values(c::Dict, path)
     # seed_base = "abc" past every numeric check, and nz = "60" produced a raw
     # MethodError rather than a message. Bool is checked before Integer on
     # purpose: in Julia `true isa Integer` is true.
-    ints   = (("run","npar"), ("run","minfree_gb"), ("grid","nz"), ("mcmc","nchains"),
+    # minfree_gb is GB of free memory and the comment beside it quotes 6 and
+    # 6.5, so a fraction is natural -- it was in `ints` and a review was
+    # rightly refused a legitimate value. Integral floats are accepted for the
+    # genuine integers too: `nsamples = 2e5` is a natural way to write a sample
+    # count and TOML gives it as a Float64.
+    isintegral(v) = (v isa Integer && !(v isa Bool)) ||
+                    (v isa AbstractFloat && isfinite(v) && v == round(v))
+    ints   = (("run","npar"), ("grid","nz"), ("mcmc","nchains"),
               ("mcmc","nsamples"), ("mcmc","save_freq"), ("mcmc","nensembles"),
               ("mcmc","seed_base"), ("mcmc","nmin"), ("mcmc","nmax"),
               ("kernel","n_draws"), ("snmr","min_pulse_moments"),
               ("convergence","min_ess"))
-    reals  = (("grid","dz"), ("grid","zstart"), ("grid","extendfrac"), ("mcmc","tmax"),
+    reals  = (("run","minfree_gb"),
+              ("grid","dz"), ("grid","zstart"), ("grid","extendfrac"), ("mcmc","tmax"),
               ("mcmc","burninfrac"), ("aem","nominal_unc"), ("aem","tx_area_m2"),
               ("aem","rx_radius_m"), ("aem","rx_dz_m"), ("aem","max_sep_m"),
               ("aem","lm_ramp_hold"), ("aem","hm_ramp_hold"), ("detect","theta"),
@@ -129,8 +137,8 @@ function check_values(c::Dict, path)
     for (sec, k) in ints
         haskey(c, sec) && haskey(c[sec], k) || continue
         v = c[sec][k]
-        v isa Bool && (chk(false, "[$sec] $k must be an integer, got the boolean $v"); continue)
-        v isa Integer || chk(false, "[$sec] $k must be an integer, got $(repr(v))")
+        v isa Bool && (chk(false, "[$sec] $k must be a whole number, got the boolean $v"); continue)
+        isintegral(v) || chk(false, "[$sec] $k must be a whole number, got $(repr(v))")
     end
     for (sec, k) in reals
         haskey(c, sec) && haskey(c[sec], k) || continue
@@ -139,26 +147,60 @@ function check_values(c::Dict, path)
         (v isa Real && isfinite(v)) ||
             chk(false, "[$sec] $k must be a finite number, got $(repr(v))")
     end
+    # Strings, before anything calls strip() on them: `name = 5` gave a raw
+    # MethodError from strip(::Int64), and list elements gave
+    # MethodError: isless(::Int64, ::String) from the ordering checks.
+    for (sec, k) in (("run","name"), ("run","mode"), ("snmr","loop_shape"),
+                     ("detect","metric"), ("occam","regtype"), ("occam","uncertainty"),
+                     ("noise","sigma_hat_branch"), ("paths","outputs"), ("paths","logs"))
+        haskey(c, sec) && haskey(c[sec], k) || continue
+        c[sec][k] isa AbstractString ||
+            chk(false, "[$sec] $k must be a string, got $(repr(c[sec][k]))")
+    end
+    numlists = (("gate","thresholds_mgL"), ("aem","lm_gates"), ("aem","hm_gates"),
+                ("aem","lowpass_hz"), ("mcmc","fbounds"), ("mcmc","lambda_gp"),
+                ("noise","s_sdev"), ("noise","s_bounds_log10"), ("occam","lam2_log10"),
+                ("detect","doi_widthfrac_alt"), ("convergence","depths_m"))
+    for (sec, k) in numlists
+        haskey(c, sec) && haskey(c[sec], k) || continue
+        v = c[sec][k]
+        v isa AbstractVector ||
+            (chk(false, "[$sec] $k must be a list, got $(repr(v))"); continue)
+        all(x -> x isa Real && !(x isa Bool) && isfinite(x), v) ||
+            chk(false, "[$sec] $k must be a list of finite numbers, got $(repr(v))")
+    end
+    haskey(c["snmr"], "mat_preference") && c["snmr"]["mat_preference"] isa AbstractVector &&
+        (all(x -> x isa AbstractString, c["snmr"]["mat_preference"]) ||
+         chk(false, "[snmr] mat_preference must be a list of strings, got $(repr(c["snmr"]["mat_preference"]))"))
+
     isempty(bad) || error("$path: bad type(s):\n  " * join(bad, "\n  "))
 
+    # zstart is NOT in this list: zero is the natural top of a depth grid and
+    # udf_system.jl's own build_grid calls setupz(0.0, ...). A review was
+    # refused zstart = 0 by the old `> 0` rule.
+    haskey(c["grid"], "zstart") && chk(c["grid"]["zstart"] >= 0,
+        "[grid] zstart must be >= 0, got $(c["grid"]["zstart"])")
     for (sec, k) in (("run","npar"), ("run","minfree_gb"), ("grid","nz"), ("grid","dz"),
-                     ("grid","zstart"), ("mcmc","nchains"), ("mcmc","nsamples"),
+                     ("mcmc","nchains"), ("mcmc","nsamples"),
                      ("mcmc","save_freq"), ("mcmc","nensembles"), ("kernel","n_draws"),
                      ("snmr","min_pulse_moments"), ("aem","tx_area_m2"),
                      ("aem","max_sep_m"), ("convergence","min_ess"))
         haskey(c, sec) && pos(sec, k)
     end
-    for (sec, k) in (("aem","nominal_unc"), ("detect","theta"), ("detect","doi_widthfrac"),
-                     ("mcmc","burninfrac"))
+    for (sec, k) in (("aem","nominal_unc"), ("detect","theta"), ("detect","doi_widthfrac"))
         haskey(c, sec) && frac(sec, k)
     end
+    # burn-in of zero is meaningful; burning everything is not.
+    haskey(c["mcmc"], "burninfrac") && chk(0 <= c["mcmc"]["burninfrac"] < 1,
+        "[mcmc] burninfrac must be in [0,1), got $(c["mcmc"]["burninfrac"])")
     haskey(c["grid"], "extendfrac") && chk(c["grid"]["extendfrac"] >= 1,
         "[grid] extendfrac must be >= 1, got $(c["grid"]["extendfrac"])")
     haskey(c["mcmc"], "tmax") && chk(c["mcmc"]["tmax"] > 1,
         "[mcmc] tmax must be > 1 for a temperature ladder, got $(c["mcmc"]["tmax"])")
     if haskey(c["mcmc"], "nmin") && haskey(c["mcmc"], "nmax")
-        chk(c["mcmc"]["nmin"] < c["mcmc"]["nmax"],
-            "[mcmc] nmin must be < nmax, got $(c["mcmc"]["nmin"]) and $(c["mcmc"]["nmax"])")
+        # nmin == nmax is a fixed nucleus count: unusual, not invalid.
+        chk(c["mcmc"]["nmin"] <= c["mcmc"]["nmax"],
+            "[mcmc] nmin must be <= nmax, got $(c["mcmc"]["nmin"]) and $(c["mcmc"]["nmax"])")
     end
     for (sec, k) in (("mcmc","fbounds"), ("occam","lam2_log10"), ("noise","s_bounds_log10"))
         if haskey(c, sec) && haskey(c[sec], k)
@@ -169,8 +211,10 @@ function check_values(c::Dict, path)
     for (sec, k) in (("aem","lm_gates"), ("aem","hm_gates"))
         if haskey(c[sec], k)
             v = c[sec][k]
-            chk(length(v) == 2 && v[1] >= 1 && v[1] <= v[2],
-                "[$sec] $k must be [first, last] gate numbers with 1 <= first <= last, got $v")
+            # whole numbers: gate 9.5 does not exist, and a review got it past
+            # the range check because only ordering was tested
+            chk(length(v) == 2 && all(isintegral, v) && v[1] >= 1 && v[1] <= v[2],
+                "[$sec] $k must be [first, last] WHOLE gate numbers with 1 <= first <= last, got $v")
         end
     end
     haskey(c["aem"], "lm_ramp_hold") && haskey(c["aem"], "hm_ramp_hold") &&
@@ -224,6 +268,36 @@ function check_values(c::Dict, path)
             "[run] $k is written by the loader and must not be set in a config")
     end
 
+    # Ranges and enumerations a review found to have NO check at all.
+    for (sec, k) in (("mcmc","delta"), ("noise","s_prior_tau"), ("occam","beta2"),
+                     ("detect","min_thick_m"), ("detect","occam_chi2_max"),
+                     ("aem","rx_radius_m"))
+        haskey(c, sec) && haskey(c[sec], k) && chk(c[sec][k] > 0,
+            "[$sec] $k must be > 0, got $(c[sec][k])")
+    end
+    for (sec, k) in (("mcmc","lambda_gp"), ("noise","s_sdev"), ("convergence","depths_m"))
+        haskey(c, sec) && haskey(c[sec], k) && chk(all(>(0), c[sec][k]),
+            "[$sec] $k must all be > 0, got $(c[sec][k])")
+    end
+    haskey(c["convergence"], "rhat") && chk(c["convergence"]["rhat"] >= 1,
+        "[convergence] rhat must be >= 1, got $(c["convergence"]["rhat"])")
+    if haskey(c["detect"], "doi_widthfrac_alt")
+        v = c["detect"]["doi_widthfrac_alt"]
+        chk(issorted(v) && all(x -> 0 < x <= 1, v),
+            "[detect] doi_widthfrac_alt must be ascending and in (0,1], got $v")
+    end
+    ENUMS = (("occam","regtype", ("R1","R2")),
+             ("occam","uncertainty", ("laplace","bootstrap")),
+             ("noise","sigma_hat_branch", ("fid_residual_per_q","fid_residual_pooled")))
+    for (sec, k, allowed) in ENUMS
+        haskey(c, sec) && haskey(c[sec], k) && chk(c[sec][k] in allowed,
+            "[$sec] $k must be one of $(join(allowed, ", ")), got \"$(c[sec][k])\"")
+    end
+    # a run name becomes a directory, so it must not climb out of outputs/
+    haskey(c["run"], "name") && chk(!occursin("..", c["run"]["name"]) &&
+                                    !occursin("/", c["run"]["name"]),
+        "[run] name becomes a directory name and must not contain .. or /, got \"$(c["run"]["name"])\"")
+
     isempty(bad) || error("$path: bad value(s):\n  " * join(bad, "\n  "))
 end
 
@@ -274,6 +348,22 @@ function load_config(tomlfile::AbstractString)
                 c["mcmc"][k] = v
             end
         end
+    end
+    # Even unused, the overlay table must be well formed: with mode = "full" a
+    # review got an [mcmc.smoke] containing nsamples = -5 AND a junk key past
+    # every check, because the table was only ever read in smoke mode. A typo
+    # that silently does nothing until someone switches mode is the defect this
+    # whole validator exists to prevent.
+    if mode != "smoke" && haskey(c["mcmc"], "smoke")
+        ov = c["mcmc"]["smoke"]
+        probe = deepcopy(c)
+        for (k, v) in ov
+            k == "kernel_draws" ? (probe["kernel"]["n_draws"] = v) :
+                haskey(probe["mcmc"], k) ?  (probe["mcmc"][k] = v) :
+                error("[mcmc.smoke] $k does not override anything in [mcmc]")
+        end
+        delete!(probe["mcmc"], "smoke")
+        check_values(probe, tomlfile * " [the unused mcmc.smoke table]")
     end
     delete!(c["mcmc"], "smoke")
     # RE-CHECK AFTER THE OVERLAY, and BEFORE the loader writes its own keys.

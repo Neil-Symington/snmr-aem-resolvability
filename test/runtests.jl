@@ -13,6 +13,18 @@
 using Test, Printf
 const ROOT = normpath(joinpath(@__DIR__, ".."))
 
+# The field workflow's control-file reader, loaded at TOP LEVEL: `using` is a
+# top-level-only expression, and putting it inside the @testset made the whole
+# block contribute zero tests without erroring -- which is exactly the kind of
+# silent pass this suite exists to prevent, and it nearly shipped.
+const FIELDCONFIG_TEST = let f = joinpath(ROOT, "fieldrun", "test", "test_fieldconfig.jl")
+    isfile(f) ? f : ""
+end
+if FIELDCONFIG_TEST != ""
+    include(joinpath(ROOT, "fieldrun", "common", "fieldconfig.jl"))
+    using .FieldConfig
+end
+
 @testset "snmr-aem-resolvability" begin
     @testset "config inheritance and validation" begin
         include(joinpath(ROOT, "src", "config.jl"))
@@ -41,6 +53,12 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
     # command, and the generator can no longer drift from the stages that
     # consume its output.
     include(joinpath(ROOT, "synthetics", "test", "runtests.jl"))
+
+    # The field workflow's control-file reader. Its README claimed its failure
+    # paths were "each negative-tested" while nothing was committed; this is
+    # that claim made true. No stage outputs or field data needed.
+    FIELDCONFIG_TEST == "" ||
+        @testset "fieldrun control file" begin include(FIELDCONFIG_TEST) end
 
     # Each integration test names the FILES it needs, not a directory. The gate
     # used to be `isdir(ROOT/outputs)`, which is not what any of them read: as

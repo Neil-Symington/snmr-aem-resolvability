@@ -14,8 +14,11 @@ This is a branch under construction. What is here now:
 - `config/udf_example.toml` — the control file, every stage parameter in one place
 - `tools/assemble_example.py` — how `example/` was built, for provenance
 
-- `common/fieldconfig.jl` — the control-file reader, whose failure paths are each
-  negative-tested
+- `common/fieldconfig.jl` — the control-file reader. Its failure paths are
+  negative-tested by `fieldrun/test/test_fieldconfig.jl`, which the repository's
+  `test/runtests.jl` runs: 76 cases, including six that assert a VALID config is
+  still accepted. An earlier version of this line claimed the tests existed when
+  nothing was committed — they were reviewers' scripts, on reviewers' machines.
 - `stages/udf_system.jl` — the SkyTEM system, parsed from the shipped `.des`
   rather than transcribed, and cross-checked against what the control file
   declares
