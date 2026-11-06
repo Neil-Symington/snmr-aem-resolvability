@@ -57,6 +57,18 @@ rx_radius_m  = 13.29
 rx_dz_m      = -2.00
 max_sep_m    = 200.0        # reject a site whose nearest sounding is further
 
+# THE SNMR INVERSION GRID, and only that. A reviewer read this section against
+# UDFSystem.build_grid()'s 334.4 m and reasonably concluded the two conflicted.
+# They do not: they are different instruments.
+#
+#   SNMR, this section                      60 cells -> 147.4 m
+#   AEM, UDFSystem.build_grid() defaults    70 cells -> 334.4 m
+#   AEM, the synthetics (src/aem_setup.jl)  65 cells -> 281.6 m
+#
+# AEM sees deeper than SNMR, so its grid is deeper; GA Record 2024/29 caps SMR
+# interpretation at about 90 m. These values match src/prerun_config.jl exactly,
+# which is what puts the East Kimberley, Upper Darling and synthetic posteriors
+# on one grid so the three can be compared without an apples-to-oranges caveat.
 [grid]
 nz         = 60
 zstart     = 1.0

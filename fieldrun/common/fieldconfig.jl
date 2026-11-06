@@ -19,8 +19,9 @@
 module FieldConfig
 
 using TOML, Printf, DelimitedFiles
+using HiQGA.transD_GP
 
-export load_config, CFG, cfgpath, is_smoke
+export load_config, CFG, cfgpath, is_smoke, snmr_grid
 
 const HERE = normpath(joinpath(@__DIR__, ".."))
 
@@ -411,6 +412,24 @@ function cfgpath(c::Dict, key::AbstractString)
 end
 
 is_smoke(c::Dict) = c["run"]["mode"] == "smoke"
+
+"""
+    snmr_grid(c)
+
+The SNMR inversion grid from `[grid]`, as (zall, znall, zbnd). `zbnd` is what
+the stages call `zsmr`.
+
+[grid] was decorative until a review pointed out that NOTHING read it. The
+control file is described as the unit of provenance, and this section of it was
+being ignored while the stages took the same numbers from
+src/prerun_config.jl. This accessor makes it real. The AEM grid is a separate,
+deeper grid -- see UDFSystem.build_grid and the comment in the config.
+"""
+function snmr_grid(c::Dict)
+    g = c["grid"]
+    transD_GP.setupz(Float64(g["zstart"]), Float64(g["extendfrac"]);
+                     dz = Float64(g["dz"]), n = Int(g["nz"]), showplot = false)
+end
 
 "One block naming every parameter that could change a number. Print it per run."
 function describe(c::Dict; io = stdout)
