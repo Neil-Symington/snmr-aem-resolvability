@@ -206,7 +206,9 @@ julia --project=. synthetics/scripts/forward.jl     synthetics/output/confined_a
 `src/aem_setup.jl` existed in both and diverged: the noise-seed fix landed in
 one copy and not the other, so every published AEM number came from the wrong
 realisation for weeks. There is now one copy, guarded by
-`test/test_noise_seed.jl`, which scans every call site rather than a named file.
+`test/test_noise_seed.jl`, which builds the operator and compares the data rather
+than matching the source text — three textual versions of that guard were each
+defeated by a reviewer, sixteen times in total.
 
 ## The stages
 
