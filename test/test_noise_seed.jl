@@ -48,14 +48,21 @@ let
     # the wrong realisation. So the operator built at 123 is compared against
     # makenoisydata! invoked at 123 directly. Version-independent -- no
     # hardcoded fingerprint to rot when HiQGA changes.
-    op = build_skytem_operator(σ, zb; rseed_noise = 123)
-    ref = deepcopy(op.aem)
-    transD_GP.SkyTEM1DInversion.makenoisydata!(ref,
-        log10.(op.ρ_aem_truth[2:end]); rseed = 123, showplot = false,
-        noisefrac = 0.03, σ_halt_low = LM_noise, σ_halt_high = HM_noise,
-        units = 1e-12)
-    @test vec(ref.dlow) == vec(op.aem.dlow)
-    @test vec(ref.dhigh) == vec(op.aem.dhigh)
+    # AT MORE THAN ONE SEED. Checking identity only at 123 let a reviewer pass
+    # `rseed = rseed_noise % 1000`: it is the identity at 123, and the variation
+    # check ran at a different seed, so a function that agrees at 123 and
+    # differs elsewhere satisfied both halves. 20261012 is included because it
+    # is the seed the tools used to pass, and %1000 maps it to 12.
+    for sd in (123, 20261012, 999_983)
+        op = build_skytem_operator(σ, zb; rseed_noise = sd)
+        ref = deepcopy(op.aem)
+        transD_GP.SkyTEM1DInversion.makenoisydata!(ref,
+            log10.(op.ρ_aem_truth[2:end]); rseed = sd, showplot = false,
+            noisefrac = 0.03, σ_halt_low = LM_noise, σ_halt_high = HM_noise,
+            units = 1e-12)
+        @test vec(ref.dlow) == vec(op.aem.dlow)
+        @test vec(ref.dhigh) == vec(op.aem.dhigh)
+    end
 
     # the Jacobian operator is a SECOND path to the same draw, and a review
     # mutated it without this file noticing
@@ -70,16 +77,24 @@ let
     # `rseed = Int(seed)+1` mutation passed it -- different seeds still differ
     # while the realisation drawn is not the one asked for. Checking variation
     # is not checking identity.
-    jref = deepcopy(j1)
-    transD_GP.SkyTEM1DInversion.makenoisydata!(jref,
-        log10.((1.0 ./ J.σt)[2:end]); rseed = 123, showplot = false,
-        noisefrac = 0.03, σ_halt_low = LM_noise, σ_halt_high = HM_noise,
-        units = 1e-12)
-    @test vec(jref.dlow) == vec(j1.dlow)
-    @test vec(jref.dhigh) == vec(j1.dhigh)
+    for sd in (123, 20261012, 999_983)
+        Js = build_aem_jac(T, sd)
+        jref = deepcopy(Js.aem)
+        transD_GP.SkyTEM1DInversion.makenoisydata!(jref,
+            log10.((1.0 ./ Js.σt)[2:end]); rseed = sd, showplot = false,
+            noisefrac = 0.03, σ_halt_low = LM_noise, σ_halt_high = HM_noise,
+            units = 1e-12)
+        @test vec(jref.dlow) == vec(Js.aem.dlow)
+        @test vec(jref.dhigh) == vec(Js.aem.dhigh)
+    end
 end
 
 # --- policy, which is genuinely textual -----------------------------------
+# NOT a complete defence, and the header should say so: a reviewer defeated the
+# text half with `@eval const $(Symbol("NOISE_RSE","ED")) = 7`, which no textual
+# check can see, and with a `#` inside a string literal that the naive comment
+# stripper cuts at. What this half buys is DISCOVERY -- finding call sites and
+# callers that no behavioural test knows to exercise -- not proof.
 # Which realisation the TOOLS pin is a decision, not a behaviour: 123 is the
 # draw behind every published number, so the tools must pin it and must not
 # pass their MCMC seed. Recursive, because a reviewer added a call site in a
@@ -101,12 +116,47 @@ let
         end
     end
 
-    for t in ("aem_HYP.jl", "aem_draws.jl", "aem_prior_test.jl")
-        s = strip_comments(read(joinpath(ROOT, "tools", t), String))
-        @test occursin(r"const NOISE_RSEED\s*=\s*123", s)
-        @test length(collect(eachmatch(r"NOISE_RSEED\s*=", s))) == 1
-        for m in eachmatch(r"rseed_noise\s*=\s*([^,;\)\n]+)", s)
+    # DISCOVER the callers rather than naming three. A reviewer added a new tool
+    # and changed a fourth that the hardcoded list did not mention, and both
+    # went unnoticed; and the per-file loop asserted NOTHING when a file had
+    # zero rseed_noise= matches, so simply deleting the keyword passed.
+    callers = [f for f in jlfiles(joinpath(ROOT, "tools"))
+               if occursin("build_skytem_operator", strip_comments(read(f, String)))]
+    @test !isempty(callers)      # if this empties, the check has stopped checking
+
+    for f in callers
+        s = strip_comments(read(f, String))
+        name = basename(f)
+        # every caller must pass the keyword, and must pass NOISE_RSEED
+        ms = collect(eachmatch(r"rseed_noise\s*=\s*([^,;\)\n]+)", s))
+        @test !isempty(ms)       # closes "drop the keyword and inherit the default"
+        for m in ms
             @test strip(m.captures[1]) == "NOISE_RSEED"
         end
+        # \b after 123, or `const NOISE_RSEED = 1230` satisfies it
+        @test occursin(r"const NOISE_RSEED\s*=\s*123\b", s)
+        @test length(collect(eachmatch(r"NOISE_RSEED\s*=", s))) == 1
     end
+
+    # The builder's own default is the realisation behind every published
+    # number, so a caller that omits the keyword gets the right one rather than
+    # a draw nobody used. It was 47 -- a realisation no run ever took -- which
+    # a reviewer changed to 5 without the suite noticing.
+    setup = strip_comments(read(joinpath(ROOT, "src", "aem_setup.jl"), String))
+    @test occursin(r"rseed_noise::Int\s*=\s*123\b", setup)
+
+    # Every makenoisydata! call site anywhere must pass rseed. This is the
+    # DISCOVERY the behavioural test cannot do: a new file calling it directly
+    # has no behavioural assertion at all.
+    nsites = 0
+    for d in ("src", "stages", "tools", "synthetics")
+        for f in jlfiles(joinpath(ROOT, d))
+            txt = strip_comments(read(f, String))
+            for m in eachmatch(r"makenoisydata!\((?s:.*?)\)\s*\n", txt)
+                nsites += 1
+                @test occursin(r"\brseed\s*=", m.match)
+            end
+        end
+    end
+    @test nsites >= 2
 end

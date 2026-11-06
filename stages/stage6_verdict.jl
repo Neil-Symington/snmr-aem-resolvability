@@ -101,12 +101,32 @@ function main()
         @sprintf("%s - %s S, width %s dex", f4(bl), f4(bh), f3(P4["band_dex"])),
         @sprintf("lower edge open = %s; upper edge open = %s", bo.lo, bo.hi)))
 
-    push!(rows, ("Salinity criterion",
-        isfinite(P4["P_wrong"]) ?
-            @sprintf("P(TDS %s %.0f mg/L) = %.4f,  Delta = %s",
-                     fresh_is_less ? ">" : "<", Xlim, P4["P_wrong"], f4(P4["delta"])) :
-            "not determined (no admissible band)",
-        @sprintf("%s (tolerance %.2f)", P4["verdict_label"], P4["delta_tol"])))
+    # THIS ROW READ AS A FAIL. P_wrong is the probability that the CLAY-FREE TDS
+    # -- an UPPER bound on salinity, because clay could account for all of the
+    # conductance -- falls on the wrong side of the limit. So 1.0000 means "even
+    # the saltiest reading of the data exceeds the limit, so the data cannot
+    # certify fresh". It is NOT evidence the water is saline, and the verdict row
+    # two lines down says NOT a FAIL. A reviewer had to reconcile the two
+    # unaided, in the table that goes in the paper, and recommended this wording.
+    #
+    # Delta is also reported honestly now: it is the largest change in P under
+    # lambda-squared x/÷10 and under dropping one node at each grid end, so at
+    # P = 1.0000 it is identically zero for any band wholly on one side of the
+    # limit. DATA-CARRIED is vacuous there, exactly as the water row already
+    # says of its own saturation.
+    let psat = isfinite(P4["P_wrong"]) && (P4["P_wrong"] >= 0.99995 || P4["P_wrong"] <= 5e-5)
+        push!(rows, ("Can the data certify fresh? (clay-free bound)",
+            isfinite(P4["P_wrong"]) ?
+                @sprintf("%s: P(clay-free TDS %s %.0f mg/L) = %.4f",
+                         P4["P_wrong"] >= 0.5 ? "NO" : "YES",
+                         fresh_is_less ? ">" : "<", Xlim, P4["P_wrong"]) :
+                "not determined (no admissible band)",
+            isfinite(P4["P_wrong"]) ?
+                @sprintf("an UPPER bound: clay could account for all of the conductance, so this is NOT evidence the water is saline. Stable to lambda2 x/÷10 and to dropping an end node (max change %s, tolerance %.2f)%s",
+                         f4(P4["delta"]), P4["delta_tol"],
+                         psat ? ". SATURATED -- Delta is identically 0 when the whole band lies on one side of the limit, so %s is vacuous here" |> x -> replace(x, "%s" => P4["verdict_label"]) : ", " * P4["verdict_label"]) :
+                ""))
+    end
 
     push!(rows, ("Data-only bound",
         @sprintf("TDS at 95%% = %s mg/L", f0(P4["tds_data_only_p95"])),

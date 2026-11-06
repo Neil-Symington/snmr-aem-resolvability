@@ -74,14 +74,22 @@ function main()
     julia --project=. tools/smr_data.jl transd --tag <T> --label <L>
     julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 --tag <T>T --label <L>
 
-  For a SMOKE run use configs/smoke_2P.toml, which ships for this purpose, and
-  add --nsamples 2001 --nchains 2 to the two MCMC steps. Stage 2's default is
-  100,001 samples and takes hours.
+  For a SMOKE run use configs/smoke_2P.toml, which ships for this purpose. Note
+  that aem_HYP.jl and aem_draws.jl take POSITIONAL arguments, not flags -- an
+  earlier version of this hint said to add --nsamples to them, and a reviewer
+  found that it makes parse(Int, "--nsamples") fail. Only stage2_snmr.jl takes
+  flags. The smoke forms are:
+
+    julia --project=. tools/aem_HYP.jl 2001 <T> 2 <L>
+    julia --project=. tools/aem_draws.jl <T> 50 <L>
+    julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 --tag <T>T --label <L> --nsamples 2001 --nchains 2
+
+  Stage 2's default is 100,001 samples and takes hours.
 """
-        isfile(s1) || @printf("\n  STAGE 1 INPUT MISSING: %s%s",
+        isfile(s1) || @printf("\n  STAGE 1 INPUT MISSING: %s\n%s",
                               cfg["data"]["stage1_draws"], chain)
         (isempty(s2) || isfile(joinpath(HERE, s2))) ||
-            @printf("\n  STAGE 2 INPUT MISSING: %s%s", s2, chain)
+            @printf("\n  STAGE 2 INPUT MISSING: %s\n%s", s2, chain)
     end
 
     # Stage 4 reads Stage 0's sealed artefact, so --from 3 and --from 4 only work

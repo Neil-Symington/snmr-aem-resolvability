@@ -66,20 +66,22 @@ function build_aem_grid()
 end
 
 """
-    build_skytem_operator(σ_smr, zbnd_smr; noise_scale=1.0, noisefrac=0.03, rseed_noise=47)
+    build_skytem_operator(σ_smr, zbnd_smr; noise_scale=1.0, noisefrac=0.03, rseed_noise=123)
 
 Build a SkyTEM `dBzdt` operator with the σ(z) truth interpolated onto the
 AEM depth grid, forward-modelled, and noise added. `noise_scale` multiplies
 the additive halt noise, `noisefrac` is the multiplicative floor.
 
-`rseed_noise` is now honoured (it once was not); the default here is NOT the
-realisation behind the published numbers -- the tools pass that explicitly.
+`rseed_noise` defaults to 123, the realisation behind every published number,
+so a caller that omits it gets the right draw. It was 47 -- a realisation no run
+in this project ever took -- until a reviewer pointed out that any new caller
+silently inherited it, and that nothing asserted the default at all.
 
 Returns `(aem, aem_grid, ρ_aem_truth, σ_aem_truth)`.
 """
 function build_skytem_operator(σ_smr::AbstractVector, zbnd_smr::AbstractVector;
                                noise_scale::Real = 1.0, noisefrac::Real = 0.03,
-                               rseed_noise::Int = 47)
+                               rseed_noise::Int = 123)
     aem_grid = build_aem_grid()
 
     # Interpolate truth σ onto AEM grid, invert to ρ
