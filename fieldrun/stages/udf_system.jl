@@ -7,9 +7,17 @@
 #     example/aem/system/UDF_AEM_Data.des, copied verbatim from the delivery
 #   * AUS_10087_report.pdf, Tables 9 and 10 (gate times) and p.~19 (system)
 #
-# NOTHING here is transcribed by hand: the gate windows and both waveforms are
-# PARSED from the .des at load time and cross-checked against the report's own
-# centre times. A transcription error in a gate table is invisible until it
+# The gate windows and both waveforms are PARSED from the .des at load time, and
+# the gate table is cross-checked against itself: the .des lists open, centre and
+# close, and centre must be the mean of open and close. `check_against_config`
+# enforces that, which is what catches a single-value edit.
+#
+# The GEOMETRY, though, IS transcribed: rTx, rRx, dzRx, lowpassfcs and both ramp
+# holds come from the control file, not from the .des, and nothing compares them
+# against it. An earlier version of this header claimed "nothing here is
+# transcribed by hand", which a review showed was false for exactly those
+# values. Changing tx_area_m2 or rx_radius_m in the config is accepted in
+# silence. Treat them as declared, not verified. A transcription error in a gate table is invisible until it
 # quietly biases every depth in the survey, and the Ord-Keep system file had to
 # warn that HiQGA's bundled SkyTEM example is a different survey's system. The
 # same trap applies here: this survey's LM gate 19 closes at 203.2 us where
@@ -143,11 +151,18 @@ const HM_times = geomcentre(HM_WINDOW_US)
 "The arithmetic gate centres the .des and the report supply, in seconds."
 report_centres() = (lm = _LM[3] .* 1e-6, hm = _HM[3] .* 1e-6)
 
-# Off-times from the .des waveform specifications: LM 1.018 ms, HM 15.0 ms.
+# Off-times: LM 1.018 ms, HM 15.0 ms. Also declared in the control file rather
+# than parsed; the ramp SHAPES are parsed, the holds are not.
 const LM_ramp = rampof("LM"; hold = _AEM["lm_ramp_hold"])
 const HM_ramp = rampof("HM"; hold = _AEM["hm_ramp_hold"])
 
-# ── geometry (.des "INSTRUMENT POSITION" and "TRANSMITTER SPECIFICATIONS") ──
+# ── geometry: DECLARED in the control file, not parsed ──────────────────────
+# These values are from AUS_10087_report.pdf, which is not shipped. The .des
+# does NOT contain them -- grep it for 342, 13.29 or 203.6 and you get
+# nothing -- so there is no file here to check them against, and a wrong
+# tx_area_m2 or rx_radius_m in the config is accepted in silence. An earlier
+# version of this comment cited .des sections "INSTRUMENT POSITION" and
+# "TRANSMITTER SPECIFICATIONS" that do not exist in the file.
 # Tx loop area 342 m^2 (8-vertex polygon) -> equivalent circular radius.
 const rTx = sqrt(_AEM["tx_area_m2"] / π)       # 10.43 m for 342 m^2
 # Z-coil at x = -13.29 m, z = -2.00 m from the loop centre, in a frame whose z
@@ -239,6 +254,31 @@ function check_against_config()
     end
     issorted(LM_times) || error("LM gate centres are not increasing")
     issorted(HM_times) || error("HM gate centres are not increasing")
+
+    # THE CHECK THIS FILE'S HEADER PROMISED AND DID NOT HAVE. The header says
+    # the gates are "cross-checked against the report's own centre times";
+    # nothing did that, and a reviewer changed LM gate 19's close time from
+    # 203.2 to 192.2 us -- the exact transcription trap the header names, by
+    # name -- and check_against_config accepted it.
+    #
+    # The .des gives open, centre and close for every gate, so the table can be
+    # checked against ITSELF: centre must be the arithmetic mean of open and
+    # close, and it holds to the printed digit on the shipped delivery. Any
+    # single-value edit to one of the three columns breaks it.
+    for (tag, W, C) in (("LM", LM_WINDOW_US, _LM[3]), ("HM", HM_WINDOW_US, _HM[3]))
+        mid = (W[:, 1] .+ W[:, 2]) ./ 2
+        d = abs.(mid .- C) ./ max.(C, eps())
+        i = argmax(d)
+        d[i] <= 1e-3 || error(
+            "$tag gate table is internally inconsistent: gate $(i), open " *
+            "$(W[i,1]) us and close $(W[i,2]) us give a centre of $(mid[i]) us, " *
+            "but the .des lists $(C[i]) us (relative difference " *
+            "$(round(d[i], sigdigits = 3))). One of the three columns has been " *
+            "altered -- the .des is the source of truth for all three.")
+        # and the windows themselves must be ordered and non-overlapping
+        all(W[:, 1] .< W[:, 2]) || error("$tag has a gate whose open is not before its close")
+        all(diff(W[:, 1]) .> 0) || error("$tag gate opens are not increasing")
+    end
     _AEM["lm_ramp_hold"] > 0 && _AEM["hm_ramp_hold"] > _AEM["lm_ramp_hold"] || error(
         "[aem] ramp holds look wrong: lm $(_AEM["lm_ramp_hold"]), hm $(_AEM["hm_ramp_hold"])")
     return (lm = length(LM_GATES), hm = length(HM_GATES))
