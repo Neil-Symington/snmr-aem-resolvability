@@ -19,6 +19,9 @@ add(col,stat,val,truth,fig,src) = push!(rows,
      fig, src, "tier P"))
 
 ENS = Dict("3P"=>"3PT","2P"=>"2PT","3S"=>"3ST","2S"=>"2ST")
+# verify every label against the column Stage 0 sealed, before any number is
+# written to a CSV the paper quotes
+foreach(FigStyle.assert_column, sort(collect(keys(ENS))))
 SRC = Dict("3P"=>"3M","2P"=>"2M","3S"=>"3S","2S"=>"2S")
 
 for c in ("3P","2P","3S","2S")
@@ -27,7 +30,7 @@ for c in ("3P","2P","3S","2S")
     G  = load(joinpath(OUT,"synth_$c","stage4_synth_$c.jld2"))
     P4 = load(joinpath(OUT,"synth_$c","stage4post_synth_$c.jld2"))
     S5 = load(joinpath(OUT,"synth_$c","stage5_synth_$c.jld2"))
-    w  = (G["window"].top, G["window"].base); m = T["M_ARCHIE"]
+    w  = (G["window"].top, G["window"].base); m = FigStyle.archie_m(T)
     zt, sbt, dzt, swt = T["z"], T["σ_bulk"], T["dz"], T["σw"]
     it = findall(k -> zt[k] > w[1] && zt[k] <= w[2], eachindex(zt))
     Ctrue = sum(sbt[it] .* dzt); sb = Ctrue/(w[2]-w[1])

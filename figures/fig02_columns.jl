@@ -30,7 +30,7 @@ function main()
     letters = "abcdefgh"; li = 1
     for (r, (ft, st, label)) in enumerate(cols)
         TF, TS = ld(ft), ld(st)
-        z = TF["z"]; m = TF["M_ARCHIE"]
+        z = TF["z"]; m = FigStyle.archie_m(TF)
         aqs = aquifers(TF)
         zmax = 60.0; zi = findall(<=(zmax), z)
 

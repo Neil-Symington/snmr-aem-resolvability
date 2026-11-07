@@ -262,6 +262,48 @@ number is identical — measured on three machines and two patch versions.
 The config and noise-seed tests run anywhere. The four integration tests need stage
 outputs and skip, loudly, without them.
 
+## Figures
+
+`figures/` holds the nine scripts that draw the paper's figures and write the
+number CSVs the text quotes. **Neither README mentioned this directory until a
+reviewer went looking**, and none of the scripts runs from the Quick start: they
+need columns the smoke chain does not produce.
+
+```bash
+julia --project=. figures/fig05_interval.jl     # needs 3P and 2P
+julia --project=. figures/fig07_gate_sigmin1e-3.jl   # needs 3P 3S 2P 2S + ensembles
+julia --project=. figures/export_numbers_v2.jl  # needs all four
+```
+
+What they need, which was written down nowhere:
+
+| Script | Columns | Also needs |
+|---|---|---|
+| `fig02`, `fig03`, `fig04`, `fig05` | 3P, 2P | `data/truth_murray<tag>.jld2` |
+| `fig03` | 3P, 2P | `tools/extract_full_draws.jl`, `tools/aem_sensitivity.jl` outputs |
+| `fig06`, `figS8` | 3P | Stage 5 / Stage 4 outputs |
+| `fig07`, `export_numbers_v2` | 3P, 3S, 2P, 2S | Stage 4 post, and `singlepass_archive/` if present |
+| `fig08` | 2P | `tools/section6_bore_value.jl` |
+
+`singlepass_archive/` is read by `fig07` and **written by nothing** — it is an
+archive of an earlier grid mode, and its absence is handled.
+
+**Every per-column figure now verifies its own label.** A reviewer copied the 2P
+column's files under the names 3P, 2S and 3S; `fig05`, `fig07` and `figS8` drew
+PNGs and wrote CSV rows labelled `3P` and `2S`, identical to the digit, without
+noticing. `FigStyle.assert_column` compares each tag against the `column` the
+Stage 0 artefact recorded and refuses to draw on a mismatch, because a figure
+from the wrong column looks entirely normal.
+
+A figure built from a **smoke** run is still not marked as such on the image.
+`FigStyle.provenance` prints the column and config of each panel to the build
+log; treat any figure whose log says `smoke_2P.toml` as a shape check, not a
+result.
+
+`fig07` smooths with scipy when it is available and falls back to a linear
+interpolation when it is not. The conda environment `install.jl` builds carries
+matplotlib and numpy but **not scipy**, so the fallback is the normal path here.
+
 ## Citing and licence
 
 See `CITATION.cff`. MIT; see `LICENSE`.

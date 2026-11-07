@@ -36,6 +36,7 @@ function winw(z,a,b); g=cellsof(z); w=[max(0.0,min(g.bot[i],b)-max(g.top[i],a)) 
 function main()
     cols = (("3P","3PT", C_FRESH,  "#9dbfe0", (7.5,23.5)),
             ("2P","2PT", C_SALINE, "#f3c69b", (17.5,33.5)))
+    foreach(c -> assert_column(c[1]), cols); provenance(first.(cols))
     fig, axs = FigStyle.newfig(width = MM170, h = 4.4, nrows = 2, ncols = 2)
     letters = (("a","b"), ("c","d"))
     exp_win = Any[]; exp_W = Any[]

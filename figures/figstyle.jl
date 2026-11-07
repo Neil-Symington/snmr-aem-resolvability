@@ -8,9 +8,90 @@
 module FigStyle
 using PyPlot, Printf
 export MM170, MM85, DPI, C_FRESH, C_SALINE, C_TRUTH, C_TRUTH_ONBLACK, C_MGR, newfig, panel,
-       aquifer_band, finish, OUTDIR
+       aquifer_band, finish, OUTDIR, assert_column, provenance, archie_m
 
 const OUTDIR = @__DIR__
+const ROOT   = normpath(joinpath(@__DIR__, ".."))
+
+"""
+    assert_column(tag)
+
+Refuse to draw a panel labelled `tag` from another column's data.
+
+NOTHING CHECKED THIS. A reviewer copied the 2P column's files under the names
+3P, 2S and 3S, ran fig05, fig07 and figS8, and got PNGs and number CSVs with
+rows labelled "3P" and "2S" side by side, identical to the digit, with no
+warning. Every figure took the tag from its own hard-coded list and never
+compared it with the `column` the Stage 0 artefact records. A figure in the
+paper could be built from the wrong column and look entirely normal.
+
+Called for every tag a figure draws. If Stage 0 has not run for that column
+there is nothing to check against, and that is said rather than passed over.
+"""
+function assert_column(tag::AbstractString)
+    @eval Main using JLD2
+    a = joinpath(ROOT, "outputs", "synth_$tag", "stage0_synth_$tag.jld2")
+    if !isfile(a)
+        @warn "no Stage 0 artefact for $tag: the column label is UNVERIFIED" path=a
+        return nothing
+    end
+    A = Base.invokelatest(Main.load, a)
+    got = get(A, "column", nothing)
+    got === nothing && error("$a records no `column`; cannot verify the label $tag")
+    String(got) == tag || error("""
+    FIGURE LABEL DOES NOT MATCH THE DATA.
+
+      This panel is labelled $tag, but $a
+      was sealed from column $(got).
+
+      A figure drawn from the wrong column looks entirely normal, which is why
+      this is an error and not a warning.
+    """)
+    nothing
+end
+
+"""
+    archie_m(T)
+
+Archie's cementation exponent from a truth file, under either spelling.
+
+The paper's truth files write `M_ARCHIE`; the shipped generator writes
+`m_archie`. Three figures read `M_ARCHIE` bare, so on a GENERATOR-BUILT column
+they died with `KeyError: key "M_ARCHIE" not found` -- a reviewer hit it on
+fig02, fig06 and export_numbers_v2 after following the documented chain. The
+two spellings are the same quantity.
+"""
+function archie_m(T)
+    haskey(T, "M_ARCHIE") && return T["M_ARCHIE"]
+    haskey(T, "m_archie") && return T["m_archie"]
+    b = get(T, "build", nothing)
+    b !== nothing && haskey(b, "m_archie") && return b["m_archie"]
+    error("""
+    the truth file carries no Archie exponent.
+
+      Looked for "M_ARCHIE" (the paper's truth files), "m_archie" (what
+      synthetics/scripts/build_truth.jl writes) and build["m_archie"].
+    """)
+end
+
+"""
+    provenance(tags)
+
+One line naming the columns a figure was drawn from and the config that sealed
+each, printed so a figure's origin is in the build log. A reviewer noted that a
+figure built from a SMOKE run carries no marker distinguishing it from a
+production one; this at least records which config it came from.
+"""
+function provenance(tags)
+    @eval Main using JLD2
+    for t in tags
+        a = joinpath(ROOT, "outputs", "synth_$t", "stage0_synth_$t.jld2")
+        isfile(a) || continue
+        A = Base.invokelatest(Main.load, a)
+        @printf("  %-4s column %-4s  config %s\n", t, get(A, "column", "?"),
+                basename(string(get(A, "config_source", "?"))))
+    end
+end
 const DPI   = 300
 const MM170 = 170 / 25.4          # 6.693 in, two-column
 const MM85  = 85 / 25.4           # 3.346 in, one-column
