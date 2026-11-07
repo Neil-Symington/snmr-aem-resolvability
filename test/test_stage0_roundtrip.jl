@@ -36,10 +36,12 @@ end
 
 function main()
 fails = 0
-for col in ("3P", "2P", "3S", "2S")
+COLS = ("3P", "2P", "3S", "2S")   # local: const is illegal inside main()
+skipped = String[]
+for col in COLS
     tf = joinpath(HERE, "..", "data", "truth_murray$col.jld2")
     af = joinpath(ROOT, "outputs", "synth_$col", "stage0_synth_$col.jld2")
-    (isfile(tf) && isfile(af)) || (println("SKIP $col"); continue)
+    (isfile(tf) && isfile(af)) || (println("SKIP $col"); push!(skipped, col); continue)
     T = load(tf); A = load(af)
     a1 = build_aem_jac(T, Int(A["seed"])).aem      # built from truth
     a2 = rebuild(A)                                # built from the artefact
@@ -61,8 +63,15 @@ for col in ("3P", "2P", "3S", "2S")
     bits || (fails += 1)
 end
 println()
+# "FIREWALL ROUND-TRIP OK" used to print after SKIPping all four columns, which
+# a reviewer caught: CI never has artefacts, so the line always appeared and
+# always meant nothing. Say SKIPPED when nothing was compared.
+if length(skipped) == length(COLS)
+    println("FIREWALL ROUND-TRIP SKIPPED -- no artefacts for any column; nothing was compared")
+else
 println(fails == 0 ? "FIREWALL ROUND-TRIP OK -- the sealed artefact poses the same inverse problem" :
                      "$fails FAILURE(S)")
+end
 fails == 0 || exit(1)
 end
 main()

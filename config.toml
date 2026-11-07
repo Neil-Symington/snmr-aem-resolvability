@@ -61,8 +61,11 @@ label = "test one, unconfined Loxton-Parilla sands, tier P"
 # Exactly one of `truth` or `aem_file` must be present.
 #
 # --- synthetic branch ---
-# Truth generation lives in a separate repository, snmr-aem-synthetics; there
-# is no generator script here. A `generator` key pointing at tools/truth_murray.jl
+# Truth generation lives in synthetics/, which WAS the separate repository
+# snmr-aem-synthetics until the two were consolidated -- this comment still said
+# "a separate repository" three rounds after the merge. Build a column with
+# synthetics/scripts/build_truth.jl and copy it to the path below; nothing
+# automates that step. A `generator` key pointing at tools/truth_murray.jl
 # shipped by mistake and broke `run_site.jl --from 3` for anyone with the data.
 truth     = "data/truth_murray3P.jld2"
 seed      = 123          # integer. Forward-model and noise seed.
@@ -77,10 +80,19 @@ seed      = 123          # integer. Forward-model and noise seed.
 column = "3P"            # this column's tag
 parent = ""              # the column this was derived from; "" if none
 role   = "primary"       # "primary" | "saline_control"
-#   TRAP: HiQGA's `makenoisydata!` reseeds from its own internal rseed and
-#   ignores this unless the patched version is present, so every AEM run
-#   in this project before 13-Oct-2026 shares ONE noise realisation.
-#   run_site.jl checks for the patch and refuses to run without it.
+#   TRAP: HiQGA's `makenoisydata!` reseeds from its own `rseed` keyword, so a
+#   caller that seeds beforehand and omits it draws HiQGA's default, 123. Every
+#   AEM run in this project before 13-Oct-2026 shares that one realisation.
+#   No patch is needed -- the keyword is native -- and the claim that
+#   "run_site.jl checks for the patch and refuses to run without it" was FALSE:
+#   a reviewer grepped for it and no such check has ever existed. What does
+#   guard it is test/test_noise_seed.jl, behaviourally, over ten seeds.
+#
+#   Stage 0 uses THIS key as the noise seed. The Stage 1 tools hard-code
+#   NOISE_RSEED = 123 instead, so setting seed to anything else makes Stage 0
+#   seal data the Stage 1 chains never inverted -- measured at up to 12.6%
+#   different. Stage 0 now refuses if its seal does not match this value, but
+#   the two seeds are still only pinned by both being 123. Leave it at 123.
 #
 # --- field branch ---
 # aem_file  = "data/aem/SMR_UD24.dat"      # processed sounding, dB/dt

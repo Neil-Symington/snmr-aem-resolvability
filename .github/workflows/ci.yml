@@ -16,11 +16,14 @@
 # Comparing hashes here would fail for the wrong reason.
 name: CI
 
+# fieldrun is included on purpose: a reviewer pointed out that its 194 tests --
+# 76 of them the control-file reader's own negative cases -- had never been run
+# by CI at all, because the triggers named main only.
 on:
   push:
-    branches: [main]
+    branches: [main, fieldrun]
   pull_request:
-    branches: [main]
+    branches: [main, fieldrun]
   workflow_dispatch:
 
 jobs:
@@ -164,11 +167,21 @@ jobs:
 
           # 1. the direct evidence: conda wrote an env-python shebang, which is
           #    the failure's actual mechanism and not a message about it
-          launcher=$(find "$JULIA_DEPOT_PATH" -path '*/conda/*/bin/conda' -type f 2>/dev/null | head -1)
-          if [ -z "$launcher" ]; then
-            echo "FAIL: no conda launcher found under the depot; cannot verify the cause"
+          # NOT `find ... | head -1`. A reviewer showed that pattern matches
+          # THREE files: the real launcher and two package-cache copies under
+          # pkgs/conda-*/bin/conda whose shebang is a build-time placeholder.
+          # Which one `find` lists first is a filesystem property -- on tmpfs and
+          # on the runner it was bin/, on their ext4 it was pkgs/, and the job
+          # then FAILED a valid install claiming the conda failure "CANNOT have
+          # occurred" while the real launcher had `#!/usr/bin/env python`.
+          launcher="$(julia --project=. -e 'using Conda; print(joinpath(Conda.ROOTENV, "bin", "conda"))')" 
+          if [ -z "$launcher" ] || [ ! -f "$launcher" ]; then
+            echo "FAIL: Conda.ROOTENV names no launcher at $launcher"
             exit 1
           fi
+          case "$launcher" in
+            *"/pkgs/"*) echo "FAIL: resolved a package-cache copy, not the live launcher: $launcher"; exit 1 ;;
+          esac
           shebang=$(head -1 "$launcher")
           pypath="$(dirname "$launcher")/python"
           echo "launcher shebang : $shebang"
@@ -184,7 +197,21 @@ jobs:
               exit 1 ;;
           esac
 
-          # 2. and the install still has to have finished
+          # 2. this RUN must have taken the workaround path. The shebang is a
+          #    static file and can be left over from an earlier bootstrap -- a
+          #    reviewer reproduced a wrong-reason PASS on a warm depot -- so the
+          #    run's own step-1 outcome is checked too.
+          if grep -q "no workaround needed" install.log; then
+            echo "FAIL: step 1 succeeded, so this run did not exercise the"
+            echo "      workaround even though the shebang looks right. Stale"
+            echo "      launcher from an earlier bootstrap?"
+            exit 1
+          fi
+          grep -q "instantiate stopped at a build step" install.log || {
+            echo "FAIL: step 1 neither succeeded nor reported stopping; cannot tell"
+            echo "      what happened"; exit 1; }
+
+          # 3. and the install still has to have finished
           grep -q "environment ready" install.log || {
             echo "FAIL: install did not finish; the log above says why"; exit 1; }
           [ "$rc" -eq 0 ] || { echo "FAIL: install.jl exited $rc"; exit 1; }

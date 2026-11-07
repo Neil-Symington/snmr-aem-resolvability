@@ -71,17 +71,21 @@ function parse_gates(tag)
     L = desbody()
     i = findfirst(l -> occursin("$tag GATE TIMES SUPPLIED", l), L)
     i === nothing && error("no $tag gate table in $DES")
-    n, w, c = Int[], Matrix{Float64}(undef, 0, 2), Float64[]
+    # wd is the WIDTH column. It was parsed by the regex and discarded, so
+    # nothing could check it -- a reviewer changed gate 19's width from 50.57 to
+    # 99.99 and every check passed.
+    n, w, c, wd = Int[], Matrix{Float64}(undef, 0, 2), Float64[], Float64[]
     for l in L[i:end]
         occursin("---", l) && !isempty(n) && break
         m = match(r"^\s*(\d+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)", l)
         m === nothing && continue
         push!(n, parse(Int, m[1]))
+        push!(wd, parse(Float64, m[2]))
         w = vcat(w, [parse(Float64, m[3]) parse(Float64, m[5])])
         push!(c, parse(Float64, m[4]))
     end
     isempty(n) && error("$tag gate table parsed empty")
-    (n, w, c)
+    (n, w, c, wd)
 end
 
 """
@@ -265,23 +269,85 @@ function check_against_config()
     # checked against ITSELF: centre must be the arithmetic mean of open and
     # close, and it holds to the printed digit on the shipped delivery. Any
     # single-value edit to one of the three columns breaks it.
-    for (tag, W, C) in (("LM", LM_WINDOW_US, _LM[3]), ("HM", HM_WINDOW_US, _HM[3]))
-        mid = (W[:, 1] .+ W[:, 2]) ./ 2
-        d = abs.(mid .- C) ./ max.(C, eps())
-        i = argmax(d)
-        d[i] <= 1e-3 || error(
-            "$tag gate table is internally inconsistent: gate $(i), open " *
-            "$(W[i,1]) us and close $(W[i,2]) us give a centre of $(mid[i]) us, " *
-            "but the .des lists $(C[i]) us (relative difference " *
-            "$(round(d[i], sigdigits = 3))). One of the three columns has been " *
-            "altered -- the .des is the source of truth for all three.")
-        # and the windows themselves must be ordered and non-overlapping
+    # A review measured this check catching ONE of eleven .des edits. The
+    # shipped file satisfies every identity below to machine precision --
+    # |mid - centre|/centre is 2.0e-16 (LM) and 1.3e-16 (HM), and
+    # |(close-open) - width| is under 2e-12 -- so a 1e-3 tolerance left
+    # 5e12 times more slack than needed, and three of the four columns were
+    # unchecked. What got through: a mean-preserving edit (open -5, close +5),
+    # a +0.3 us edit under the tolerance, the WIDTH column entirely, all three
+    # columns shifted together so gates overlap, a duplicate gate number, and
+    # any change to the waveform.
+    #
+    # Tolerances are now 1e-9 relative, which the delivery satisfies with eleven
+    # orders of magnitude to spare, and all four columns plus the gate numbering
+    # and the waveform are checked.
+    TOL = 1e-9
+    for (tag, N, W, C, Wd) in (("LM", LM_GATES, LM_WINDOW_US, _LM[3], _LM[4]),
+                               ("HM", HM_GATES, HM_WINDOW_US, _HM[3], _HM[4]))
+        # the gate NUMBER, not the row index: the old message printed argmax(d),
+        # a row, labelled "gate", so a reader searching the .des landed on the
+        # wrong line
+        bad(d) = (i = argmax(d); (i, N[i], d[i]))
+
+        # 1. centre is the mean of open and close
+        i, g, dv = bad(abs.((W[:, 1] .+ W[:, 2]) ./ 2 .- C) ./ max.(abs.(C), eps()))
+        dv <= TOL || error(
+            "$tag gate $g: open $(W[i,1]) us and close $(W[i,2]) us give a centre " *
+            "of $((W[i,1]+W[i,2])/2) us, but the .des lists $(C[i]) us " *
+            "(relative difference $(round(dv, sigdigits=3))). One of the three " *
+            "time columns has been altered.")
+
+        # 2. width is close minus open -- a column nothing used to read
+        i, g, dv = bad(abs.((W[:, 2] .- W[:, 1]) .- Wd) ./ max.(abs.(Wd), eps()))
+        dv <= TOL || error(
+            "$tag gate $g: close minus open is $(W[i,2]-W[i,1]) us but the .des " *
+            "lists a width of $(Wd[i]) us (relative difference " *
+            "$(round(dv, sigdigits=3)))")
+
+        # 3. ordering, and NO OVERLAP -- the old comment claimed non-overlap and
+        #    checked only that opens increase, so shifting one gate onto its
+        #    neighbours passed
         all(W[:, 1] .< W[:, 2]) || error("$tag has a gate whose open is not before its close")
-        all(diff(W[:, 1]) .> 0) || error("$tag gate opens are not increasing")
+        for j in 1:size(W, 1) - 1
+            W[j, 2] <= W[j+1, 1] + TOL * max(abs(W[j,2]), 1) || error(
+                "$tag gates $(N[j]) and $(N[j+1]) overlap: $(N[j]) closes at " *
+                "$(W[j,2]) us and $(N[j+1]) opens at $(W[j+1,1]) us")
+        end
+
+        # 4. gate numbers must be consecutive and unique
+        N == collect(first(N):last(N)) || error(
+            "$tag gate numbers are not consecutive and unique: $(N)")
+    end
+
+    # 5. the waveforms. Neither ramp was checked at all, so a reviewer doubled
+    #    LM's switch-off time and changed its peak amplitude without complaint.
+    for (tag, R, hold) in (("LM", LM_ramp, _AEM["lm_ramp_hold"]),
+                           ("HM", HM_ramp, _AEM["hm_ramp_hold"]))
+        size(R, 1) >= 3 || error("$tag ramp has only $(size(R,1)) points")
+        issorted(R[:, 1]) || error("$tag ramp times are not increasing")
+        R[1, 1] < 0 || error(
+            "$tag ramp starts at $(R[1,1]) s, not before zero: the ON-TIME limb " *
+            "is missing. Without it the forward is told the current had been on " *
+            "forever, which over-predicted LM gate 26 by 52% on this floodplain " *
+            "and is invisible in resistive ground.")
+        maximum(R[:, 2]) ≈ 1.0 || error(
+            "$tag ramp peak amplitude is $(maximum(R[:,2])), not 1.0: the " *
+            "waveform is normalised in the .des and this one is not")
+        R[end, 1] ≈ hold || error(
+            "$tag ramp ends at $(R[end,1]) s but [aem] declares a hold of $hold s")
     end
     _AEM["lm_ramp_hold"] > 0 && _AEM["hm_ramp_hold"] > _AEM["lm_ramp_hold"] || error(
         "[aem] ramp holds look wrong: lm $(_AEM["lm_ramp_hold"]), hm $(_AEM["hm_ramp_hold"])")
     return (lm = length(LM_GATES), hm = length(HM_GATES))
 end
+
+# CALL IT ON LOAD. A reviewer grepped the whole branch and found
+# check_against_config defined once and called nowhere -- not on load, not by
+# FieldConfig, not by any test -- while the header and the README both said the
+# gate table "is cross-checked". It was cross-checked only if a person thought
+# to run the function. Parsing the .des at load time is pointless if the
+# consistency of what was parsed is optional.
+check_against_config()
 
 end # module

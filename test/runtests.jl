@@ -17,12 +17,27 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
 # top-level-only expression, and putting it inside the @testset made the whole
 # block contribute zero tests without erroring -- which is exactly the kind of
 # silent pass this suite exists to prevent, and it nearly shipped.
-const FIELDCONFIG_TEST = let f = joinpath(ROOT, "fieldrun", "test", "test_fieldconfig.jl")
+# Absolute, and captured here: synthetics/test/runtests.jl defines its OWN ROOT
+# (as synthetics/), which clobbers this one, so a later joinpath(ROOT, ...)
+# resolved to synthetics/fieldrun/... and the include failed.
+const FIELDRUN_DIR = joinpath(ROOT, "fieldrun")
+const FIELDCONFIG_TEST = let f = joinpath(FIELDRUN_DIR, "test", "test_fieldconfig.jl")
+    isfile(f) ? f : ""
+end
+const UDFSYSTEM_TEST = let f = joinpath(FIELDRUN_DIR, "test", "test_udf_system.jl")
     isfile(f) ? f : ""
 end
 if FIELDCONFIG_TEST != ""
-    include(joinpath(ROOT, "fieldrun", "common", "fieldconfig.jl"))
+    include(joinpath(FIELDRUN_DIR, "common", "fieldconfig.jl"))
     using .FieldConfig
+    # udf_system.jl parses the .des at load time and now cross-checks it there,
+    # so loading it IS the test of the cross-check; the testset then asserts the
+    # parsed values. Top level, because `using` is top-level only -- a lesson
+    # from wiring the fieldconfig test inside a @testset and getting zero tests
+    # with no error.
+    FieldConfig.load_config(joinpath(FIELDRUN_DIR, "config", "udf_example.toml"))
+    include(joinpath(FIELDRUN_DIR, "stages", "udf_system.jl"))
+    using .UDFSystem
 end
 
 @testset "snmr-aem-resolvability" begin
@@ -59,6 +74,8 @@ end
     # that claim made true. No stage outputs or field data needed.
     FIELDCONFIG_TEST == "" ||
         @testset "fieldrun control file" begin include(FIELDCONFIG_TEST) end
+    UDFSYSTEM_TEST == "" ||
+        @testset "fieldrun SkyTEM system" begin include(UDFSYSTEM_TEST) end
 
     # Each integration test names the FILES it needs, not a directory. The gate
     # used to be `isdir(ROOT/outputs)`, which is not what any of them read: as
