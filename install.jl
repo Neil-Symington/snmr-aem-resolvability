@@ -72,8 +72,15 @@ try
 catch e
     STEP1[] = e
     @info "instantiate stopped at a build step, as expected -- continuing"
-    for l in split(sprint(showerror, e), "\n")[1:min(end, 12)]
-        isempty(strip(l)) || println("    | ", l)
+    # The LAST lines, not the first. A reviewer showed the first twelve are the
+    # Miniconda installer's own chatter ("Unpacking payload...", ten Extracting
+    # lines) and that the cause -- /usr/bin/env: 'python': No such file or
+    # directory -- never appeared in the real CI log at all. It is near the end.
+    let ls = filter(!isempty, strip.(split(sprint(showerror, e), "\n")))
+        println("    | ... ", max(length(ls) - 14, 0), " earlier lines omitted")
+        for l in ls[max(end - 13, 1):end]
+            println("    | ", l)
+        end
     end
 end
 
@@ -94,8 +101,15 @@ if !isdir(bin)
           replace(first(split(sprint(showerror, STEP1[]), "\n"), 3) |> x -> join(x, "\n    "), "\r" => "")
     hint = occursin(" ", Conda.ROOTENV) ?
         "\n\n  THE DEPOT PATH CONTAINS A SPACE:\n    $(Conda.ROOTENV)\n" *
-        "  Conda.jl refuses to bootstrap into a path with a space, on every\n" *
-        "  platform. Use a depot path without spaces, or set CONDA_JL_HOME." : ""
+        "  Conda.jl refuses to bootstrap into a path with a space (its own\n" *
+        "  message says Windows; on Linux it fires too).\n\n" *
+        "  THE FIX: use a depot path without spaces. That is one step.\n\n" *
+        "  Setting CONDA_JL_HOME is NOT one step, and a reviewer measured it:\n" *
+        "  Conda.jl caches the spaced path in its deps.jl, so you need\n" *
+        "    CONDA_JL_HOME=<path> julia --project=. -e \'using Pkg; Pkg.build(\"Conda\")\'\n" *
+        "    CONDA_JL_HOME=<path> julia --project=. -e \'using Pkg; Pkg.build(\"HiQGA\")\'\n" *
+        "  and only then does install.jl finish. Re-running install.jl alone\n" *
+        "  fails again with this same message." : ""
     error("conda was never bootstrapped at $bin" * hint * why)
 end
 if isfile(joinpath(bin, "python")) || islink(joinpath(bin, "python"))

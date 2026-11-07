@@ -137,11 +137,42 @@ function main()
         "site_name" => cfg["name"], "site_label" => cfg["label"],
         "column" => d["column"], "parent" => get(d, "parent", ""), "role" => info.role,
         "config_source" => cfg["_source"],
+        # NOT a SHA, despite the key names: these are Julia`s 64-bit hash(),
+        # which is not reproducible outside Julia and is not guaranteed stable
+        # across Julia versions. A reviewer flagged both names as misleading.
+        # Kept as-is so existing artefacts stay readable; read them as "a
+        # fingerprint from this Julia", not as a checksum anyone can recompute.
         "config_hash" => bytes2hex(reinterpret(UInt8, [hash(read(cfg["_source"], String))])),
         "seed" => seed, "m_prior" => collect(info.m_prior),
         "stage0_written" => string(now_str()),
         "truth_file_sha" => filesha(tpath),
     )
+
+    # THE SEAL MUST MATCH THE CONFIG THAT ASKED FOR IT. A reviewer showed that
+    # this stage records the seed VARIABLE it used, so a Stage 0 that alters the
+    # seed records the altered value and test_stage0_roundtrip -- which rebuilds
+    # using the artefact's OWN recorded seed -- passes. `seed = Int(d["seed"]) + 1`
+    # sealed data drawn at 124 for a config asking 123, printed "seed 124", and
+    # the firewall test said OK.
+    #
+    # Re-read the config from disk rather than trusting the local variable, and
+    # check the sealed data against an independent draw. This runs on every real
+    # run, not only under test.
+    let want = Int(TOML.parsefile(cfg["_source"])["data"]["seed"])
+        seed == want || error("""
+    Stage 0 sealed seed $seed but $(cfg["_source"]) asks for $want.
+
+      The artefact records the seed it used, so nothing downstream would notice.
+    """)
+        chk = build_aem_jac(T, want).aem
+        (vec(chk.dlow) == vec(aem.dlow) && vec(chk.dhigh) == vec(aem.dhigh)) || error("""
+    Stage 0's sealed data are not the draw at seed $want.
+
+      An independent rebuild at the config's seed differs from what was sealed,
+      so the noise realisation every later stage inverts is not the one the
+      config specifies.
+    """)
+    end
 
     # ---- the whitelist is ASSERTED, not assumed -----------------------
     extra = setdiff(keys(A), SEALED_KEYS)
