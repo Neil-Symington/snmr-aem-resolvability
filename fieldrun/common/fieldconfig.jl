@@ -280,8 +280,16 @@ function check_values(c::Dict, path)
         haskey(c, sec) && haskey(c[sec], k) && chk(all(>(0), c[sec][k]),
             "[$sec] $k must all be > 0, got $(c[sec][k])")
     end
-    haskey(c["convergence"], "rhat") && chk(c["convergence"]["rhat"] >= 1,
-        "[convergence] rhat must be >= 1, got $(c["convergence"]["rhat"])")
+    # haskey(c, "convergence") FIRST. [convergence] is the one section indexed
+    # here that is neither in REQUIRED nor in the required-sections loop above,
+    # so deleting it gave a raw KeyError: key "convergence" not found. That is
+    # the THIRD round in which an optional section has thrown a KeyError from
+    # this function -- [aem] and [snmr] were the first two -- so the pattern,
+    # not just the instance, is what needed fixing: every section indexed below
+    # is either asserted present above or reached through haskey(c, ...).
+    haskey(c, "convergence") && haskey(c["convergence"], "rhat") &&
+        chk(c["convergence"]["rhat"] >= 1,
+            "[convergence] rhat must be >= 1, got $(c["convergence"]["rhat"])")
     if haskey(c["detect"], "doi_widthfrac_alt")
         v = c["detect"]["doi_widthfrac_alt"]
         chk(issorted(v) && all(x -> 0 < x <= 1, v),

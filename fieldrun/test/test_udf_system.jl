@@ -2,8 +2,15 @@
 #
 # check_against_config was defined and called NOWHERE for two rounds, while the
 # module header and the README both said the gate table "is cross-checked". It
-# now runs on load, and this asserts that: a bad .des must make `include` fail,
-# not merely make a function return badly if someone calls it.
+# now runs on load.
+#
+# WHAT THIS FILE DOES AND DOES NOT TEST. It asserts that the SHIPPED .des passes
+# every identity. It does NOT construct a bad .des and assert that `include`
+# fails -- an earlier version of this header said it did, which was a claim
+# about a test that is not here, found by a reviewer reading the header against
+# the code. Doing it properly needs a copy of the tree per mutation, which is
+# what the reviewer's own harness does and what this suite is not set up for.
+# The mutations are recorded in the round-7 and round-8 reports instead.
 using Test
 const FR = normpath(joinpath(@__DIR__, ".."))
 

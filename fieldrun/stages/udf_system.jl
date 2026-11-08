@@ -336,6 +336,30 @@ function check_against_config()
             "waveform is normalised in the .des and this one is not")
         R[end, 1] ≈ hold || error(
             "$tag ramp ends at $(R[end,1]) s but [aem] declares a hold of $hold s")
+        # THE SWITCH-OFF TIME. A reviewer doubled LM's and the check passed, so
+        # "both waveforms are checked" was true only of start, peak and end.
+        #
+        # The invariant is physical, not a range anyone picked: the current must
+        # reach zero BEFORE the first gate opens, which is why the gates start
+        # where they do. Measured on the shipped delivery, LM switches off in
+        # 12.2 us against a first gate at 14.6 us, and HM in 304 us against
+        # 427 us. Doubling either breaks it. A first attempt at this check
+        # asserted "1 to 100 us" from assumption and refused the shipped HM
+        # ramp on load -- the same mistake as every other claim in this file's
+        # history, which is asserting instead of measuring.
+        let ipk = findlast(x -> x >= 0.999, R[:, 2]),
+            iz  = findfirst(j -> R[j, 2] <= 1e-12, ipk:size(R, 1))
+            iz === nothing && error("$tag ramp has no zero after the peak")
+            t_off = R[ipk + iz - 1, 1] - R[ipk, 1]
+            t_off > 0 || error("$tag switch-off is not positive: $(t_off) s")
+            g1 = (tag == "LM" ? LM_WINDOW_US[1, 1] : HM_WINDOW_US[1, 1]) * 1e-6
+            t_off < g1 || error(
+                "$tag switches off $(t_off) s after the peak but its first gate " *
+                "opens at $(g1) s. The current must reach zero before the first " *
+                "gate opens -- the .des waveform or the gate table has been " *
+                "altered, and the forward would integrate current the gates " *
+                "are supposed to be measuring after.")
+        end
     end
     _AEM["lm_ramp_hold"] > 0 && _AEM["hm_ramp_hold"] > _AEM["lm_ramp_hold"] || error(
         "[aem] ramp holds look wrong: lm $(_AEM["lm_ramp_hold"]), hm $(_AEM["hm_ramp_hold"])")

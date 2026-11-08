@@ -51,10 +51,14 @@ def subset_csv(src, dst, id_col, ids, drop=()):
     if missing:
         sys.exit(f"{src}: no row for {sorted(missing)}")
     cols = [c for c in rows[0] if c not in drop]
-    # newline="\n", not "": the default gave CRLF on every shipped CSV, so
-    # "two rows, verbatim" was not true even though the values were unchanged.
-    with open(dst, "w", newline="\n") as fh:
-        w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
+    # lineterminator="\n" is what controls it. The previous attempt set
+    # newline="\n" and claimed to have fixed the CRLF endings; a reviewer ran
+    # this function and got output BYTE-IDENTICAL to the CRLF file, because
+    # csv.DictWriter writes its own lineterminator regardless of newline=.
+    # A comment claiming a fix that changed nothing is worse than no comment.
+    with open(dst, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore",
+                           lineterminator="\n")
         w.writeheader()
         for r in sorted(keep, key=lambda r: r[id_col]):
             w.writerow(r)
@@ -109,8 +113,8 @@ def main():
     for r in rows:
         if r.get("csv"):
             r["csv"] = "aem/soundings/" + os.path.basename(r["csv"])
-    with open(man_dst, "w", newline="\n") as fh:
-        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+    with open(man_dst, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]), lineterminator="\n")
         w.writeheader(); w.writerows(rows)
     written.append(("aem/soundings/manifest.csv",
                     f"{n} rows, csv column repointed at aem/soundings/"))
