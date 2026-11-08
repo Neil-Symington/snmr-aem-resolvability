@@ -20,7 +20,14 @@ add(col,stat,val,truth,fig,src) = push!(rows,
 
 ENS = Dict("3P"=>"3PT","2P"=>"2PT","3S"=>"3ST","2S"=>"2ST")
 # verify every label against the column Stage 0 sealed, before any number is
-# written to a CSV the paper quotes
+# written to a CSV the paper quotes.
+#
+# figstyle.jl is included HERE because it was not: the assert_column call was
+# added without it and this script died with UndefVarError: FigStyle on every
+# input, so the check it was given never ran once. It was never executed after
+# the change.
+include(joinpath(@__DIR__, "figstyle.jl"))
+using .FigStyle
 foreach(FigStyle.assert_column, sort(collect(keys(ENS))))
 SRC = Dict("3P"=>"3M","2P"=>"2M","3S"=>"3S","2S"=>"2S")
 

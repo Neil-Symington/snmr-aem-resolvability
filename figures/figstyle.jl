@@ -7,6 +7,13 @@
 #   truths are drawn as a line and named in the legend.
 module FigStyle
 using PyPlot, Printf
+# JLD2 directly, not `@eval Main using JLD2` + invokelatest. That dance cannot
+# see a binding created in the same world age, so assert_column threw
+# UndefVarError: `load` whenever it was called from anywhere that had not
+# already loaded JLD2 at top level. The same trap has now cost time three times
+# in this repository; a plain import has none of it, and JLD2 is a direct
+# project dependency.
+using JLD2
 export MM170, MM85, DPI, C_FRESH, C_SALINE, C_TRUTH, C_TRUTH_ONBLACK, C_MGR, newfig, panel,
        aquifer_band, finish, OUTDIR, assert_column, provenance, archie_m
 
@@ -29,13 +36,25 @@ Called for every tag a figure draws. If Stage 0 has not run for that column
 there is nothing to check against, and that is said rather than passed over.
 """
 function assert_column(tag::AbstractString)
-    @eval Main using JLD2
     a = joinpath(ROOT, "outputs", "synth_$tag", "stage0_synth_$tag.jld2")
     if !isfile(a)
-        @warn "no Stage 0 artefact for $tag: the column label is UNVERIFIED" path=a
+        # ERROR, not a warning. The first version warned and drew anyway, and a
+        # reviewer pointed out that six scripts then produce a figure from
+        # unverified data -- which for a paper figure is the wrong default. The
+        # escape hatch is explicit so that choosing it is a decision.
+        haskey(ENV, "FIGS_ALLOW_UNVERIFIED") || error("""
+    NO STAGE 0 ARTEFACT FOR $tag, so its column label cannot be verified.
+
+      expected: $a
+
+      Run Stage 0 for this column, or set FIGS_ALLOW_UNVERIFIED=1 to draw
+      anyway. Do not use an unverified figure in the paper: a figure drawn from
+      the wrong column looks entirely normal.
+    """)
+        @warn "FIGS_ALLOW_UNVERIFIED is set: $tag is NOT verified" path=a
         return nothing
     end
-    A = Base.invokelatest(Main.load, a)
+    A = JLD2.load(a)
     got = get(A, "column", nothing)
     got === nothing && error("$a records no `column`; cannot verify the label $tag")
     String(got) == tag || error("""
@@ -47,6 +66,34 @@ function assert_column(tag::AbstractString)
       A figure drawn from the wrong column looks entirely normal, which is why
       this is an error and not a warning.
     """)
+
+    # AND THE TRUTH FILE BEHIND IT. `column` is copied from the config, so a
+    # config declaring column = "3P" while pointing at truth_murray2P.jld2 is
+    # sealed by the real Stage 0 and passes the check above -- a reviewer built
+    # exactly that and drew fig04 and fig05 from it.
+    #
+    # Stage 0 records truth_file_sha, so compare it against the hash of the
+    # truth this column is SUPPOSED to come from. That is the naming convention
+    # every committed config follows, and it makes the check an identity rather
+    # than a filename match. Recording the path instead was the first attempt
+    # and Stage 0's key whitelist refused it, correctly.
+    want = joinpath(ROOT, "data", "truth_murray$tag.jld2")
+    sha  = get(A, "truth_file_sha", "")
+    if isfile(want) && !isempty(string(sha))
+        mine = bytes2hex(reinterpret(UInt8, [hash(read(want))]))
+        mine == string(sha) || error("""
+    THIS COLUMN WAS NOT SEALED FROM ITS OWN TRUTH FILE.
+
+      panel label   : $tag
+      expected truth: $(relpath(want, ROOT))
+      sealed sha    : $(sha)
+      that file's   : $(mine)
+
+      $a records column $tag but was sealed from a different truth file. A
+      config may declare any column it likes; this catches one that declares
+      $tag while pointing somewhere else.
+    """)
+    end
     nothing
 end
 
@@ -83,11 +130,10 @@ figure built from a SMOKE run carries no marker distinguishing it from a
 production one; this at least records which config it came from.
 """
 function provenance(tags)
-    @eval Main using JLD2
     for t in tags
         a = joinpath(ROOT, "outputs", "synth_$t", "stage0_synth_$t.jld2")
         isfile(a) || continue
-        A = Base.invokelatest(Main.load, a)
+        A = JLD2.load(a)
         @printf("  %-4s column %-4s  config %s\n", t, get(A, "column", "?"),
                 basename(string(get(A, "config_source", "?"))))
     end

@@ -86,6 +86,15 @@ on `PATH` at all; 126 and above gets `env python` and fails** with exit 127.
 
 `~/.julia` is about 57 characters, so a default depot never hits this — which is why
 GitHub's runners install cleanly and a deep project-local or scratch depot does not.
+
+**There is a second wall further out, and the workaround does not help there.**
+At a depot of about 291 characters (conda's `ROOTENV` past roughly 255) conda's
+own python binary **segfaults**: `bin/python --version` returns 139, and so does
+`conda --version` with that bin on `PATH`. A reviewer bisected it to between
+`ROOTENV` 255 and 271 characters, which matches the 255-character prefix conda's
+binaries are built with. So the usable range is a band, not a floor: short
+enough for an absolute shebang, or long enough to need the `PATH` fix but under
+about 255. Use a short depot path.
 A **system `python` does not rescue it** either: with `env python` resolving to
 `/usr/bin/python3`, conda fails differently with `ModuleNotFoundError: No module named
 'conda'`. Only conda's own python can run conda, so what `install.jl` does is not
@@ -279,21 +288,38 @@ What they need, which was written down nowhere:
 
 | Script | Columns | Also needs |
 |---|---|---|
-| `fig02`, `fig03`, `fig04`, `fig05` | 3P, 2P | `data/truth_murray<tag>.jld2` |
-| `fig03` | 3P, 2P | `tools/extract_full_draws.jl`, `tools/aem_sensitivity.jl` outputs |
-| `fig06`, `figS8` | 3P | Stage 5 / Stage 4 outputs |
+| `fig02` | 3P, 3S, 2P, 2S | `data/truth_murray<tag>.jld2` |
+| `fig03` | 3P, 2P (+ 2PJ if present) | `tools/extract_full_draws.jl`, `tools/aem_sensitivity.jl` outputs |
+| `fig04`, `fig05` | 3P, 2P | truth files and Stage 3 outputs |
+| `fig06` | 3P, 2P (+ 2PJ if present) | Stage 5 outputs |
+| `figS8` | 3P, 3S, 2P, 2S | Stage 4 outputs |
 | `fig07`, `export_numbers_v2` | 3P, 3S, 2P, 2S | Stage 4 post, and `singlepass_archive/` if present |
 | `fig08` | 2P | `tools/section6_bore_value.jl` |
+
+An earlier version of this table was **wrong for three of its rows** — `fig02`
+and `figS8` read four columns, not one or two, and `fig06` reads two. It was
+presented as the thing nobody had written down, which made being wrong worse
+than being absent. Counts above are from the tags each script actually
+references.
 
 `singlepass_archive/` is read by `fig07` and **written by nothing** — it is an
 archive of an earlier grid mode, and its absence is handled.
 
-**Every per-column figure now verifies its own label.** A reviewer copied the 2P
-column's files under the names 3P, 2S and 3S; `fig05`, `fig07` and `figS8` drew
-PNGs and wrote CSV rows labelled `3P` and `2S`, identical to the digit, without
-noticing. `FigStyle.assert_column` compares each tag against the `column` the
-Stage 0 artefact recorded and refuses to draw on a mismatch, because a figure
-from the wrong column looks entirely normal.
+**Every per-column figure verifies its own label**, and it is now true: all eight
+that carry column tags call `FigStyle.assert_column`. When this was first
+claimed, four were unwired — including `figS8`, which was one of three a reviewer
+drew from fabricated columns with no message at all.
+
+The check does two things. It compares the tag against the `column` the Stage 0
+artefact recorded, and it compares the artefact's `truth_file_sha` against the
+hash of `data/truth_murray<tag>.jld2`. The second is needed because `column` is
+copied from the config: a config declaring `column = "3P"` while pointing at
+another column's truth is sealed cleanly by the real Stage 0, and a reviewer did
+exactly that and drew two figures from it.
+
+**With no Stage 0 artefact it is an error, not a warning.** It warned and drew
+anyway at first, which means a paper figure from unverified data. Set
+`FIGS_ALLOW_UNVERIFIED=1` to override, and do not use the result in the paper.
 
 A figure built from a **smoke** run is still not marked as such on the image.
 `FigStyle.provenance` prints the column and config of each panel to the build

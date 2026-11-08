@@ -63,6 +63,13 @@ end
         include(joinpath(@__DIR__, "test_noise_seed.jl"))
     end
 
+    # Stage 0 on a committed config. Nothing ran Stage 0 -- not CI, not this
+    # suite -- which is how a seal that threw KeyError on every committed config
+    # shipped and killed every real run for a round.
+    @testset "Stage 0 seal on a committed config" begin
+        include(joinpath(@__DIR__, "test_stage0_seed.jl"))
+    end
+
     # The truth generator's own suite, from the repository it used to be.
     # Running it from here is the point of consolidating: one install, one
     # command, and the generator can no longer drift from the stages that

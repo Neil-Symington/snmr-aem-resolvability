@@ -145,6 +145,14 @@ function main()
         "config_hash" => bytes2hex(reinterpret(UInt8, [hash(read(cfg["_source"], String))])),
         "seed" => seed, "m_prior" => collect(info.m_prior),
         "stage0_written" => string(now_str()),
+        # The IDENTITY of the truth, not its contents. figures/figstyle.jl
+        # compares this against the hash of data/truth_murray<column>.jld2,
+        # which catches a config declaring column = "3P" while pointing at
+        # another column's truth -- a reviewer sealed exactly that and drew two
+        # figures from it. Recording the PATH instead was the first attempt and
+        # this file's own key whitelist refused it, correctly: a path is
+        # provenance the firewall has not authorised, and the hash already
+        # carries what is needed.
         "truth_file_sha" => filesha(tpath),
     )
 
@@ -155,10 +163,21 @@ function main()
     # sealed data drawn at 124 for a config asking 123, printed "seed 124", and
     # the firewall test said OK.
     #
-    # Re-read the config from disk rather than trusting the local variable, and
-    # check the sealed data against an independent draw. This runs on every real
-    # run, not only under test.
-    let want = Int(TOML.parsefile(cfg["_source"])["data"]["seed"])
+    # Check against the RESOLVED config, not a fresh TOML.parsefile of the
+    # source. The first version of this check re-parsed the file on disk to
+    # avoid trusting the local variable, and in doing so bypassed `extends`
+    # inheritance: all seven committed configs inherit `seed` from
+    # ../config.toml and carry none of their own, so Stage 0 ran the forward
+    # model and the noise draw and then died with KeyError: key "seed" not
+    # found -- on EVERY committed config. It killed every real run for a round,
+    # and neither CI nor the suite runs Stage 0, which is how it shipped.
+    #
+    # The resolved config is still not the local variable, so this catches what
+    # it was built to catch: a Stage 0 that reads the seed and then alters it
+    # before drawing. test/test_stage0_seed.jl runs this on a COMMITTED config,
+    # which is the gap that let the first version through -- the prototype that
+    # verified it wrote `seed` into a config it generated.
+    let want = Int(cfg["data"]["seed"])
         seed == want || error("""
     Stage 0 sealed seed $seed but $(cfg["_source"]) asks for $want.
 
