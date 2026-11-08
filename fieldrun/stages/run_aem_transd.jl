@@ -43,8 +43,8 @@ let i = 1
     end
 end
 const SITE     = get(ARG, "site", "")
-const NSAMPLES = parse(Int, get(ARG, "nsamples", "200001"))
-const NCHAINS  = parse(Int, get(ARG, "nchains", "4"))
+const NSAMPLES = NSAMPLES_CFG   # from [mcmc], or --nsamples
+const NCHAINS  = NCHAINS_CFG    # from [mcmc], or --nchains
 const TMAX     = 2.5
 const NDRAWS   = 200           # intact profiles retained for Stage 2 and Stage 5
 const SEED     = 20261028

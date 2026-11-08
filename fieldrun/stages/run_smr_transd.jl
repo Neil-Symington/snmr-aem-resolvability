@@ -64,9 +64,9 @@ include(joinpath(@__DIR__, "..", "common", "stage_prelude.jl"))
 # control file said. Four separate definitions of one path, which is what
 # the control file exists to prevent.
 const RUNDIR   = joinpath(OUT, "smr_mcmc")
-const NSAMPLES = haskey(ARG, "nsamples")  ? parse(Int, ARG["nsamples"])  : 150_001
+const NSAMPLES = NSAMPLES_CFG   # from [mcmc], or --nsamples
 const NENS     = haskey(ARG, "ensembles") ? parse(Int, ARG["ensembles"]) : 4
-const NCHAINS  = CFG.NCHAINS
+const NCHAINS  = NCHAINS_CFG    # from [mcmc], not prerun_config.jl
 const S_TAU    = haskey(ARG, "stau") ? parse(Float64, ARG["stau"]) : 2.0
 const SBOUNDS  = [log(1e-2) log(1e4)]
 # --supplied: use the operator's resistivity profile instead of the AEM model,
