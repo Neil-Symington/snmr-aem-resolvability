@@ -6,6 +6,11 @@
 # figure's whole purpose, so both panels share an x-range.
 using JLD2, Statistics, Printf, PyPlot, Random
 include("figstyle.jl"); using .FigStyle
+
+# Verify every label against the column Stage 0 sealed. These scripts were
+# left unwired when the others were done, and figS8 was one of three a
+# reviewer drew from fabricated columns with no message at all.
+foreach(FigStyle.assert_column, ("3P", "3S", "2P", "2S"))
 const SYN = normpath(joinpath(@__DIR__, "..", "data"))
 const OUT = normpath(joinpath(@__DIR__,"..","outputs"))
 const MGL = 6400.0

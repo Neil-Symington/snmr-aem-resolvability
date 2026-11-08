@@ -42,6 +42,7 @@ end
 
 function main()
     cols = (("3P","3PT","test one — unconfined"), ("2P","2PT","test two — confined"))
+    foreach(c -> assert_column(c[1]), cols); provenance(first.(cols))
     fig, axs = FigStyle.newfig(width = MM170, h = 3.4, nrows = 1, ncols = 2)
     zmax = 80.0
     for (i,(tag, ens, label)) in enumerate(cols)

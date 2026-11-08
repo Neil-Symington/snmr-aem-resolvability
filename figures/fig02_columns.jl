@@ -10,6 +10,11 @@
 # differ -- the controls share theta and clay with their parents bit-for-bit.
 using JLD2, Statistics, Printf, PyPlot
 include("figstyle.jl"); using .FigStyle
+
+# Verify every label against the column Stage 0 sealed. These scripts were
+# left unwired when the others were done, and figS8 was one of three a
+# reviewer drew from fabricated columns with no message at all.
+foreach(FigStyle.assert_column, ("3P", "3S", "2P", "2S"))
 const SYN = normpath(joinpath(@__DIR__, "..", "data"))
 const MGL = 6400.0
 ld(t) = load(joinpath(SYN, "truth_murray$t.jld2"))
@@ -30,7 +35,7 @@ function main()
     letters = "abcdefgh"; li = 1
     for (r, (ft, st, label)) in enumerate(cols)
         TF, TS = ld(ft), ld(st)
-        z = TF["z"]; m = TF["M_ARCHIE"]
+        z = TF["z"]; m = FigStyle.archie_m(TF)
         aqs = aquifers(TF)
         zmax = 60.0; zi = findall(<=(zmax), z)
 

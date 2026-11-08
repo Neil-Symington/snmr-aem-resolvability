@@ -26,6 +26,7 @@ function main()
     # Panel (c) appears as soon as the joint Stage 5 exists, so this script
     # builds either way and nothing has to be edited when the run lands.
     cols = Any[("3P","test one — unconfined"), ("2P","test two — confined")]
+    foreach(c -> assert_column(c[1]), cols); provenance(first.(cols))
     isfile(joinpath(OUT,"synth_2PJ","stage5_synth_2PJ.jld2")) &&
         push!(cols, ("2PJ","test two + sounding"))
     fig, axs = FigStyle.newfig(width = MM170, h = 3.4, nrows = 1, ncols = length(cols))
@@ -70,7 +71,7 @@ function main()
 
         # truth
         swtrue = mean(T["σw"][it]) * MGL
-        claytrue = sb_true - mean(T["σw"][it]) * mean(T["θ_total"][it])^T["M_ARCHIE"]
+        claytrue = sb_true - mean(T["σw"][it]) * mean(T["θ_total"][it])^FigStyle.archie_m(T)
         ax.plot([claytrue], [swtrue], "o", ms = 6, mfc = C_SALINE, mec = "black",
                 mew = 0.8, zorder = 8, label = "truth")
 

@@ -81,6 +81,7 @@ end
 function main()
     # (col label, data, colour, faded?, joint?). The joint bars appear as soon
     # as their Stage 4 post exists, so this script needs no edit when they land.
+    foreach(assert_column, ("3P","3S","2P","2S")); provenance(("3P","3S","2P","2S"))
     rows = Any[("test one",         row("3P","3PT"), C_FRESH,  false, false),
                ("test one, saline", row("3S","3ST"), C_FRESH,  true,  false),
                ("test two",         row("2P","2PT"), C_SALINE, false, false),

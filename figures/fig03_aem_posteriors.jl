@@ -15,6 +15,11 @@
 # and 0.072 dex on test two, so this is more samples, not a different answer.
 using JLD2, Statistics, Printf, PyPlot
 include("figstyle.jl"); using .FigStyle
+
+# Verify every label against the column Stage 0 sealed. These scripts were
+# left unwired when the others were done, and figS8 was one of three a
+# reviewer drew from fabricated columns with no message at all.
+foreach(FigStyle.assert_column, ("3P", "2P"))
 const SYN = normpath(joinpath(@__DIR__, "..", "data"))
 
 function aquifers(T)
