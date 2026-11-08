@@ -57,7 +57,12 @@ using HiQGA.transD_GP, JLD2, Statistics, Random, SNMRForward, DelimitedFiles
 const HERE     = @__DIR__
 # The control file first: support modules read it at load time.
 include(joinpath(@__DIR__, "..", "common", "stage_prelude.jl"))
-const OUT      = joinpath(HERE, "outputs")
+# OUT comes from the prelude, which resolves [paths] outputs. Each stage and
+# aem_lib.jl used to define its own `joinpath(HERE, "outputs")`, and because
+# the support modules are included AFTER the prelude theirs won -- so the
+# first real run wrote to fieldrun/common/outputs/ instead of where the
+# control file said. Four separate definitions of one path, which is what
+# the control file exists to prevent.
 const RUNDIR   = joinpath(OUT, "smr_mcmc")
 const NSAMPLES = haskey(ARG, "nsamples")  ? parse(Int, ARG["nsamples"])  : 150_001
 const NENS     = haskey(ARG, "ensembles") ? parse(Int, ARG["ensembles"]) : 4

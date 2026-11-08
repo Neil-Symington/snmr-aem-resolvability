@@ -45,8 +45,12 @@ include(joinpath(COMMON, "prerun_data.jl"))
 include(joinpath(COMMON, "udf_smr.jl"))
 
 const HERE = @__DIR__
-const OUT  = joinpath(HERE, "outputs")
-
+# OUT comes from the prelude, which resolves [paths] outputs. Each stage and
+# aem_lib.jl used to define its own `joinpath(HERE, "outputs")`, and because
+# the support modules are included AFTER the prelude theirs won -- so the
+# first real run wrote to fieldrun/common/outputs/ instead of where the
+# control file said. Four separate definitions of one path, which is what
+# the control file exists to prevent.
 const THETA_MIN   = 0.15      # stage1_target.jl default
 const THICK_MIN   = 10.0      # stage1_target.jl default
 const THETA_DETECT = 0.05     # stage1_target.jl detectability floor

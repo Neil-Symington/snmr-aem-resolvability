@@ -17,8 +17,12 @@ const HERE = @__DIR__
 # in the directory that held the soundings; in the repository they are
 # shipped under fieldrun/example/aem/soundings and the control file says so.
 const SND  = FieldConfig.cfgpath(FieldConfig.CFG[], "aem_sounds")
-const OUT  = joinpath(HERE, "outputs")
-
+# OUT comes from the prelude, which resolves [paths] outputs. Each stage and
+# aem_lib.jl used to define its own `joinpath(HERE, "outputs")`, and because
+# the support modules are included AFTER the prelude theirs won -- so the
+# first real run wrote to fieldrun/common/outputs/ instead of where the
+# control file said. Four separate definitions of one path, which is what
+# the control file exists to prevent.
 "Read a CSV with a header row into (header => column) pairs of Strings."
 function readcsv_dict(path)
     raw, hdr = readdlm(path, ',', String; header = true)

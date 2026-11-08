@@ -13,3 +13,7 @@ __pycache__/
 
 # the truth generator writes here (subtree kept its own output dir name)
 synthetics/output/
+
+# field-run products, like every other stage output
+fieldrun/outputs/
+fieldrun/logs/

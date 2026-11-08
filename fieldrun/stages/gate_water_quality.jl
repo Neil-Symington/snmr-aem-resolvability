@@ -50,7 +50,12 @@ using JLD2, Printf, Statistics, Random, DelimitedFiles
 include(joinpath(COMMON, "rockphys.jl")); using .RockPhys
 using .RockPhys: unit_sigma_w, unit_theta_total
 
-const OUT = joinpath(@__DIR__, "outputs")
+# OUT comes from the prelude, which resolves [paths] outputs. Each stage and
+# aem_lib.jl used to define its own `joinpath(HERE, "outputs")`, and because
+# the support modules are included AFTER the prelude theirs won -- so the
+# first real run wrote to fieldrun/common/outputs/ instead of where the
+# control file said. Four separate definitions of one path, which is what
+# the control file exists to prevent.
 const NTHETA = 4000       # SNMR draws subsampled for the transform
 const NPER   = 3          # clay/m draws per SNMR draw
 const NSB    = 1200       # sigma_bulk profiles resampled from the profile likelihood
