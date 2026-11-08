@@ -160,7 +160,12 @@ const KNOWN_AEM  = Set(["noise_scale", "noise_frac", "rseed"])
 const KNOWN_SMR  = Set(["loop_side", "Be_nT", "inclination_deg", "z_first",
                         "z_last", "dz", "q", "rseed", "noise_nV", "noise_domain"])
 const KNOWN_GRID = Set(["dz", "zmax"])
-const KNOWN_VAR  = Set(["seed", "corr_length", "log_sd_phi", "log_sd_clay",
+# The porosity cap logit jitter works against, from the builder that made the
+# paper's truth files. Porosity cannot approach 1, so the logit is taken against
+# a physical ceiling rather than against unity.
+const PHI_CAP = 0.55
+
+const KNOWN_VAR  = Set(["seed", "corr_length", "log_sd_phi", "log_sd_clay", "jitter",
                         "log_sd_sigma_w", "transition_min", "transition_max"])
 const KNOWN_PETRO = Set(["model", "smr_model", "m_archie", "p_clay", "n_sat",
                          "sigma_clay", "cec_clay", "rho_grain", "v_q",
@@ -413,6 +418,10 @@ function build_column(units::Vector{Unit}, cfg::Dict)
     p  = resolve_petro(cfg)
     v  = get(cfg, "variability", Dict())
     seed = get(v, "seed", 1); corr = get(v, "corr_length", 6.0)
+    # "lognormal" (the default) or "logit". See the jitter block below.
+    jitter = String(get(v, "jitter", "lognormal"))
+    jitter in ("lognormal", "logit") ||
+        error("[variability] jitter must be \"lognormal\" or \"logit\", got \"$jitter\"")
     tmin = get(v, "transition_min", 3.0); tmax = get(v, "transition_max", 6.0)
 
     rng   = Xoshiro(seed)
@@ -433,8 +442,29 @@ function build_column(units::Vector{Unit}, cfg::Dict)
     sdc_z = unit_field(z, units, trans, u -> u.sd_clay)
     sdw_z = unit_field(z, units, trans, u -> u.sd_σw)
 
-    φ    = clamp.(φ0    .* exp.(gp_draw(z; corr = corr, seed = seed + 1) .* sdφ_z), 0.005, 0.5)
-    clay = clamp.(clay0 .* exp.(gp_draw(z; corr = corr, seed = seed + 2) .* sdc_z), 0.0, 1.0)
+    # Porosity and clay are FRACTIONS, so `jitter = "logit"` perturbs them in
+    # logit space against a physical cap rather than in log space. Log jitter on
+    # a clay of 0.65 pushes it through 1.0, where (1-clay)^p_clay sends theta_SMR
+    # to zero: in the builder that produced the paper's truth files that gave an
+    # aquitard a within-unit sd(log theta) of 4.6 and moved its mean theta from
+    # 0.066 to 0.099 -- a different section, not a rougher one. Logit jitter is
+    # bounded by construction and leaves the unit means nearly put.
+    #
+    # The paper's columns were built this way (their stored `build` dict records
+    # `logit => true`); "lognormal" is the default so every existing config and
+    # the 21 reference values are unchanged.
+    logit_jit(x0, cap, sd, g) = cap .* (1 ./ (1 .+ exp.(
+        -(log.(clamp.(x0 ./ cap, 1e-6, 1 - 1e-6) ./
+               (1 .- clamp.(x0 ./ cap, 1e-6, 1 - 1e-6))) .+ sd .* g))))
+
+    gφ, gc = gp_draw(z; corr = corr, seed = seed + 1), gp_draw(z; corr = corr, seed = seed + 2)
+    if jitter == "logit"
+        φ    = clamp.(logit_jit(φ0,    PHI_CAP, sdφ_z, gφ), 0.005, 0.5)
+        clay = clamp.(logit_jit(clay0, 1.0,     sdc_z, gc), 0.0,   1.0)
+    else
+        φ    = clamp.(φ0    .* exp.(gφ .* sdφ_z), 0.005, 0.5)
+        clay = clamp.(clay0 .* exp.(gc .* sdc_z), 0.0, 1.0)
+    end
     σw   = σw           .* exp.(gp_draw(z; corr = corr, seed = seed + 3) .* sdw_z)
     # CEC follows the realised clay fraction where it is derived from clay
     cec_unit = unit_field(z, units, trans, cec_of)

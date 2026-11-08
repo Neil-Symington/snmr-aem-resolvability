@@ -100,6 +100,10 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
         rm(p, force = true)
     end
 
+    @testset "paper_3P" begin
+        include(joinpath(@__DIR__, "test_paper_3P.jl"))
+    end
+
     @testset "determinism, by value" begin
         # By VALUE, not by hash. The .jld2 embeds the Julia version string and a
         # serialised Dict, so its SHA-256 differs between machines and between
