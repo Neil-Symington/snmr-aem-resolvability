@@ -41,7 +41,7 @@ const REQUIRED = [
 # Relative [paths] entries are resolved against fieldrun/. These are stems or
 # directories rather than single files, so existence is checked per use.
 const PATH_KEYS = ("sites", "snmr_meta", "snmr_dir", "aem_sounds", "aem_nav",
-                   "aem_system", "outputs", "logs")
+                   "aem_system", "outputs", "logs", "ek_root")
 
 getin(d, ks) = foldl((a, k) -> a === nothing ? nothing : get(a, k, nothing), ks; init = d)
 
@@ -53,7 +53,13 @@ const KNOWN = Dict(
     "run"         => ["name", "sites", "stages", "mode", "npar", "minfree_gb",
                       "mode_overrides", "config_file"],
     "paths"       => ["sites", "snmr_meta", "snmr_dir", "aem_sounds", "aem_nav",
-                      "aem_system", "outputs", "logs"],
+                      "aem_system", "outputs", "logs",
+                      # OPTIONAL, and only for East Kimberley: common/prerun_data.jl
+                      # is wired to that survey and its four paths used to be
+                      # absolute consts evaluated at load time. UDF does not need
+                      # it; absent, those paths error with an explanation if
+                      # something reaches for them.
+                      "ek_root"],
     "snmr"        => ["mat_preference", "min_pulse_moments", "loop_shape"],
     "aem"         => ["nominal_unc", "lm_gates", "hm_gates", "lm_ramp_hold",
                       "hm_ramp_hold", "lowpass_hz", "tx_area_m2", "rx_radius_m",

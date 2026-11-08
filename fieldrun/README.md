@@ -1,6 +1,6 @@
 # Batch field runs
 
-The same five stages the synthetic work uses, driven from one control file over
+The same six stages the synthetic work uses, driven from one control file over
 a list of real sites. `example/` holds a two-site extract from Geoscience
 Australia's Upper Darling Floodplain surveys so the workflow can be run and
 checked end to end — see `example/PROVENANCE.md`, which also states the release
@@ -8,39 +8,74 @@ position on that data.
 
 ## Status
 
-This is a branch under construction. What is here now:
+All six field stages are now in the repository, with their support modules:
 
-- `example/` — the two-site input set, 1.59 MB, with `SHA256SUMS`
-- `config/udf_example.toml` — the control file, every stage parameter in one place
-- `tools/assemble_example.py` — how `example/` was built, for provenance
+```
+common/   fieldconfig.jl      the control file, read once and validated
+          stage_prelude.jl    what every stage does first (see below)
+          aem_lib.jl  occam_udf.jl  rockphys.jl  transform.jl
+          udf_smr.jl  prerun_data.jl  prerun_lib.jl
+stages/   udf_system.jl       the SkyTEM system, parsed from the shipped .des
+          run_aem_occam.jl    AEM smooth inversion
+          run_aem_transd.jl   AEM trans-D
+          run_smr_transd.jl   SNMR trans-D on Stage-1 conductivity draws
+          detect_aquifer.jl   detection
+          run_aem_profile.jl  the profile likelihood
+          gate_water_quality.jl  the water-quality gate
+run_batch.sh                  the driver
+```
 
-- `common/fieldconfig.jl` — the control-file reader. Its failure paths are
-  negative-tested by `fieldrun/test/test_fieldconfig.jl`, which the repository's
-  `test/runtests.jl` runs: 76 cases, including six that assert a VALID config is
-  still accepted. An earlier version of this line claimed the tests existed when
-  nothing was committed — they were reviewers' scripts, on reviewers' machines.
-- `stages/udf_system.jl` — the SkyTEM system, parsed from the shipped `.des`
-  rather than transcribed, and cross-checked against what the control file
-  declares
+**What is verified, and what is not.** Every support module and four of the six
+stages LOAD from a clone, and `run_aem_occam.jl` inverts a real sounding. A full
+two-site run has not been completed, and `reference/` — the expected verdicts
+for UD21 and UD24, so a run can be checked rather than admired — does not exist
+yet. Do not quote a number from this branch.
 
-Still to come, in this order:
+**Three porting blockers, cleared.** Each had been named in this file for three
+rounds before the stages moved:
 
-1. The remaining field stage scripts — AEM Occam, AEM trans-D, SNMR trans-D,
-   detection, the profile likelihood and the water-quality gate — ported from
-   `udf_realdata/` with their absolute paths lifted into `[paths]`. Three known
-   blockers are listed under "Porting notes" below.
-2. `run_batch.sh` — the driver, replacing `run_seven.sh`
-3. `reference/` — expected verdicts and conductance quantiles for the two
-   sites, so a full run can be checked rather than admired
+1. `udf_smr.jl` hardcoded the SNMR archive root and an April-2024 metadata
+   spreadsheet. Both now come from `[paths] snmr_dir` and `snmr_meta`.
+2. `prerun_data.jl` set **four East Kimberley paths as `const`s at load time**,
+   so a clone carried four dead absolute paths that no error mentioned, because
+   they are used lazily. They now resolve from an optional `[paths] ek_root` and
+   raise a message naming the cause if anything reaches for them. Nothing in the
+   UDF stages reads them: that file is included for its generic machinery —
+   `pick_coil`, `per_q_noise`, the sigma-hat convention, the common depth grid —
+   which East Kimberley shares, so the two surveys' posteriors sit on one grid.
+3. `export_udf_soundings.py` needs the 4.9 GB delivery and stays a provenance
+   script, not part of the batch.
 
-Until 1 and 2 land there is no end-to-end run: what is here reads the control
-file and builds the AEM system, and nothing else.
+**Two more found by loading the files rather than reading them**, which is worth
+recording because a syntax check passed both:
+
+- `rockphys.jl` included `../hypotheses/transform.jl`, **outside the
+  repository** — the same defect that made the synthetic Stage 2 unrunnable from
+  a clone for two rounds. Vendored as `common/transform.jl`.
+- **`MAT` was not a dependency.** The SNMR stages read Vista Clara `.mat` files
+  and the package was undeclared, so two support modules could not load at all.
+  It is now in `Project.toml`, and it pulls HDF5 and about 180 Manifest lines
+  with it — so any install evidence from before it was added does not cover this
+  environment.
+
+**`stage_prelude.jl`** is what every stage includes first. `udf_system.jl` parses
+the SkyTEM `.des` at load time and takes its path from the control file, so a
+stage that includes a support module before loading the config fails with
+`UndefVarError: FieldConfig` from inside a file that names neither the cause nor
+the fix. The prelude also resolves the output and log directories, so a stage
+writes where the control file says rather than beside itself.
+
+Still to come: a completed two-site run, and `reference/`.
 
 ## How it will be driven
 
 ```bash
-./run_batch.sh --config config/udf_example.toml
+./fieldrun/run_batch.sh --config fieldrun/config/udf_example.toml
 ```
+
+Run it from the repository root: that is the Julia project. The driver reads the
+control file through the same loader the stages use, so the shell and Julia
+cannot disagree about which sites, how many at once, or which stages to run.
 
 `mode = "smoke"` in `[run]` cuts the chains to 2,001 samples on 2 chains with a
 single kernel draw. It is what a reader runs first: it exercises every stage and
