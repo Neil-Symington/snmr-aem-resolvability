@@ -574,7 +574,9 @@ function main()
     ci = Dict(strip(h) => i for (i, h) in enumerate(vec(d[2])))
     sites = d[1][:, ci["field_id"]]
     res = []
+    nattempt = 0
     for s in sites
+        nattempt += 1
         r = try analyse(s) catch e
             @warn "detection failed for $s" exception = (e, catch_backtrace()); nothing
         end
@@ -592,6 +594,18 @@ function main()
                 quantile(r.screen_main, .5), r.verdict)
     end
     println("="^100)
+    # A stage that produced NOTHING is a failed stage, not an empty table.
+    # All three sweeps printed a bare header and exited 0 when every site was
+    # skipped for missing inputs, so run_batch.sh reported "ok" for a sweep
+    # that did no work at all. Say so, and say it in the exit code.
+    if isempty(res)
+        @printf("\nFAILED: no site produced a result (%d attempted).\n", nattempt)
+        println("A skipped site above means its input file is missing; check that")
+        println("the per-site stages actually wrote their outputs.")
+        exit(1)
+    end
+    nskip = nattempt - length(res)
+    nskip > 0 && @printf("NOTE: %d of %d sites skipped or failed.\n", nskip, nattempt)
 end
 
 main()

@@ -25,11 +25,18 @@ stages/   udf_system.jl       the SkyTEM system, parsed from the shipped .des
 run_batch.sh                  the driver
 ```
 
-**What is verified, and what is not.** Every support module and four of the six
-stages LOAD from a clone, and `run_aem_occam.jl` inverts a real sounding. A full
-two-site run has not been completed, and `reference/` — the expected verdicts
-for UD21 and UD24, so a run can be checked rather than admired — does not exist
-yet. Do not quote a number from this branch.
+**What is verified, and what is not.** A full two-site run through all six
+stages has been completed in smoke mode and checked: `reference/check_run.jl`
+passes both sites and exits 0. The Occam inversion is **bit-identical** to the
+pre-port code — `max |Δm| = 0.000e+00` over all 70 cells, χ²/N to twelve
+figures, both sites — which is what `reference/udf_example.toml` asserts.
+
+The SNMR half of the port has **not** been shown faithful: that needs a
+full-mode run compared against the production values, which `reference/README.md`
+records as the target. Until then, do not quote an SNMR number from this branch.
+Nor should a smoke number be quoted at all — smoke mode is a different answer,
+not a smaller one, and it flips one of the two detection verdicts.
+`reference/README.md` has the measurement.
 
 **Three porting blockers, cleared.** Each had been named in this file for three
 rounds before the stages moved:
@@ -65,7 +72,8 @@ stage that includes a support module before loading the config fails with
 the fix. The prelude also resolves the output and log directories, so a stage
 writes where the control file says rather than beside itself.
 
-Still to come: a completed two-site run, and `reference/`.
+Both are now done: the two-site run completes and `reference/` checks it. Still
+to come: a full-mode run, which is the test of the SNMR half of the port.
 
 ## How it will be driven
 
@@ -80,11 +88,32 @@ cannot disagree about which sites, how many at once, or which stages to run.
 `mode = "smoke"` in `[run]` cuts the chains to 2,001 samples on 2 chains with a
 single kernel draw. It is what a reader runs first: it exercises every stage and
 every file path and proves nothing about a posterior. `mode = "full"` is the
-committed parameter set.
+committed parameter set — 150,001 samples on 4 chains with 4 kernel draws, which
+is what the UDF production run used.
 
-**No CI job runs any fieldrun stage**, because the stages do not exist yet. An
-earlier version of this file said smoke mode "is what CI runs", which was never
-true — a review caught it.
+**Smoke mode is not quick.** Measured end to end on two sites with `npar = 2`:
+1 h 48 min, of which `profile` is 95 minutes. Smoke only shortens the two MCMC
+stages; `profile` is an Occam solve plus a λ² sweep plus a bisection per band
+edge, with no Monte Carlo in it to shorten, so it costs the same either way and
+dominates both. The control file carries the per-stage breakdown.
+
+**Then check the run, do not read it.**
+
+```bash
+julia --project=. fieldrun/reference/check_run.jl --config fieldrun/config/udf_example.toml
+```
+
+It compares the deterministic Occam numbers against stored values and asserts
+the structural invariants downstream, exiting non-zero on any disagreement. It
+exists because the first complete run of this workflow printed "complete" and
+six "ok" lines over a run in which both SNMR sites had thrown and all three
+sweep stages had skipped every site; `reference/README.md` has that story and
+what came out of it.
+
+**No CI job runs any fieldrun stage.** The stages exist and run now, but a
+1 h 48 min smoke run does not belong in CI, and the field inputs it needs are
+not all in the repository. An earlier version of this file said smoke mode "is
+what CI runs", which was never true — a review caught it.
 
 Stage order matters and the driver enforces it: detection must precede the
 profile likelihood, because the profile reads the detected interval. An earlier

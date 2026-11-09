@@ -43,6 +43,9 @@ $(julia --project=. -e '
 EOF
 [ -n "${NAME:-}" ] || { echo "could not read $CFG -- run the loader directly to see why"; exit 1; }
 mkdir -p "$OUTDIR" "$LOGDIR"
+# Clear last run's failure markers, or a clean run inherits them and reports
+# a failure that did not happen.
+rm -f "$LOGDIR"/.failed_* 2>/dev/null || true
 
 echo "######## $NAME  mode=$MODE  npar=$NPAR  minfree=${MINFREE}GB"
 echo "######## sites:  $(echo "$SITES" | tr ',' ' ')"
@@ -68,7 +71,11 @@ one_site() {
         has_stage "$name" || continue
         nice -n 19 julia --project=. "fieldrun/stages/$script.jl" \
             --config "$CFG" --site "$s" > "$LOGDIR/${name}_$s.log" 2>&1 \
-            || { echo "  !!! $s $name FAILED -- see $LOGDIR/${name}_$s.log"; return 1; }
+            || { echo "  !!! $s $name FAILED -- see $LOGDIR/${name}_$s.log"
+                 # one_site runs backgrounded, so a return code cannot reach the
+                 # parent shell. Leave a marker instead: the first full run
+                 # ended with "complete" over two sites that had both thrown.
+                 : > "$LOGDIR/.failed_${s}_${name}"; return 1; }
         echo "      $s $name ok"
     done
     echo "  <<< $s per-site stages done $(date +%H:%M:%S)"
@@ -92,7 +99,21 @@ for st in detect:detect_aquifer profile:run_aem_profile gate:gate_water_quality;
     nice -n 19 julia --project=. "fieldrun/stages/$script.jl" --config "$CFG" \
         > "$LOGDIR/$name.log" 2>&1 \
         && echo "      $name ok" \
-        || echo "  !!! $name FAILED -- see $LOGDIR/$name.log"
+        || { echo "  !!! $name FAILED -- see $LOGDIR/$name.log"
+             : > "$LOGDIR/.failed_$name"; }
 done
 
+# WHAT "complete" MEANS. It used to mean only that the loop ended: the first
+# full two-site run printed it after every SNMR trans-D site threw and all
+# three sweeps skipped every site. A run is complete when every stage that was
+# asked for succeeded, and the exit code has to carry that to a caller or CI.
+nfail=$(find "$LOGDIR" -maxdepth 1 -name '.failed_*' 2>/dev/null | wc -l)
+if [ "$nfail" -gt 0 ]; then
+    echo "######## $NAME INCOMPLETE $(date +%H:%M:%S): $nfail stage failure(s)"
+    for f in "$LOGDIR"/.failed_*; do
+        echo "           failed: $(basename "$f" | sed 's/^\.failed_//')"
+    done
+    echo "######## logs in $LOGDIR"
+    exit 1
+fi
 echo "######## $NAME complete $(date +%H:%M:%S).  outputs in $OUTDIR"

@@ -49,6 +49,22 @@ end
 
 # PRERUN is gone: prerun_data.jl and prerun_lib.jl are in common/
 
+# THE CHAINS NEED PROCESSES, and this stage never asked for any. run_batch.sh
+# launches `julia --project=.` with no -p, so nworkers() was 1; the old
+# `pids = workers()[1:min(NCHAINS, nworkers())]` then quietly ran ONE chain
+# instead of the config's nchains, and HiQGA rejected it one layer down:
+#
+#   ArgumentError: range(0.0, stop=0.3979400086720376, length=1): endpoints differ
+#
+# a log-spaced ladder of one chain between T=1 and T=2.5 has no endpoints.
+# Both sites failed that way in the first full batch while the stage still
+# exited 0, so the runner printed "snmr_transd ok" and the three sweep stages
+# went on to skip every site for missing inputs. Ask for the processes the
+# control file specifies and assert, as run_aem_transd.jl does -- a chain
+# count that silently disagrees with [mcmc] is not a run worth saving.
+addprocs(NCHAINS_CFG - (nworkers() == 1 ? 0 : nworkers()))
+@assert nworkers() == NCHAINS_CFG "need $(NCHAINS_CFG) workers, got $(nworkers())"
+
 # THE WORKERS NEED THE CONFIG TOO, and this is where the port bit back.
 # `@everywhere` runs on every process, and COMMON is defined by the prelude on
 # the MASTER only -- so this failed with `UndefVarError: COMMON not defined`
@@ -81,10 +97,40 @@ const HERE     = @__DIR__
 # the control file exists to prevent.
 const RUNDIR   = joinpath(OUT, "smr_mcmc")
 const NSAMPLES = NSAMPLES_CFG   # from [mcmc], or --nsamples
-const NENS     = haskey(ARG, "ensembles") ? parse(Int, ARG["ensembles"]) : 4
+# NENS is the ensemble count AND the kernel-draw count -- one kernel per
+# ensemble, the pooled posterior marginalising over them (see run_ensemble).
+# It was hardcoded 4, so [kernel] n_draws and [mcmc] nensembles were both dead
+# keys and the smoke overlay's kernel_draws = 1 never took effect: "smoke" ran
+# four ensembles, not one. [kernel] n_draws governs it now, being the key the
+# overlay already maps onto and the one documented with the reason. In full
+# mode it is 4, as every run so far has used, so no full-mode result moves.
+const NENS     = haskey(ARG, "ensembles") ? parse(Int, ARG["ensembles"]) :
+                 Int(FCFG["kernel"]["n_draws"])
 const NCHAINS  = NCHAINS_CFG    # from [mcmc], not prerun_config.jl
-const S_TAU    = haskey(ARG, "stau") ? parse(Float64, ARG["stau"]) : 2.0
-const SBOUNDS  = [log(1e-2) log(1e4)]
+# THE [noise] SECTION WAS DECORATIVE. fieldconfig.jl validated all five keys
+# and the stage then used none of them: s_prior_tau, s_sdev, s_bounds_log10 and
+# sigma_hat_branch came from hardcoded constants here or from prerun_config.jl,
+# so editing the control file changed nothing. Two of them also DISAGREED with
+# the code, which is worse than unused:
+#
+#   s_prior_tau        control file 0.5    this stage 2.0
+#   s_bounds_log10     control file 1e2    this stage 1e4 (upper)
+#
+# 2.0 is the right tau and the header above says why: at 0.5 the East Kimberley
+# posterior s sat at chi2/N 2.90 against SSC's 1.02, the prior being too narrow
+# by about 1.7x in sigma. The 1e4 upper bound is what the working version ran
+# with, and it is not academic -- the smoke posterior puts s in the tens, so
+# an upper bound of 1e2 would pin it where 1e4 does not. Both control-file
+# values have been corrected to what the code actually used, so wiring them
+# through changes no result; from here the control file governs.
+const S_TAU    = haskey(ARG, "stau") ? parse(Float64, ARG["stau"]) :
+                 Float64(FCFG["noise"]["s_prior_tau"])
+const SBOUNDS  = let b = Float64.(FCFG["noise"]["s_bounds_log10"])
+    # the control file states the bounds as log10, transD_GP wants natural log
+    reshape([log(10.0^b[1]), log(10.0^b[2])], 1, 2)
+end
+const S_SDEV   = Float64.(FCFG["noise"]["s_sdev"])
+const S_PRIOR_CENTER = Float64(FCFG["noise"]["s_prior_center"])
 # --supplied: use the operator's resistivity profile instead of the AEM model,
 # as a kernel-sensitivity control.
 const SUPPLIED = false   # no operator profile exists for UDF
@@ -115,7 +161,7 @@ function make_opts(prefix, zbnd)
         sdev_dc   = 0.008 * diff(CFG.FBOUNDS, dims = 2)[:],
         save_freq = CFG.SAVE_FREQ, quasimultid = false, K = CFG.GP_KERNEL)
     optn = transD_GP.OptionsNuisance(opt;
-        sdev = copy(CFG.S_SDEV), bounds = copy(SBOUNDS),
+        sdev = copy(S_SDEV), bounds = copy(SBOUNDS),
         nsamples = NSAMPLES, updatenuisances = true)
     optn.fdataname = prefix
     opt, optn
@@ -172,7 +218,7 @@ end
 function hier(b)
     σ̂ = FLAT ? fill(median(b.σ̂), length(b.σ̂)) : b.σ̂
     SMRPInversion.newSMRSoundingHierarchical(b.V0, b.ϕ, b.F;
-        σ̂_V0 = σ̂, s_prior_center = CFG.S_PRIOR_CENTER,
+        σ̂_V0 = σ̂, s_prior_center = S_PRIOR_CENTER,
         s_prior_logwidth = S_TAU, s_init = CFG.S_INIT,
         linearsat = true, amponly = true)
 end
@@ -341,7 +387,18 @@ end
 
 function main()
     mkpath(OUT)
-    sites = haskey(ARG, "sites") ? String.(split(ARG["sites"], ",")) : String[]
+    # --site (one site) or --sites (comma-separated). ONLY comes from the
+    # prelude and is what run_batch.sh passes, as --site, once per site; this
+    # stage read only --sites and so IGNORED it, running every site on every
+    # invocation. With npar=2 that meant two processes each doing both sites
+    # and racing to write the same two output files.
+    sites = if !isempty(ONLY)
+        [ONLY]
+    elseif haskey(ARG, "sites")
+        String.(split(ARG["sites"], ","))
+    else
+        String[]
+    end
     # site -> chosen SNMR file, from the selection step
     sel = Dict{String,String}()
     raw, hdr = let r = readdlm(joinpath(FieldConfig.cfgpath(FieldConfig.CFG[], "aem_sounds"), "manifest.csv"),
@@ -351,16 +408,27 @@ function main()
         sel[raw[i, ci["field_id"]]] = ""
     end
     isempty(sites) && (sites = collect(keys(sel)))
-    pids = workers()[1:min(NCHAINS, nworkers())]
+    pids = workers()   # exactly NCHAINS, asserted at load
     @printf("trans-D SNMR: %d sites, %d ensembles x %d chains, %d samples, s tau %.1f\n",
             length(sites), NENS, length(pids), NSAMPLES, S_TAU)
+    failed = String[]
     for s in sites
         try
             run_site(s, sel[s], pids)
         catch e
             @warn "site $s failed" exception = (e, catch_backtrace())
+            push!(failed, s)
         end
     end
+    # A caught exception is still a failure. This loop used to swallow every
+    # site and return normally, so the stage exited 0 having written nothing
+    # and run_batch.sh reported "ok" for a run in which both sites threw.
+    if !isempty(failed)
+        @printf("FAILED: %d of %d sites (%s)\n", length(failed), length(sites),
+                join(failed, ", "))
+        exit(1)
+    end
+    @printf("all %d sites ok\n", length(sites))
 end
 
 main()

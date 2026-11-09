@@ -1,0 +1,50 @@
+# Reference values for config/udf_example.toml. See README.md in this directory
+# for what is checked and why, and for the rule about not widening tolerances.
+#
+#   julia --project=. fieldrun/reference/check_run.jl --config fieldrun/config/udf_example.toml
+
+# The mode these values were recorded in. check_run.jl warns when a run's mode
+# differs, because a smoke posterior and a full posterior are not comparable.
+mode = "smoke"
+
+# The clauses detect_aquifer.jl can open a verdict with. The full string is a
+# clause plus " above NN m" plus an optional pinning note, so these are matched
+# as prefixes. A verdict matching none of them means the stage's vocabulary
+# changed and this file was not updated with it.
+detect_verdict_prefixes = [
+    "AQUIFER (W >= 2 m, P >= 0.9)",
+    "MARGINAL (W >= 1 m, P >= 0.9; not 2 m)",
+    "NOT RESOLVED (P < 0.9 for 1 m)",
+]
+
+# gate_water_quality.jl emits exactly one of these.
+gate_verdicts = [
+    "CERTIFIED FRESH",
+    "NOT CERTIFIED at the 1,000 mg/L line",
+]
+
+# ---------------------------------------------------------------------------
+# [deterministic] -- the Occam inversion, which has no Monte Carlo in it.
+#
+# sigma_windows_m are depth windows in metres; sigma_geomean is the GEOMETRIC
+# mean conductivity in S/m over the cells in each window, 10^mean(log10 sigma),
+# which is what run_aem_occam.jl prints. The arithmetic mean over the same
+# cells differs by about 1.6x here.
+#
+# Recorded below by reference/record_reference.jl from a verified run.
+# ---------------------------------------------------------------------------
+[deterministic]
+
+[deterministic.SMR_UD21]
+chi2n = 0.350701216093
+ndata = 41
+sigma_windows_m = [[0, 20], [20, 60], [60, 120]]
+sigma_geomean = [0.250425405039, 0.813955469353, 0.0290927128737]
+tol = 1e-4
+
+[deterministic.SMR_UD24]
+chi2n = 0.317572118809
+ndata = 41
+sigma_windows_m = [[0, 20], [20, 60], [60, 120]]
+sigma_geomean = [0.333918750724, 0.660449136278, 0.172920916321]
+tol = 1e-4

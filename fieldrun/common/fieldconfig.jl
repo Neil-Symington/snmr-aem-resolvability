@@ -65,8 +65,12 @@ const KNOWN = Dict(
                       "hm_ramp_hold", "lowpass_hz", "tx_area_m2", "rx_radius_m",
                       "rx_dz_m", "max_sep_m"],
     "grid"        => ["nz", "zstart", "dz", "extendfrac"],
+    # nensembles is deliberately absent: it duplicated [kernel] n_draws,
+    # which is what run_smr_transd.jl reads. A config still carrying that
+    # key is refused here by name rather than quietly ignored, which is what
+    # used to happen to it.
     "mcmc"        => ["nchains", "tmax", "nsamples", "burninfrac", "save_freq",
-                      "nensembles", "seed_base", "nmin", "nmax", "lambda_gp",
+                      "seed_base", "nmin", "nmax", "lambda_gp",
                       "delta", "fbounds", "smoke"],
     "noise"       => ["sigma_hat_branch", "s_prior_center", "s_prior_tau",
                       "s_sdev", "s_bounds_log10"],
@@ -127,7 +131,7 @@ function check_values(c::Dict, path)
     isintegral(v) = (v isa Integer && !(v isa Bool)) ||
                     (v isa AbstractFloat && isfinite(v) && v == round(v))
     ints   = (("run","npar"), ("grid","nz"), ("mcmc","nchains"),
-              ("mcmc","nsamples"), ("mcmc","save_freq"), ("mcmc","nensembles"),
+              ("mcmc","nsamples"), ("mcmc","save_freq"),
               ("mcmc","seed_base"), ("mcmc","nmin"), ("mcmc","nmax"),
               ("kernel","n_draws"), ("snmr","min_pulse_moments"),
               ("convergence","min_ess"))
@@ -189,7 +193,7 @@ function check_values(c::Dict, path)
         "[grid] zstart must be >= 0, got $(c["grid"]["zstart"])")
     for (sec, k) in (("run","npar"), ("run","minfree_gb"), ("grid","nz"), ("grid","dz"),
                      ("mcmc","nchains"), ("mcmc","nsamples"),
-                     ("mcmc","save_freq"), ("mcmc","nensembles"), ("kernel","n_draws"),
+                     ("mcmc","save_freq"), ("kernel","n_draws"),
                      ("snmr","min_pulse_moments"), ("aem","tx_area_m2"),
                      ("aem","max_sep_m"), ("convergence","min_ess"))
         haskey(c, sec) && pos(sec, k)

@@ -13,7 +13,21 @@
 name   = "udf_example"
 sites  = ["SMR_UD21", "SMR_UD24"]
 stages = ["aem_occam", "aem_transd", "snmr_transd", "detect", "profile", "gate"]
-mode   = "smoke"        # "smoke" for minutes per site, "full" for the real thing
+mode   = "smoke"        # see the timings below; "full" for the real thing
+#
+# MEASURED, two sites, npar = 2, on a 31 GB 12-core machine:
+#
+#   aem_occam      ~4 min/site     snmr_transd   ~3 min/site (smoke)
+#   aem_transd     ~2 min/site     detect        ~3 min total
+#   profile        ~95 min total   gate          ~25 s total
+#                                  ------------------------------
+#                                  1 h 48 min end to end
+#
+# "smoke" does NOT make this quick, and that is worth knowing before you start
+# it: smoke only shortens the two MCMC stages. `profile` is an Occam solve plus
+# a lambda^2 sweep plus a bisection per band edge, with no Monte Carlo in it to
+# shorten, so it costs the same in both modes and dominates either. A full run
+# is roughly this plus 13 min/site of SNMR trans-D.
 
 # MEMORY, measured on a 31 GB machine: one site is an AEM master plus tempered
 # chains (~6 GB), then an SNMR master plus chains (~6.5 GB). Two concurrent is
@@ -78,10 +92,16 @@ extendfrac = 1.028          # zbnd[end] = 147.4 m, "bottom about 150 m"
 [mcmc]
 nchains    = 4
 tmax       = 2.5            # log-spaced temperature ladder
-nsamples   = 200001
+# 150001, which is what the UDF production run used (recorded in its own
+# output: udf_realdata/outputs/smr_transd_SMR_UD21.jld2 has nsamples = 150001).
+# This file said 200001, a number with nothing behind it, so the shipped
+# default did not reproduce the run the report's numbers come from.
+nsamples   = 150001
 burninfrac = 0.5
 save_freq  = 10
-nensembles = 4
+# nensembles was here. It named the same quantity as [kernel] n_draws below --
+# one kernel per ensemble -- with nothing reading either, and two keys for one
+# quantity is how the s_prior_tau disagreement happened. [kernel] n_draws now.
 seed_base  = 20260926       # per-sounding stream = seed_base + hash(site)
 nmin       = 2
 nmax       = 40
@@ -99,9 +119,19 @@ kernel_draws = 1
 [noise]
 sigma_hat_branch = "fid_residual_per_q"
 s_prior_center   = 1.0      # trust the per-pulse-moment sigma-hat level
-s_prior_tau      = 0.5      # log-normal width
+# tau = 2.0, NOT the pre-run's 0.5. Measured (ek_prerun noise_floor.jl): the
+# processed GMR records carry no recoverable noise, so sigma-hat from est_E0_T2
+# is decay-model mismatch and gives a per-moment SHAPE but never a level. At
+# tau = 0.5 the East Kimberley posterior s sat at chi2/N 2.90 against SSC's
+# 1.02 -- the prior too narrow by about 1.7x in sigma. This file said 0.5 while
+# run_smr_transd.jl hardcoded 2.0 and ignored the file; 2.0 is the value every
+# run has actually used.
+s_prior_tau      = 2.0      # log-normal width
 s_sdev           = [0.3]    # Gaussian random walk in ln s
-s_bounds_log10   = [-2.0, 2.0]
+# s in [1e-2, 1e4], stated as log10 and converted to natural log in the stage.
+# This file said [-2, 2]; the stage ran [-2, 4] and the upper bound is not
+# academic -- the posterior s runs into the tens, so 1e2 would pin it.
+s_bounds_log10   = [-2.0, 4.0]
 
 [kernel]
 # The SNMR kernel is a function of sigma(z), so AEM conductivity uncertainty

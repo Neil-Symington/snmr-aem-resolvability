@@ -303,8 +303,10 @@ function main()
     d = readdlm(joinpath(FieldConfig.cfgpath(FieldConfig.CFG[], "aem_sounds"), "manifest.csv"), ',', String; header = true)
     ci = Dict(strip(h) => i for (i, h) in enumerate(vec(d[2])))
     rows = []
+    nattempt = 0
     for s in d[1][:, ci["field_id"]]
         (!isempty(ONLY) && s != ONLY) && continue
+        nattempt += 1
         r = try profile_site(s) catch e
             @warn "profile failed for $s" exception = (e, catch_backtrace()); nothing
         end
@@ -319,6 +321,18 @@ function main()
                 log10(r.hi / r.lo))
     end
     println("="^92)
+    # A stage that produced NOTHING is a failed stage, not an empty table.
+    # All three sweeps printed a bare header and exited 0 when every site was
+    # skipped for missing inputs, so run_batch.sh reported "ok" for a sweep
+    # that did no work at all. Say so, and say it in the exit code.
+    if isempty(rows)
+        @printf("\nFAILED: no site produced a result (%d attempted).\n", nattempt)
+        println("A skipped site above means its input file is missing; check that")
+        println("the per-site stages actually wrote their outputs.")
+        exit(1)
+    end
+    nskip = nattempt - length(rows)
+    nskip > 0 && @printf("NOTE: %d of %d sites skipped or failed.\n", nskip, nattempt)
 end
 
 main()
