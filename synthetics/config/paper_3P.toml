@@ -1,0 +1,162 @@
+# paper_3P.toml -- the paper's test-one column (unconfined primary), tag 3P.
+#
+# THE ONE PAPER COLUMN THAT SHIPS. The paper uses six -- 3P/3S/3W and 2P/2S/2W,
+# two aquifer geometries by three water-quality variants -- and until now none
+# of them existed as a config: they existed only as truth_murray*.jld2 files on
+# one machine. Every figure script compares columns, so a reader with one column
+# could not draw any figure at all.
+#
+# 3P is the one that unblocks the most: fig04, fig05 and fig06 need 3P and 2P,
+# and 2P is confined_aquifer.toml. The other five are left for whoever wants
+# them -- the recipe is in each stored truth file's `build` dict, and the four
+# numbers that matter are the ones marked PAPER below.
+#
+# WHERE THE VALUES COME FROM, precisely. An earlier version of this header said
+# "every value here is taken from truth_murray3P.jld2's own record", which a
+# reviewer checked against the file and found untrue: the stored `build` dict
+# holds TEN keys and none of the unit properties.
+#
+#   from the stored record   sdphi, sdclay, sdsigw, corr, pclay, m_archie,
+#                            loop, logit, seed, sigsurf_scale
+#   SOLVED from the stored   the water table (depth 6.0, fringe 0.8), the
+#   columns                  Simandoux form, and the per-unit sigma_s
+#   from unconfined_         the five units' depths, names, porosity, clay and
+#   aquifer.toml             sigma_w -- carried over unchanged and verified
+#                            ONLY by the reproduction below
+#
+# So this reproduces the stored column; it is not a transcription of how that
+# column was specified. The distinction matters to anyone deriving 3S from it.
+#
+# For reference, the stored record reads:
+#
+#   build = sdphi 0.35, sdclay 0.45, sdsigw 0.25, corr 1.0, pclay 3.0,
+#           m_archie 1.7, loop 100.0, logit true, seed 20261012
+#   S     = 0.10 at the surface, reaching 1.0 at 6.12 m
+#   units = the five below, identical to unconfined_aquifer.toml
+#
+# IT REPRODUCES THE STORED COLUMN EXACTLY. Worst difference 1.1e-16 across S,
+# phi, clay, sigma_w, theta_total, theta_SMR, sigma_bulk, z, zsmr, theta_smrgrid
+# and sigma_smrgrid -- machine precision, not statistical agreement.
+#
+# That was not expected. For three rounds the phi/clay random field was thought
+# not to be reproducible at the shared seed, and the difference turned out to be
+# entirely the logit jitter: the two builders use the same squared-exponential
+# field, the same RNG and the same seed offsets, and differ only in whether the
+# fractions are perturbed in log or logit space. With jitter = "logit" the field
+# is bit-identical.
+#
+# Four parameters had to be recovered rather than read, and each cost an attempt:
+#   - the fringe is 0.8 m at a depth of 6.0 m, solved from the three
+#     partially-saturated nodes. Reading "S reaches 1.0 at 6.12 m" off the grid
+#     and setting depth = fringe = 6.12 was wrong by 75%; 6.125 is just the
+#     first grid node past 6.0.
+#   - sigma_bulk = sigma_w theta^m + sigma_s clay, identified by testing five
+#     candidate forms against the stored column.
+#   - sigma_s is PER UNIT -- 0.15 / 0.15 / 1.80 / 0.30 / 0.10 -- not the single
+#     0.5 that sigma_SURF suggests, and not the per-unit minerals the demo
+#     config names.
+#   - jitter = "logit", which the generator did not support until now.
+
+name = "paper_3P"
+description = """
+Unconfined fresh sand aquifer over a clay aquitard, with a saline silty unit
+beneath. Murray Basin western-margin analogue (Loxton-Parilla Sands over
+Blanchetown Clay). The target is the top saturated unit with nothing conductive
+above it — the favourable case.
+"""
+
+[grid]
+dz   = 0.25
+zmax = 200.0
+
+# SURFACE CONDUCTION. The form is sigma_bulk = sigma_w theta^m + sigma_s clay,
+# verified against the stored column to 0.0 -- and sigma_s is a PER-UNIT
+# coefficient, 0.15 / 0.15 / 1.80 / 0.30 / 0.10, read off the stored column at
+# each unit's interior. It is set per unit below.
+#
+# unconfined_aquifer.toml instead names a clay_mineral on each unit, which the
+# generator turns into 0.007 to 0.013 -- a hundredfold smaller, and the last
+# thing standing between this config and the stored truth. Two earlier attempts
+# at this got it wrong: one left the minerals in place, one removed them and let
+# the section default of 0.5 apply, which is also not what the paper used.
+[petrophysics]
+p_clay     = 3.0   # PAPER (build: pclay)
+m_archie   = 1.7
+sigma_clay = 0.5   # SECTION DEFAULT, and unused here: every unit sets its own
+                   # sigma_clay from the stored sigma_s. An inherited comment
+                   # said the units name a clay_mineral instead; they do not,
+                   # and a reviewer caught that as stale.   # section default only; units below name their mineral
+
+# SNMR acquisition. These are written into the truth file and read by the
+# inversion stages, so stating them here keeps nothing implicit -- without this
+# block the defaults apply and LOOP_SIDE in particular silently becomes 88.6.
+[smr]
+loop_side       = 100.0     # m, square loop; the forward takes the HALF-side
+Be_nT           = 58000.0   # Earth field magnitude -> Larmor 2469.5 Hz
+inclination_deg = -66.5     # southern hemisphere
+
+[variability]
+jitter          = "logit"  # PAPER: fractions perturbed in logit space, not log
+seed            = 20261012
+corr_length     = 1.0    # PAPER (build: corr), metres
+log_sd_phi      = 0.35   # PAPER (build: sdphi)
+log_sd_clay     = 0.45   # PAPER (build: sdclay)
+log_sd_sigma_w  = 0.25   # PAPER (build: sdsigw); 0 would hold sigma_w flat
+transition_min  = 3.0
+transition_max  = 6.0
+
+# PAPER, and unchanged from unconfined_aquifer.toml: these values are already
+# the paper's. Solved from the three partially-saturated nodes in the stored S
+# column, which are consistent with depth 6.0 and fringe 0.8 to the digit
+# (0.2969, 0.5781, 0.8594 at z = 5.375, 5.625, 5.875).
+#
+# An earlier attempt read "S reaches 1.0 at 6.12 m" off the grid and set
+# depth = fringe = 6.12, which made S rise linearly from the surface and was
+# wrong by 75%. 6.125 is simply the first grid node at or past 6.0.
+[watertable]
+depth      = 6.0    # m below surface
+fringe     = 0.8    # m capillary rise above the water table
+s_residual = 0.10   # saturation through the vadose zone
+
+[[unit]]
+top = 0.0
+name = "Woorinen Fm sand, unsaturated"
+sigma_clay      = 0.15    # PAPER: the stored sigma_s in this unit
+phi = 0.33
+clay = 0.06
+sigma_w = 0.03
+
+[[unit]]
+top = 6.0
+name = "Loxton–Parilla Sands — AQUIFER"
+sigma_clay      = 0.15    # PAPER: the stored sigma_s in this unit
+phi = 0.32
+clay = 0.05
+sigma_w = 0.03          # very fresh, ~190 mg/L
+
+[[unit]]
+top = 40.0
+name = "Blanchetown Clay — AQUITARD"
+sigma_clay      = 1.80    # PAPER: the stored sigma_s in this unit
+                         # in this section. "smectite" (2.0 S/m) would put it
+                         # near 1.4 S/m, above what the basin typically shows;
+                         # switching it is the obvious sensitivity test
+phi = 0.40
+clay = 0.55
+sigma_w = 0.40
+
+[[unit]]
+top = 58.0
+name = "Renmark Gp, sand/silt"
+sigma_clay      = 0.30    # PAPER: the stored sigma_s in this unit
+phi = 0.20
+clay = 0.25
+sigma_w = 0.60
+
+[[unit]]
+top = 88.0
+name = "Palaeozoic basement"
+sigma_clay      = 0.10    # PAPER: the stored sigma_s in this unit
+phi = 0.04
+clay = 0.03
+sigma_w = 0.80
