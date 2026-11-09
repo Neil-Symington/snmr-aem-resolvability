@@ -31,6 +31,9 @@
 
 using Distributed, Printf
 
+# The control file first: support modules read it at load time.
+include(joinpath(@__DIR__, "..", "common", "stage_prelude.jl"))
+
 const ARG = Dict{String,String}()
 let i = 1
     while i <= length(ARGS)
@@ -46,7 +49,22 @@ end
 
 # PRERUN is gone: prerun_data.jl and prerun_lib.jl are in common/
 
+# THE WORKERS NEED THE CONFIG TOO, and this is where the port bit back.
+# `@everywhere` runs on every process, and COMMON is defined by the prelude on
+# the MASTER only -- so this failed with `UndefVarError: COMMON not defined`
+# inside a nested task, on both sites. And prerun_data.jl now reads
+# FieldConfig.CFG[] at load time for its East Kimberley paths, so a worker that
+# had COMMON would still have failed one line later with no config loaded.
+#
+# Both values are interpolated from the master with $, so each worker gets the
+# literal strings and bootstraps itself: fieldconfig, then the config, then
+# prerun_data. Lifting paths into a control file means every process that loads
+# a module needs that file, not just the one that parsed the arguments.
 @everywhere begin
+    const COMMON = $(COMMON)
+    include(joinpath(COMMON, "fieldconfig.jl"))
+    using .FieldConfig
+    FieldConfig.load_config($(CFGPATH))
     include(joinpath(COMMON, "prerun_data.jl"))
 end
 include(joinpath(COMMON, "prerun_lib.jl"))
@@ -55,8 +73,6 @@ using .PrerunLib
 using HiQGA.transD_GP, JLD2, Statistics, Random, SNMRForward, DelimitedFiles
 
 const HERE     = @__DIR__
-# The control file first: support modules read it at load time.
-include(joinpath(@__DIR__, "..", "common", "stage_prelude.jl"))
 # OUT comes from the prelude, which resolves [paths] outputs. Each stage and
 # aem_lib.jl used to define its own `joinpath(HERE, "outputs")`, and because
 # the support modules are included AFTER the prelude theirs won -- so the

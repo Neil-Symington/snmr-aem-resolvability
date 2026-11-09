@@ -64,12 +64,39 @@ product is the most-processed one, so the preference order is
 harmonic+noemi > noemi > harmonic > raw, and which one was taken is recorded.
 """
 function udf_matfile(field_id)
-    d = joinpath(UDF_SNMR, field_id, "Processed")
-    isdir(d) || error("no Processed directory for $field_id")
-    f = filter(x -> endswith(x, ".mat"), readdir(d))
+    # TWO LAYOUTS. The GA delivery nests each site's products under
+    # <site>/Processed/, and that is what this function expected. The two-site
+    # example shipped in fieldrun/example/snmr/ is FLAT -- SMR_UD21_noemi.mat
+    # beside SMR_UD24_harmonic_removed_noemi.mat -- because only the preferred
+    # product per site ships. Expecting only the archive layout meant the SNMR
+    # stage could not read the data the repository ships with it: it failed with
+    # "no Processed directory for SMR_UD21" on both sites.
+    nested = joinpath(UDF_SNMR, field_id, "Processed")
+    dir, cands = if isdir(nested)
+        nested, filter(x -> endswith(x, ".mat"), readdir(nested))
+    elseif isdir(UDF_SNMR)
+        # flat: the site id is the filename prefix
+        UDF_SNMR, filter(x -> endswith(x, ".mat") && startswith(x, field_id),
+                         readdir(UDF_SNMR))
+    else
+        error("""
+    no SNMR directory at $UDF_SNMR
+
+      [paths] snmr_dir must name either the GA archive, which nests each site
+      under <site>/Processed/, or a flat directory of per-site .mat files as
+      fieldrun/example/snmr/ does.
+    """)
+    end
+    isempty(cands) && error("""
+    no .mat file for $field_id in $dir
+
+      Looked for $(dir == nested ? "any .mat" : "a .mat beginning \"$field_id\"").
+    """)
+    # Vista Clara writes several products; the operator's preferred one is the
+    # most processed, so this is a preference order and not a filename.
     for pat in ("harmonic_removed_noemi", "noemi", "harmonic_removed", "")
-        i = findfirst(x -> occursin(pat, x), f)
-        i !== nothing && return joinpath(d, f[i]), f[i]
+        i = findfirst(x -> occursin(pat, x), cands)
+        i !== nothing && return joinpath(dir, cands[i]), cands[i]
     end
     error("no .mat for $field_id")
 end
