@@ -92,11 +92,18 @@ extendfrac = 1.028          # zbnd[end] = 147.4 m, "bottom about 150 m"
 [mcmc]
 nchains    = 4
 tmax       = 2.5            # log-spaced temperature ladder
-# 150001, which is what the UDF production run used (recorded in its own
-# output: udf_realdata/outputs/smr_transd_SMR_UD21.jld2 has nsamples = 150001).
-# This file said 200001, a number with nothing behind it, so the shipped
-# default did not reproduce the run the report's numbers come from.
-nsamples   = 150001
+# THE TWO TRANS-D STAGES DO NOT SHARE A SAMPLE COUNT, and this file used to
+# give them one. The production run's own outputs record what each used:
+#
+#   aem_td_SMR_UD21.jld2     nsamples = 200001   (12068 s/site, 4 chains)
+#   smr_transd_SMR_UD21.jld2 nsamples = 150001
+#
+# One key served both, so whichever number went in here was wrong for one of
+# them. Worse, it is wrong in a way that hides: the SNMR kernel is built on AEM
+# trans-D draws, so an AEM chain of the wrong length changes the SNMR posterior
+# too, and neither stage says anything is amiss.
+nsamples_aem  = 200001      # AEM trans-D
+nsamples_snmr = 150001      # SNMR trans-D
 burninfrac = 0.5
 save_freq  = 10
 # nensembles was here. It named the same quantity as [kernel] n_draws below --
@@ -110,9 +117,11 @@ delta      = 1e-4
 fbounds    = [0.001, 0.45]  # water content, v/v
 
 [mcmc.smoke]
-# What "mode = smoke" overrides. Exercises every stage and every file path in
-# minutes; proves nothing about a posterior.
-nsamples = 2001
+# What "mode = smoke" overrides. Both sample counts must be named: there is no
+# shared default to shorten, which is deliberate -- a single key that silently
+# stood for two different stages is what this replaced.
+nsamples_aem  = 2001
+nsamples_snmr = 2001
 nchains  = 2
 kernel_draws = 1
 

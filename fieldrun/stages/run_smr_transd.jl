@@ -96,7 +96,7 @@ const HERE     = @__DIR__
 # control file said. Four separate definitions of one path, which is what
 # the control file exists to prevent.
 const RUNDIR   = joinpath(OUT, "smr_mcmc")
-const NSAMPLES = NSAMPLES_CFG   # from [mcmc], or --nsamples
+const NSAMPLES = NSAMPLES_SNMR  # [mcmc] nsamples_snmr, or --nsamples
 # NENS is the ensemble count AND the kernel-draw count -- one kernel per
 # ensemble, the pooled posterior marginalising over them (see run_ensemble).
 # It was hardcoded 4, so [kernel] n_draws and [mcmc] nensembles were both dead

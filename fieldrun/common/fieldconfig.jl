@@ -33,7 +33,8 @@ const REQUIRED = [
     ["paths", "sites"], ["paths", "snmr_meta"], ["paths", "snmr_dir"],
     ["paths", "aem_sounds"], ["paths", "aem_system"], ["paths", "outputs"],
     ["grid", "nz"], ["grid", "zstart"], ["grid", "dz"], ["grid", "extendfrac"],
-    ["mcmc", "nchains"], ["mcmc", "nsamples"], ["mcmc", "seed_base"],
+    ["mcmc", "nchains"], ["mcmc", "nsamples_aem"], ["mcmc", "nsamples_snmr"],
+    ["mcmc", "seed_base"],
     ["noise", "sigma_hat_branch"], ["kernel", "n_draws"],
     ["detect", "theta"], ["gate", "thresholds_mgL"],
 ]
@@ -69,7 +70,8 @@ const KNOWN = Dict(
     # which is what run_smr_transd.jl reads. A config still carrying that
     # key is refused here by name rather than quietly ignored, which is what
     # used to happen to it.
-    "mcmc"        => ["nchains", "tmax", "nsamples", "burninfrac", "save_freq",
+    "mcmc"        => ["nchains", "tmax", "nsamples_aem", "nsamples_snmr",
+                      "burninfrac", "save_freq",
                       "seed_base", "nmin", "nmax", "lambda_gp",
                       "delta", "fbounds", "smoke"],
     "noise"       => ["sigma_hat_branch", "s_prior_center", "s_prior_tau",
@@ -131,7 +133,8 @@ function check_values(c::Dict, path)
     isintegral(v) = (v isa Integer && !(v isa Bool)) ||
                     (v isa AbstractFloat && isfinite(v) && v == round(v))
     ints   = (("run","npar"), ("grid","nz"), ("mcmc","nchains"),
-              ("mcmc","nsamples"), ("mcmc","save_freq"),
+              ("mcmc","nsamples_aem"), ("mcmc","nsamples_snmr"),
+              ("mcmc","save_freq"),
               ("mcmc","seed_base"), ("mcmc","nmin"), ("mcmc","nmax"),
               ("kernel","n_draws"), ("snmr","min_pulse_moments"),
               ("convergence","min_ess"))
@@ -192,7 +195,8 @@ function check_values(c::Dict, path)
     haskey(c["grid"], "zstart") && chk(c["grid"]["zstart"] >= 0,
         "[grid] zstart must be >= 0, got $(c["grid"]["zstart"])")
     for (sec, k) in (("run","npar"), ("run","minfree_gb"), ("grid","nz"), ("grid","dz"),
-                     ("mcmc","nchains"), ("mcmc","nsamples"),
+                     ("mcmc","nchains"), ("mcmc","nsamples_aem"),
+                     ("mcmc","nsamples_snmr"),
                      ("mcmc","save_freq"), ("kernel","n_draws"),
                      ("snmr","min_pulse_moments"), ("aem","tx_area_m2"),
                      ("aem","max_sep_m"), ("convergence","min_ess"))

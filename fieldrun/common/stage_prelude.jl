@@ -56,12 +56,20 @@ const ARGN = let d = Dict{String,String}(), i = 1
     end
     d
 end
-const NSAMPLES_CFG = haskey(ARGN, "nsamples") ? parse(Int, ARGN["nsamples"]) : Int(MC["nsamples"])
+# Two counts, not one: [mcmc] nsamples_aem and nsamples_snmr. The production
+# run used 200001 for AEM trans-D and 150001 for SNMR trans-D, and a single
+# shared key made one of them wrong whatever it was set to. A one-off
+# --nsamples still overrides both, which is what a probe wants.
+const NSAMPLES_AEM  = haskey(ARGN, "nsamples") ? parse(Int, ARGN["nsamples"]) :
+                      Int(MC["nsamples_aem"])
+const NSAMPLES_SNMR = haskey(ARGN, "nsamples") ? parse(Int, ARGN["nsamples"]) :
+                      Int(MC["nsamples_snmr"])
 const NCHAINS_CFG  = haskey(ARGN, "nchains")  ? parse(Int, ARGN["nchains"])  : Int(MC["nchains"])
 const TMAX_CFG     = Float64(get(MC, "tmax", 2.5))
 
-@printf("[%s] %d samples, %d chains, Tmax %.3g  (mode %s)\n",
-        basename(CFGPATH), NSAMPLES_CFG, NCHAINS_CFG, TMAX_CFG, FCFG["run"]["mode"])
+@printf("[%s] %d/%d samples (aem/snmr), %d chains, Tmax %.3g  (mode %s)\n",
+        basename(CFGPATH), NSAMPLES_AEM, NSAMPLES_SNMR, NCHAINS_CFG, TMAX_CFG,
+        FCFG["run"]["mode"])
 
 # The sites this run covers, honouring --site.
 const RUN_SITES = isempty(ONLY) ? FCFG["run"]["sites"] :

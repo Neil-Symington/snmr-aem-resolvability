@@ -24,8 +24,9 @@ end
 @testset "the shipped control file loads" begin
     c = FieldConfig.load_config(joinpath(FR, "config", "udf_example.toml"))
     @test c["run"]["name"] == "udf_example"
-    @test length(c["run"]["mode_overrides"]) == 3      # smoke overlay recorded
-    @test c["mcmc"]["nsamples"] == 2001                # and applied
+    @test length(c["run"]["mode_overrides"]) == 4      # smoke overlay recorded
+    @test c["mcmc"]["nsamples_aem"]  == 2001           # and applied
+    @test c["mcmc"]["nsamples_snmr"] == 2001           # both of them
     @test !haskey(c["mcmc"], "smoke")                  # and consumed
 end
 
@@ -102,13 +103,16 @@ end
 
 @testset "the smoke overlay" begin
     # check_values used to run BEFORE the overlay, so these went straight through
-    @test refuses(c -> c["mcmc"]["smoke"]["nsamples"] = -5)
+    @test refuses(c -> c["mcmc"]["smoke"]["nsamples_aem"] = -5)
     @test refuses(c -> c["mcmc"]["smoke"]["nchains"] = 0)
     @test refuses(c -> c["mcmc"]["smoke"]["kernel_draws"] = -3)
-    @test refuses(c -> c["mcmc"]["smoke"]["nsamples"] = "many")
+    @test refuses(c -> c["mcmc"]["smoke"]["nsamples_snmr"] = "many")
     @test refuses(c -> c["mcmc"]["smoke"]["nsampels"] = 10)   # overrides nothing
+    # the two counts are separate keys, so a smoke table naming the old
+    # shared one overrides nothing and must be refused
+    @test refuses(c -> c["mcmc"]["smoke"]["nsamples"] = 2001)
     # and the table must be well formed even when the mode does not use it
-    @test refuses(c -> (c["run"]["mode"] = "full"; c["mcmc"]["smoke"]["nsamples"] = -5))
+    @test refuses(c -> (c["run"]["mode"] = "full"; c["mcmc"]["smoke"]["nsamples_aem"] = -5))
     @test refuses(c -> c["run"]["mode"] = "quick")
 end
 
@@ -119,6 +123,6 @@ end
     @test !refuses(c -> c["grid"]["zstart"] = 0.0)      # build_grid calls setupz(0.0, ...)
     @test !refuses(c -> c["mcmc"]["burninfrac"] = 0.0)  # zero burn-in is meaningful
     @test !refuses(c -> (c["mcmc"]["nmin"] = 40; c["mcmc"]["nmax"] = 40))  # fixed k
-    @test !refuses(c -> c["mcmc"]["nsamples"] = 2e5)    # TOML float, integral
+    @test !refuses(c -> c["mcmc"]["nsamples_aem"] = 2e5)  # TOML float, integral
     @test !refuses(c -> nothing)                        # the shipped file itself
 end
