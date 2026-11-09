@@ -18,6 +18,7 @@
 # Each curve meets TDS = 0 at clay = sigma_bulk, which is the clay floor.
 using JLD2, Statistics, Printf, PyPlot
 include("figstyle.jl"); using .FigStyle
+const ROOT = normpath(joinpath(@__DIR__, ".."))
 const SYN = normpath(joinpath(@__DIR__, "..", "data"))
 const OUT = normpath(joinpath(@__DIR__,"..","outputs"))
 const MGL = 6400.0
@@ -27,6 +28,20 @@ function main()
     # builds either way and nothing has to be edited when the run lands.
     cols = Any[("3P","test one — unconfined"), ("2P","test two — confined")]
     foreach(c -> assert_column(c[1]), cols); provenance(first.(cols))
+    # Stage 5 is what this figure reads, and a missing one used to surface as a
+    # raw ArgumentError naming a path with no pointer to what writes it. A
+    # reviewer hit that on a tree that had 3P Stage 0 and 3 but not 4 and 5.
+    for (tag, _) in cols
+        f = joinpath(ROOT, "outputs", "synth_$tag", "stage5_synth_$tag.jld2")
+        isfile(f) || error("""
+    no Stage 5 output for column $tag: $(relpath(f, ROOT))
+
+      This figure reads Stage 5. Produce it with
+        julia --project=. run_site.jl configs/synth_$tag.toml
+      Stage 4 must bracket first -- for 3P the smoke gate grid (4 coarse,
+      3 fine) does NOT, and an 8/4 grid does. See the README's Figures section.
+    """)
+    end
     isfile(joinpath(OUT,"synth_2PJ","stage5_synth_2PJ.jld2")) &&
         push!(cols, ("2PJ","test two + sounding"))
     fig, axs = FigStyle.newfig(width = MM170, h = 3.4, nrows = 1, ncols = length(cols))

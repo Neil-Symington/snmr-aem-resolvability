@@ -96,6 +96,12 @@ function main()
     end
     @printf("  wrote numbers_fig05_window.csv (%d rows), numbers_fig05_W.csv (%d rows);\n",
             length(exp_win), length(exp_W))
-    println("  numbers_fig05_ppass.csv kept from the previous build")
+    # Only if it is actually there. This printed unconditionally, so on a fresh
+    # clone it announced a file that does not exist -- a reviewer hit it on the
+    # first run.
+    let pp = joinpath(OUTDIR, "numbers_fig05_ppass.csv")
+        isfile(pp) ? println("  numbers_fig05_ppass.csv kept from the previous build") :
+                     println("  numbers_fig05_ppass.csv not present (written by an earlier build only)")
+    end
 end
 main()

@@ -11,7 +11,23 @@
 # them -- the recipe is in each stored truth file's `build` dict, and the four
 # numbers that matter are the ones marked PAPER below.
 #
-# Every value here is taken from truth_murray3P.jld2's own record:
+# WHERE THE VALUES COME FROM, precisely. An earlier version of this header said
+# "every value here is taken from truth_murray3P.jld2's own record", which a
+# reviewer checked against the file and found untrue: the stored `build` dict
+# holds TEN keys and none of the unit properties.
+#
+#   from the stored record   sdphi, sdclay, sdsigw, corr, pclay, m_archie,
+#                            loop, logit, seed, sigsurf_scale
+#   SOLVED from the stored   the water table (depth 6.0, fringe 0.8), the
+#   columns                  Simandoux form, and the per-unit sigma_s
+#   from unconfined_         the five units' depths, names, porosity, clay and
+#   aquifer.toml             sigma_w -- carried over unchanged and verified
+#                            ONLY by the reproduction below
+#
+# So this reproduces the stored column; it is not a transcription of how that
+# column was specified. The distinction matters to anyone deriving 3S from it.
+#
+# For reference, the stored record reads:
 #
 #   build = sdphi 0.35, sdclay 0.45, sdsigw 0.25, corr 1.0, pclay 3.0,
 #           m_archie 1.7, loop 100.0, logit true, seed 20261012
@@ -66,7 +82,10 @@ zmax = 200.0
 [petrophysics]
 p_clay     = 3.0   # PAPER (build: pclay)
 m_archie   = 1.7
-sigma_clay = 0.5   # PAPER (stored sigma_SURF): ONE value for every unit   # section default only; units below name their mineral
+sigma_clay = 0.5   # SECTION DEFAULT, and unused here: every unit sets its own
+                   # sigma_clay from the stored sigma_s. An inherited comment
+                   # said the units name a clay_mineral instead; they do not,
+                   # and a reviewer caught that as stale.   # section default only; units below name their mineral
 
 # SNMR acquisition. These are written into the truth file and read by the
 # inversion stages, so stating them here keeps nothing implicit -- without this

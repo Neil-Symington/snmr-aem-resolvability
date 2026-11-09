@@ -296,6 +296,42 @@ What they need, which was written down nowhere:
 | `fig07`, `export_numbers_v2` | 3P, 3S, 2P, 2S | Stage 4 post, and `singlepass_archive/` if present |
 | `fig08` | 2P | `tools/section6_bore_value.jl` |
 
+### Building the 3P column, and the two things that will stop you
+
+`synthetics/config/paper_3P.toml` is the paper's test-one column and the only
+one of the six that ships. With it and `confined_aquifer.toml` (which is 2P) you
+have the two columns `fig04`, `fig05` and `fig06` need. Both were measured by a
+reviewer on a clean clone:
+
+**1. The smoke gate grid does not bracket 3P.** `smoke_2P.toml`'s
+`n_nodes_coarse = 4, n_nodes_fine = 3` fails on a 3P column after **19 minutes**
+with *"the coarse pass found 1 reachable node(s) of 4. The fine grid cannot be
+bracketed."* 3P's reachable range is roughly 0.0037–0.0215 S/m, 0.57 dex, and a
+4-node grid 1.33 dex apart lands one node in it at best. Use:
+
+```toml
+[gate]
+n_nodes_coarse = 8      # 4 does NOT bracket 3P
+n_nodes_fine   = 4
+```
+
+That brackets, and takes **53 minutes** to Stage 4 post on smoke ensembles.
+The grid is column-specific — this is why the smoke config is named for 2P.
+
+**2. Stage 5 on 3P needs `data/aem_draws_3M.jld2`, which nothing above builds.**
+`configs/synth_3P.toml` points at the `3M` tag for the same reason
+`synth_2P.toml` points at `2M`: the paper's Stage 1 for that column ran under
+the older tag, and σ_bulk is identical. The chain here builds `aem_draws_3P`, so:
+
+```bash
+cp data/aem_draws_3P.jld2 data/aem_draws_3M.jld2
+```
+
+`run_site.jl` does print `STAGE 1 INPUT MISSING: data/aem_draws_3M.jld2` early,
+but it is non-fatal and the chain hint never mentions `3M` — so the run proceeds
+through Stages 3 and 4 and then dies in Stage 5 an hour later. A reviewer lost
+that hour.
+
 An earlier version of this table was **wrong for three of its rows** — `fig02`
 and `figS8` read four columns, not one or two, and `fig06` reads two. It was
 presented as the thing nobody had written down, which made being wrong worse

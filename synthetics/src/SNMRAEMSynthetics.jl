@@ -163,7 +163,15 @@ const KNOWN_GRID = Set(["dz", "zmax"])
 # The porosity cap logit jitter works against, from the builder that made the
 # paper's truth files. Porosity cannot approach 1, so the logit is taken against
 # a physical ceiling rather than against unity.
-const PHI_CAP = 0.55
+#
+# THE FINAL CLAMP IS LOWER THAN THE CAP, AND THAT IS A TRAP. phi is clamped to
+# 0.5 after jittering while PHI_CAP is 0.55, so a unit whose phi0 approaches 0.5
+# loses its variability to the clamp: a reviewer measured phi0 = 0.50 putting
+# 41% of nodes exactly on 0.5, and phi0 >= 0.54 putting EVERY node on it --
+# zero within-unit variability, silently. check_column now warns, because a
+# flattened unit looks like a deliberately uniform one in the output.
+const PHI_CAP  = 0.55
+const PHI_CLAMP = 0.5
 
 const KNOWN_VAR  = Set(["seed", "corr_length", "log_sd_phi", "log_sd_clay", "jitter",
                         "log_sd_sigma_w", "transition_min", "transition_max"])
@@ -419,7 +427,14 @@ function build_column(units::Vector{Unit}, cfg::Dict)
     v  = get(cfg, "variability", Dict())
     seed = get(v, "seed", 1); corr = get(v, "corr_length", 6.0)
     # "lognormal" (the default) or "logit". See the jitter block below.
-    jitter = String(get(v, "jitter", "lognormal"))
+    # TYPE FIRST. This read String(get(...)) and then checked the value, so
+    # jitter = 1, true or ["logit"] gave a raw MethodError: no method matching
+    # String(::Int64) instead of a message -- the same shape as the type holes
+    # in the field control file.
+    jraw = get(v, "jitter", "lognormal")
+    jraw isa AbstractString ||
+        error("[variability] jitter must be a string, got $(repr(jraw))")
+    jitter = String(jraw)
     jitter in ("lognormal", "logit") ||
         error("[variability] jitter must be \"lognormal\" or \"logit\", got \"$jitter\"")
     tmin = get(v, "transition_min", 3.0); tmax = get(v, "transition_max", 6.0)
@@ -459,7 +474,15 @@ function build_column(units::Vector{Unit}, cfg::Dict)
 
     gφ, gc = gp_draw(z; corr = corr, seed = seed + 1), gp_draw(z; corr = corr, seed = seed + 2)
     if jitter == "logit"
-        φ    = clamp.(logit_jit(φ0,    PHI_CAP, sdφ_z, gφ), 0.005, 0.5)
+        φ    = clamp.(logit_jit(φ0,    PHI_CAP, sdφ_z, gφ), 0.005, PHI_CLAMP)
+        # Say so when the clamp has eaten the variability rather than shaped it.
+        let pinned = count(≈(PHI_CLAMP), φ) / length(φ)
+            pinned > 0.05 && @warn string(
+                round(100 * pinned, digits = 1), "% of porosity nodes sit exactly on ",
+                "the ", PHI_CLAMP, " clamp, so this column's porosity is flatter ",
+                "than [variability] log_sd_phi asks for. A unit porosity near or ",
+                "above ", PHI_CLAMP, " cannot carry jitter: lower it, or raise PHI_CLAMP.")
+        end
         clay = clamp.(logit_jit(clay0, 1.0,     sdc_z, gc), 0.0,   1.0)
     else
         φ    = clamp.(φ0    .* exp.(gφ .* sdφ_z), 0.005, 0.5)
