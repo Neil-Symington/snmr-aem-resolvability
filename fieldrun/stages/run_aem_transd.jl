@@ -54,7 +54,7 @@ isempty(SITE) && error("--site is required")
 
 addprocs(NCHAINS - (nworkers() == 1 ? 0 : nworkers()))
 @assert nworkers() == NCHAINS "need $NCHAINS workers, got $(nworkers())"
-@everywhere using Distributed, HiQGA.transD_GP
+@everywhere using Distributed, Random, HiQGA.transD_GP
 
 include(joinpath(COMMON, "aem_lib.jl"))
 using JLD2, Statistics, Random, LinearAlgebra
@@ -106,6 +106,39 @@ function main()
     opt = make_aem_opt(grid.znall, prefix)
     old = pwd(); cd(rundir)
     t0 = time()
+    # THE CHAIN IS NOT SEEDED, AND CANNOT BE FROM HERE. `Random.seed!(SEED)`
+    # used to live BELOW this call, where it seeds only the randperm that picks
+    # which NDRAWS draws to keep -- so `seed = SEED` went into every artefact
+    # describing the subsampling while the MCMC ran from whatever RNG state its
+    # worker task held. Measured: two runs, one config, one seed, gave
+    # sigma_draws differing by 8.05 S/m and sigma50 by 3.66, with draw_ix
+    # IDENTICAL -- the tell that the seeded part reproduced and the chain did
+    # not. At SMR_UD21 that spread spans a verdict boundary.
+    #
+    # Moving the seed here does NOT fix it, and the lines below are kept only
+    # because they are correct for anything the master draws. Julia's default
+    # RNG is TASK-LOCAL and Distributed runs every remotecall in a fresh task,
+    # so seeding a worker in one call does not reach the sampling done in the
+    # next. Measured directly:
+    #
+    #   seed-then-draw in separate remote calls reproduces: false
+    #   seed-and-draw in the SAME remote call reproduces:   true
+    #
+    # HiQGA's MCMC_Driver.jl does no seeding of its own and main() takes no
+    # seed argument, so the per-chain RNG is not reachable from a caller. The
+    # same idiom in run_smr_transd.jl is inert for the same reason: no trans-D
+    # chain in this project, AEM or SNMR, has ever been seeded, and every
+    # artefact's `seed`/`seeds` field describes something other than the chain.
+    # Fixing it needs HiQGA to seed inside each chain's task. Until then these
+    # posteriors are one draw from a distribution of runs, not a reproducible
+    # result, and nothing in the output says which draw.
+    let sd = SEED   # a local: the closure must carry the VALUE to the worker,
+                    # not a reference to a Main binding the worker lacks
+        @sync for p in workers()
+            @async remotecall_fetch(() -> (Random.seed!(sd + myid()); nothing), p)
+        end
+    end
+    Random.seed!(SEED)
     try
         transD_GP.main(opt, aem; Tmax = TMAX, nsamples = NSAMPLES,
                        nchains = NCHAINS, nchainsatone = 1)
@@ -125,7 +158,10 @@ function main()
 
     pct(p) = [quantile(view(σ, i, :), p) for i in axes(σ, 1)]
     σ10, σ50, σ90 = pct(0.10), pct(0.50), pct(0.90)
-    Random.seed!(SEED)
+    # A separate, deliberate stream for the subsampling, so which draws are
+    # retained does not depend on how many proposals the chain happened to
+    # make. This line used to be the ONLY seeding in the stage.
+    Random.seed!(SEED + 1_000_000)
     ix = n >= NDRAWS ? randperm(n)[1:NDRAWS] : collect(1:n)
 
     # split-half drift on the unit-mean conductivity: the project's standing
