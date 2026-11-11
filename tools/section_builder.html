@@ -1,0 +1,788 @@
+<title>Synthetic Section Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground:#eceff3; --panel:#fbfcfd; --panel2:#f3f6f9;
+    --ink:#18212c; --muted:#5e6c7b; --line:#c9d2dc; --line2:#dde4ec;
+    --sigma:#b5431f; --theta:#11707f; --sel:#2f5d8a;
+    --warn:#9a5b06; --bad:#a3262a; --dark:0;
+    --shadow:0 1px 2px rgba(24,33,44,.07), 0 6px 18px rgba(24,33,44,.05);
+    --sans:"IBM Plex Sans",ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0f141a; --panel:#171f28; --panel2:#1d2630;
+      --ink:#e4eaf1; --muted:#8d9cab; --line:#2a3542; --line2:#222c37;
+      --sigma:#e8794f; --theta:#3fb3c4; --sel:#7cb0e0;
+      --warn:#d8a23f; --bad:#e8716f; --dark:1;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0f141a; --panel:#171f28; --panel2:#1d2630;
+    --ink:#e4eaf1; --muted:#8d9cab; --line:#2a3542; --line2:#222c37;
+    --sigma:#e8794f; --theta:#3fb3c4; --sel:#7cb0e0;
+    --warn:#d8a23f; --bad:#e8716f; --dark:1;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.3);
+  }
+
+  body{background:var(--ground); color:var(--ink); font-family:var(--sans);
+       font-size:14px; line-height:1.45; -webkit-text-size-adjust:100%;}
+  .wrap{padding-inline:16px; padding-block:18px 32px; max-width:1500px; margin:0 auto;}
+  h1{font-size:19px; font-weight:600; letter-spacing:-.01em; margin:0;}
+  .sub{color:var(--muted); font-size:12.5px; margin:3px 0 0;}
+
+  header.top{display:flex; flex-wrap:wrap; gap:14px 20px; align-items:flex-end;
+             justify-content:space-between; margin-bottom:16px;}
+  .globals{display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-end;}
+  .gfield{display:flex; flex-direction:column; gap:3px;}
+  .gfield label{font-size:10.5px; text-transform:uppercase; letter-spacing:.07em;
+                color:var(--muted); font-weight:500;}
+  .gfield input{width:84px;}
+
+  input[type=text],input[type=number],select{
+    font:inherit; font-size:13px; color:var(--ink); background:var(--panel);
+    border:1px solid var(--line); border-radius:5px; padding:5px 7px;}
+  input[type=number]{font-family:var(--mono); font-variant-numeric:tabular-nums;}
+  input:focus-visible,select:focus-visible,button:focus-visible,
+  [tabindex]:focus-visible{outline:2px solid var(--sel); outline-offset:2px;}
+
+  button{font:inherit; font-size:12.5px; font-weight:500; color:var(--ink);
+         background:var(--panel); border:1px solid var(--line);
+         border-radius:5px; padding:5px 10px; cursor:pointer;}
+  button:hover{background:var(--panel2);}
+  button.primary{background:var(--sel); border-color:var(--sel); color:#fff;}
+  button.primary:hover{filter:brightness(1.08);}
+  button.danger{color:var(--bad);}
+  button.chip{padding:3px 8px; font-size:11.5px; font-family:var(--mono);}
+  button.chip.on{border-color:var(--sel); color:var(--sel);}
+
+  .grid{display:grid; grid-template-columns:minmax(240px,320px) minmax(260px,1fr) minmax(300px,380px);
+        gap:16px; align-items:start;}
+  @media (max-width:1080px){ .grid{grid-template-columns:1fr 1fr;} .insp{grid-column:1/-1;} }
+  @media (max-width:720px){ .grid{grid-template-columns:1fr;} }
+
+  .card{background:var(--panel); border:1px solid var(--line2); border-radius:9px;
+        box-shadow:var(--shadow); overflow:hidden;}
+  .card > h2{font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+             color:var(--muted); font-weight:600; margin:0;
+             padding:10px 13px; border-bottom:1px solid var(--line2);
+             display:flex; justify-content:space-between; align-items:center; gap:8px;}
+  .card .body{padding:13px;}
+  .card .body.tight{padding:8px;}
+
+  svg{display:block; width:100%; height:auto; max-width:100%;}
+  .unitblock{cursor:pointer;}
+  .unitblock:hover .ubrect{stroke:var(--sel); stroke-width:1.6;}
+  .handle{cursor:ns-resize;}
+  .handle:hover .hbar,.handle:focus-visible .hbar{stroke:var(--sel); stroke-width:3;}
+  text{font-family:var(--sans); fill:var(--ink);}
+  text.ax{font-size:9.5px; fill:var(--muted); font-family:var(--mono);}
+  text.ulab{font-size:10px; font-weight:500;}
+  text.ulab.small{font-size:9px;}
+  text.key{font-size:9.5px; fill:var(--muted);}
+
+  .rowset{display:flex; flex-direction:column; gap:11px;}
+  .fld{display:grid; grid-template-columns:1fr auto; gap:4px 8px; align-items:center;}
+  .fld > label{font-size:11px; font-weight:500; color:var(--muted);
+               text-transform:uppercase; letter-spacing:.06em;}
+  .fld .val{font-family:var(--mono); font-size:12.5px; font-variant-numeric:tabular-nums;}
+  .fld input[type=range]{grid-column:1/-1; width:100%; accent-color:var(--sel); margin:0;}
+  .fld .hint{grid-column:1/-1; font-size:11px; color:var(--muted); margin-top:-2px;}
+  .fld .chips{grid-column:1/-1; display:flex; gap:5px; flex-wrap:wrap; margin-top:1px;}
+  .fld.full > input[type=text], .fld.full > select{grid-column:1/-1;}
+
+  .derived{margin-top:13px; padding-top:11px; border-top:1px dashed var(--line);
+           display:grid; grid-template-columns:1fr auto; gap:5px 10px;
+           font-family:var(--mono); font-size:12px; font-variant-numeric:tabular-nums;}
+  .derived .k{font-family:var(--sans); color:var(--muted); font-size:11.5px;}
+  .derived .s{color:var(--sigma);} .derived .t{color:var(--theta);}
+
+  pre{margin:0; font-family:var(--mono); font-size:11.5px; line-height:1.55;
+      white-space:pre; overflow-x:auto; color:var(--ink);
+      background:var(--panel2); border-radius:6px; padding:11px;}
+  .issues{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px;}
+  .issues li{font-size:12px; display:flex; gap:7px; align-items:baseline;}
+  .issues .dot{flex:0 0 auto; width:6px; height:6px; border-radius:50%; margin-top:5px;}
+  .issues li.e .dot{background:var(--bad);} .issues li.w .dot{background:var(--warn);}
+  .ok{font-size:12px; color:var(--muted);}
+  .note{font-size:11.5px; color:var(--muted); margin:9px 0 0;}
+  .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--muted);}
+  .legend b{font-weight:500;}
+  .sw{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px;}
+  .toolbar{display:flex; gap:7px; flex-wrap:wrap;}
+  .muted{color:var(--muted);}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important;}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Synthetic Section Builder</h1>
+      <p class="sub">Drag a contact to move it. Click a unit to edit it. The curves are
+        what AEM and surface NMR would each see.</p>
+    </div>
+    <div class="globals">
+      <div class="gfield"><label for="g-name">name</label>
+        <input type="text" id="g-name" style="width:150px"></div>
+      <div class="gfield"><label for="g-zmax">grid.zmax (m)</label>
+        <input type="number" id="g-zmax" min="20" max="600" step="10"></div>
+      <div class="gfield"><label for="g-m">m_archie</label>
+        <input type="number" id="g-m" min="1" max="3" step="0.05"></div>
+      <div class="gfield"><label for="g-p">p_clay</label>
+        <input type="number" id="g-p" min="0" max="4" step="0.1"></div>
+      <button id="btn-reset" type="button">Reset to Calivil/Renmark</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Section <span class="muted" id="unitcount"></span></h2>
+      <div class="body tight"><svg id="col" role="img" aria-label="Stratigraphic column"></svg></div>
+      <div class="body" style="padding-top:0">
+        <div class="toolbar">
+          <button id="btn-add" type="button">Add unit below</button>
+          <button id="btn-del" class="danger" type="button">Delete selected</button>
+        </div>
+      </div>
+      <h2>Symbology</h2>
+      <div class="body tight"><svg id="key" role="img" aria-label="Lithology key"></svg></div>
+    </section>
+
+    <section class="card">
+      <h2>What each instrument sees</h2>
+      <div class="body tight"><svg id="curves" role="img"
+           aria-label="Water content and bulk conductivity against depth"></svg></div>
+      <div class="body" style="padding-top:0">
+        <div class="legend">
+          <span><span class="sw" style="background:var(--theta)"></span><b>&theta;<sub>SMR</sub></b> free water, v/v</span>
+          <span><span class="sw" style="background:var(--sigma)"></span><b>&sigma;<sub>bulk</sub></b> S/m, log scale</span>
+        </div>
+        <p class="note">Sharp contacts and no jitter. <code>build_truth.jl</code> adds
+          depth-correlated variability and gradational boundaries over
+          <code>transition_min</code>&ndash;<code>transition_max</code>, so the built
+          column is smoother than this. Use it to judge contrast, not detail.</p>
+      </div>
+    </section>
+
+    <section class="card insp">
+      <h2>Selected unit <span class="muted" id="selidx"></span></h2>
+      <div class="body">
+        <div class="rowset" id="inspector"></div>
+        <div class="derived" id="derived"></div>
+      </div>
+      <h2>Checks</h2>
+      <div class="body" id="checks"></div>
+      <h2>Scenario TOML <span style="display:flex;gap:6px">
+          <button id="btn-save" type="button" hidden>Save .toml</button>
+          <button id="btn-copy" class="primary" type="button">Copy</button></span></h2>
+      <div class="body tight"><pre id="toml" tabindex="0"></pre></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // Lithology presets, from synthetics/src/Lithology.jl. phi and clay are that
+  // file's indicative values; sclay is the surface conductivity its default
+  // mineral implies. `pat` and `tint` are this page's symbology.
+  // Colours follow the bore-log convention, which also happens to encode the
+  // hydrogeology: warm for coarse permeable material, cooling through the
+  // silts and clays that confine it, purples for basement. So the aquifers
+  // read warm and the aquitards cool at a glance, before you read a label.
+  var LITH = {
+    "gravel":            {phi:0.28, clay:0.02, sclay:0.15, pat:"gravel",    tint:"#df8a2e"},
+    "clean sand":        {phi:0.32, clay:0.04, sclay:0.15, pat:"sand2",     tint:"#f3d152"},
+    "sand":              {phi:0.30, clay:0.08, sclay:0.15, pat:"sand",      tint:"#e6bd3f"},
+    "silty sand":        {phi:0.28, clay:0.18, sclay:0.50, pat:"siltysand", tint:"#c6ae56"},
+    "sandy clay":        {phi:0.35, clay:0.40, sclay:0.50, pat:"sandyclay", tint:"#8da667"},
+    "clay":              {phi:0.42, clay:0.60, sclay:0.50, pat:"clay",      tint:"#6a93a6"},
+    "weathered bedrock": {phi:0.12, clay:0.30, sclay:0.15, pat:"weath",     tint:"#c4738a"},
+    "saprock":           {phi:0.06, clay:0.12, sclay:0.15, pat:"saprock",   tint:"#a66a90"},
+    "fresh bedrock":     {phi:0.02, clay:0.03, sclay:0.15, pat:"bedrock",   tint:"#8a6d9e"}
+  };
+  var LITH_ORDER = ["gravel","clean sand","sand","silty sand","sandy clay","clay",
+                    "weathered bedrock","saprock","fresh bedrock"];
+
+  // Clay mineralogy is a FREE PARAMETER here, not a dropdown. Lithology.jl says
+  // its mineral values are indicative, tied to typical CEC ranges and not
+  // measurements, and to set sigma_clay directly wherever you have something
+  // better. The loader agrees: an explicit sigma_clay wins, and giving both it
+  // and clay_mineral is an error there, so the TOML emits the value.
+  var MINERAL_PRESET = {kaolinite:0.15, illite:0.50, mixed:0.80, smectite:2.00};
+  var MINERAL_ORDER = ["kaolinite","illite","mixed","smectite"];
+  function mineralLabel(v){
+    var lo = null, hi = null;
+    for(var i=0;i<MINERAL_ORDER.length;i++){
+      var k = MINERAL_ORDER[i], m = MINERAL_PRESET[k];
+      if(Math.abs(v - m) < 0.005) return k;
+      if(m < v) lo = k; else if(hi === null) hi = k;
+    }
+    if(lo && hi) return "between " + lo + " and " + hi;
+    return lo ? "above " + lo : "below " + hi;
+  }
+
+  var MGL_PER_SM = 6400;            // Lithology.jl MGL_PER_SM
+  var MIN_THICK  = 1.0;             // m, so a drag cannot invert two contacts
+
+  // Opens on the column run_all.sh builds, so the first look is a real section.
+  function defaultSection(){
+    return {
+      name:"confined_aquifer", zmax:200, m_archie:1.7, p_clay:1.5,
+      units:[
+        {top:0,  name:"Shepparton Fm, unsaturated", lith:"sandy clay",        sclay:0.80, phi:0.33, S:1.0, clay:0.40, sw:0.05},
+        {top:4,  name:"Shepparton Fm, clay cap",    lith:"clay",              sclay:0.80, phi:0.35, S:1.0, clay:0.45, sw:0.05},
+        {top:18, name:"Calivil Fm — AQUIFER 1",     lith:"sand",              sclay:0.15, phi:0.30, S:1.0, clay:0.08, sw:0.08},
+        {top:34, name:"clay aquitard — CONFINING",  lith:"clay",              sclay:0.80, phi:0.42, S:1.0, clay:0.65, sw:0.30},
+        {top:46, name:"Renmark Gp — AQUIFER 2",     lith:"sand",              sclay:0.15, phi:0.28, S:1.0, clay:0.10, sw:0.60},
+        {top:62, name:"weathered Palaeozoic",       lith:"weathered bedrock", sclay:0.15, phi:0.12, S:1.0, clay:0.30, sw:1.00},
+        {top:78, name:"saprock",                    lith:"saprock",           sclay:0.15, phi:0.06, S:1.0, clay:0.12, sw:1.20},
+        {top:85, name:"unweathered Palaeozoic",     lith:"fresh bedrock",     sclay:0.15, phi:0.03, S:1.0, clay:0.03, sw:1.50}
+      ]
+    };
+  }
+
+  var S = load() || defaultSection();
+  var sel = 2;                                   // open on the target aquifer
+
+  function save(){ try{ localStorage.setItem("section-builder-2", JSON.stringify(S)); }catch(e){} }
+  function load(){
+    try{
+      var raw = localStorage.getItem("section-builder-2") ||
+                localStorage.getItem("section-builder");
+      if(!raw) return null;
+      var o = JSON.parse(raw);
+      if(!o || !o.units || !o.units.length) return null;
+      // A section saved before mineralogy became free carries `mineral`.
+      for(var i=0;i<o.units.length;i++){
+        var u = o.units[i];
+        if(!isFinite(u.sclay)) u.sclay = MINERAL_PRESET[u.mineral] || 0.5;
+        if(!u.lith) u.lith = guessLith(u);
+        delete u.mineral;
+      }
+      return o;
+    }catch(e){ return null; }
+  }
+  function guessLith(u){
+    if(u.phi < 0.05) return "fresh bedrock";
+    if(u.phi < 0.09) return "saprock";
+    if(u.clay > 0.5) return "clay";
+    if(u.clay > 0.3) return u.phi < 0.2 ? "weathered bedrock" : "sandy clay";
+    if(u.clay > 0.13) return "silty sand";
+    if(u.clay > 0.05) return "sand";
+    return "clean sand";
+  }
+
+  // ── the two forward models, from SNMRAEMSynthetics.jl ────────────────────
+  // Simandoux uses TOTAL water phi*S; the SMR form removes the clay-bound part.
+  function thetaSMR(u, p){ return u.phi * u.S * Math.pow(1 - u.clay, p); }
+  function sigmaBulk(u, m){ return u.sw * Math.pow(u.phi * u.S, m) + sclayOf(u) * u.clay; }
+  function sclayOf(u){ return isFinite(u.sclay) && u.sclay > 0 ? u.sclay : 0.5; }
+  function lithOf(u){ return LITH[u.lith] ? u.lith : guessLith(u); }
+  function unitBot(i){ return i + 1 < S.units.length ? S.units[i+1].top : S.zmax; }
+
+  function cssvar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function isDark(){ return cssvar("--dark") === "1"; }
+  function hex(c){
+    c = c.replace("#","");
+    if(c.length === 3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
+    return [parseInt(c.slice(0,2),16), parseInt(c.slice(2,4),16), parseInt(c.slice(4,6),16)];
+  }
+  function mix(a,b,t){
+    var x = hex(a), y = hex(b), o = "#";
+    for(var i=0;i<3;i++){
+      var v = Math.round(x[i] + (y[i]-x[i])*t).toString(16);
+      o += v.length < 2 ? "0"+v : v;
+    }
+    return o;
+  }
+  // The tints are chosen for a light ground; on a dark one they are pulled
+  // toward the panel so the column does not glow against everything else.
+  function tintOf(u){
+    var t = (LITH[lithOf(u)] || LITH["sand"]).tint;
+    // Mix toward the dark ground, but only halfway: these carry real chroma
+    // now, and pulling them further turns nine lithologies into nine greys.
+    return isDark() ? mix(t, "#121922", 0.52) : t;
+  }
+  function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function fmt(v,n){ return Number(v).toFixed(n); }
+  function trunc(s,n){ return s.length > n ? s.slice(0,n-1)+"…" : s; }
+
+  // ── symbology: one SVG pattern per lithology, in the conventional idiom ──
+  // Clastics get stipple that coarsens with grain size, clays get dashes,
+  // bedrock gets hatch that closes up as weathering decreases.
+  function patternDefs(){
+    var ink = isDark() ? "#e7eef5" : "#2a2b25", o = isDark() ? 0.70 : 0.62, d = [];
+    function P(id, body, w, h){
+      d.push('<pattern id="p-'+id+'" width="'+w+'" height="'+h+
+             '" patternUnits="userSpaceOnUse">'+body+'</pattern>');
+    }
+    var dot = function(x,y,r){ return '<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="'+ink+'" opacity="'+o+'"/>'; };
+    var dash = function(x,y,w2){ return '<line x1="'+x+'" y1="'+y+'" x2="'+(x+w2)+'" y2="'+y+
+                 '" stroke="'+ink+'" stroke-width="1" opacity="'+o+'"/>'; };
+    P("sand",      dot(3,3,0.95)+dot(9,7,0.95)+dot(6,11,0.95), 12, 14);
+    P("sand2",     dot(4,4,0.8)+dot(12,11,0.8), 16, 16);
+    P("gravel",    '<ellipse cx="5" cy="5" rx="2.6" ry="1.7" fill="none" stroke="'+ink+
+                   '" stroke-width="0.9" opacity="'+o+'"/>'+
+                   '<ellipse cx="13" cy="12" rx="2.2" ry="1.5" fill="none" stroke="'+ink+
+                   '" stroke-width="0.9" opacity="'+o+'"/>'+dot(13,4,0.8), 18, 17);
+    P("siltysand", dot(3,4,0.9)+dot(11,10,0.9)+dash(6,13,7), 16, 16);
+    P("sandyclay", dash(1,4,8)+dot(12,9,0.9)+dash(5,13,8), 16, 16);
+    P("clay",      dash(0,4,9)+dash(6,10,9), 16, 14);
+    P("weath",     '<line x1="0" y1="12" x2="7" y2="2" stroke="'+ink+
+                   '" stroke-width="0.9" opacity="'+o+'"/>'+
+                   '<line x1="8" y1="14" x2="13" y2="6" stroke="'+ink+
+                   '" stroke-width="0.9" opacity="'+o+'"/>', 14, 14);
+    P("saprock",   '<path d="M0 0H14M0 7H14M7 0V7M0 7V14M14 7V14M0 14H14" fill="none" stroke="'+ink+
+                   '" stroke-width="0.8" opacity="'+(o*0.85)+'"/>', 14, 14);
+    P("bedrock",   '<path d="M0 12L12 0M-2 2L2 -2M10 14L14 10" stroke="'+ink+
+                   '" stroke-width="0.9" opacity="'+o+'" fill="none"/>'+
+                   '<path d="M0 0L12 12M10 -2L14 2M-2 10L2 14" stroke="'+ink+
+                   '" stroke-width="0.9" opacity="'+o+'" fill="none"/>', 12, 12);
+    return '<defs>'+d.join("")+'</defs>';
+  }
+  function patOf(u){ return "p-" + (LITH[lithOf(u)] || LITH["sand"]).pat; }
+
+  // ── the stratigraphic column, draggable ─────────────────────────────────
+  var COL_W = 300, COL_H = 520, PAD_T = 14, PAD_B = 20, AX_W = 34;
+  function yOf(z){ return PAD_T + (z / S.zmax) * (COL_H - PAD_T - PAD_B); }
+  function zOf(y){ return ((y - PAD_T) / (COL_H - PAD_T - PAD_B)) * S.zmax; }
+
+  function drawColumn(){
+    var g = [], i, u, y0, y1, h, bw = COL_W - AX_W - 4;
+    g.push('<svg id="col" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+COL_W+' '+COL_H+
+           '" role="img" aria-label="Stratigraphic column">');
+    g.push(patternDefs());
+    for(i=0;i<S.units.length;i++){
+      u = S.units[i]; y0 = yOf(u.top); y1 = yOf(unitBot(i)); h = Math.max(1, y1-y0);
+      g.push('<g class="unitblock" data-unit="'+i+'" tabindex="0" role="button" '+
+             'aria-label="'+esc(u.name)+', '+lithOf(u)+', '+fmt(u.top,1)+' to '+
+             fmt(unitBot(i),1)+' metres">');
+      // tint, then the lithology symbol over it, then one outline
+      g.push('<rect x="'+AX_W+'" y="'+y0.toFixed(1)+'" width="'+bw+'" height="'+h.toFixed(1)+
+             '" fill="'+tintOf(u)+'"/>');
+      g.push('<rect x="'+AX_W+'" y="'+y0.toFixed(1)+'" width="'+bw+'" height="'+h.toFixed(1)+
+             '" fill="url(#'+patOf(u)+')"/>');
+      g.push('<rect class="ubrect" x="'+AX_W+'" y="'+y0.toFixed(1)+'" width="'+bw+
+             '" height="'+h.toFixed(1)+'" fill="none" stroke="'+
+             (i===sel?cssvar("--sel"):cssvar("--line"))+'" stroke-width="'+(i===sel?2.2:0.8)+'"/>');
+      if(h > 11){
+        var lab = trunc(u.name, h>17?30:24);
+        g.push('<text class="ulab'+(h<17?' small':'')+'" x="'+(AX_W+7)+'" y="'+
+               (y0 + Math.min(h/2+3.5, 13)).toFixed(1)+'" fill="'+(isDark()?"#f2f6fa":"#241f14")+
+               '" stroke="'+tintOf(u)+'" stroke-width="2.6" paint-order="stroke">'+esc(lab)+'</text>');
+      }
+      g.push('</g>');
+    }
+    var step = S.zmax > 300 ? 50 : S.zmax > 120 ? 25 : 10;
+    for(var z=0; z<=S.zmax+0.01; z+=step){
+      g.push('<text class="ax" x="'+(AX_W-6)+'" y="'+(yOf(z)+3).toFixed(1)+'" text-anchor="end">'+z+'</text>');
+      g.push('<line x1="'+(AX_W-3)+'" x2="'+AX_W+'" y1="'+yOf(z).toFixed(1)+'" y2="'+yOf(z).toFixed(1)+
+             '" stroke="'+cssvar("--line")+'" stroke-width="1"/>');
+    }
+    g.push('<text class="ax" x="2" y="10">m</text>');
+    for(i=1;i<S.units.length;i++){
+      y0 = yOf(S.units[i].top);
+      g.push('<g class="handle" data-contact="'+i+'" tabindex="0" role="slider" '+
+             'aria-label="contact above '+esc(S.units[i].name)+'" aria-valuenow="'+fmt(S.units[i].top,1)+
+             '" aria-valuemin="0" aria-valuemax="'+S.zmax+'">');
+      g.push('<rect x="'+AX_W+'" y="'+(y0-5).toFixed(1)+'" width="'+bw+'" height="10" fill="transparent"/>');
+      g.push('<line class="hbar" x1="'+AX_W+'" x2="'+(COL_W-4)+'" y1="'+y0.toFixed(1)+'" y2="'+y0.toFixed(1)+
+             '" stroke="'+cssvar("--ink")+'" stroke-width="1.4"/>');
+      g.push('<circle class="hbar" cx="'+(COL_W-9)+'" cy="'+y0.toFixed(1)+'" r="3.2" fill="'+cssvar("--panel")+
+             '" stroke="'+cssvar("--ink")+'" stroke-width="1.4"/>');
+      g.push('</g>');
+    }
+    g.push('</svg>');
+    document.getElementById("col").outerHTML = g.join("");
+  }
+
+  // ── the symbology key ───────────────────────────────────────────────────
+  function drawKey(){
+    var W = 300, cols = 2, rowH = 22, rows = Math.ceil(LITH_ORDER.length/cols);
+    var H = rows*rowH + 6, g = [];
+    g.push('<svg id="key" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+
+           '" role="img" aria-label="Lithology key">');
+    g.push(patternDefs());
+    for(var i=0;i<LITH_ORDER.length;i++){
+      var k = LITH_ORDER[i], c = i % cols, r = Math.floor(i/cols);
+      var x = 4 + c*(W/cols), y = 4 + r*rowH;
+      var tint = isDark() ? mix(LITH[k].tint, "#121922", 0.52) : LITH[k].tint;
+      g.push('<rect x="'+x+'" y="'+y+'" width="26" height="15" fill="'+tint+'"/>');
+      g.push('<rect x="'+x+'" y="'+y+'" width="26" height="15" fill="url(#p-'+LITH[k].pat+')"/>');
+      g.push('<rect x="'+x+'" y="'+y+'" width="26" height="15" fill="none" stroke="'+
+             cssvar("--line")+'" stroke-width="0.8"/>');
+      g.push('<text class="key" x="'+(x+31)+'" y="'+(y+11)+'">'+k+'</text>');
+    }
+    g.push('</svg>');
+    document.getElementById("key").outerHTML = g.join("");
+  }
+
+  // ── the two curves, on the column's depth scale ─────────────────────────
+  var CV_W = 420, CV_H = 520, CV_L = 38, CV_R = 10, CV_SPLIT = 0.5;
+  function drawCurves(){
+    var i, z, g = [];
+    var innerW = CV_W - CV_L - CV_R, wT = innerW*CV_SPLIT - 12, wS = innerW*(1-CV_SPLIT) - 12;
+    var xT = CV_L, xS = CV_L + innerW*CV_SPLIT + 12;
+    var thMax = 0.05, p = S.p_clay, m = S.m_archie;
+    for(i=0;i<S.units.length;i++) thMax = Math.max(thMax, thetaSMR(S.units[i], p));
+    thMax = Math.ceil(thMax*20)/20 + 0.05;
+    var sLo = 1e-3, sHi = 1e-2;
+    for(i=0;i<S.units.length;i++){ var sb = sigmaBulk(S.units[i], m); sLo = Math.min(sLo, sb); sHi = Math.max(sHi, sb); }
+    sLo = Math.pow(10, Math.floor(Math.log10(sLo))); sHi = Math.pow(10, Math.ceil(Math.log10(sHi)));
+
+    g.push('<svg id="curves" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+CV_W+' '+CV_H+
+           '" role="img" aria-label="Water content and bulk conductivity against depth">');
+    var step = S.zmax > 300 ? 50 : S.zmax > 120 ? 25 : 10;
+    for(z=0; z<=S.zmax+0.01; z+=step){
+      g.push('<line x1="'+CV_L+'" x2="'+(CV_W-CV_R)+'" y1="'+yOf(z).toFixed(1)+'" y2="'+yOf(z).toFixed(1)+
+             '" stroke="'+cssvar("--line2")+'" stroke-width="1"/>');
+      g.push('<text class="ax" x="'+(CV_L-6)+'" y="'+(yOf(z)+3).toFixed(1)+'" text-anchor="end">'+z+'</text>');
+    }
+    for(i=1;i<S.units.length;i++)
+      g.push('<line x1="'+CV_L+'" x2="'+(CV_W-CV_R)+'" y1="'+yOf(S.units[i].top).toFixed(1)+'" y2="'+
+             yOf(S.units[i].top).toFixed(1)+'" stroke="'+cssvar("--line")+
+             '" stroke-width="1" stroke-dasharray="2 3"/>');
+
+    function stair(xBase, w, valOf, scale){
+      var d = [], i2, u2, y0, y1, x;
+      for(i2=0;i2<S.units.length;i2++){
+        u2 = S.units[i2]; y0 = yOf(u2.top); y1 = yOf(unitBot(i2));
+        x = xBase + scale(valOf(u2))*w;
+        d.push((i2===0?"M":"L")+x.toFixed(1)+" "+y0.toFixed(1));
+        d.push("L"+x.toFixed(1)+" "+y1.toFixed(1));
+      }
+      return d.join(" ");
+    }
+    var thScale = function(v){ return Math.max(0, Math.min(1, v/thMax)); };
+    var sgScale = function(v){
+      var t = (Math.log10(Math.max(v, sLo)) - Math.log10(sLo)) / (Math.log10(sHi) - Math.log10(sLo));
+      return Math.max(0, Math.min(1, t));
+    };
+    if(S.units[sel]){
+      var yA = yOf(S.units[sel].top), yB = yOf(unitBot(sel));
+      g.push('<rect x="'+CV_L+'" y="'+yA.toFixed(1)+'" width="'+(CV_W-CV_L-CV_R)+'" height="'+
+             Math.max(1,(yB-yA)).toFixed(1)+'" fill="'+cssvar("--sel")+'" opacity="0.07"/>');
+    }
+    g.push('<text class="ax" x="'+xT+'" y="'+(CV_H-6)+'">0</text>');
+    g.push('<text class="ax" x="'+(xT+wT)+'" y="'+(CV_H-6)+'" text-anchor="end">'+fmt(thMax,2)+'</text>');
+    g.push('<text class="ulab" x="'+xT+'" y="9" fill="'+cssvar("--theta")+'">&#952; free water v/v</text>');
+    g.push('<path d="'+stair(xT, wT, function(u){return thetaSMR(u,p);}, thScale)+
+           '" fill="none" stroke="'+cssvar("--theta")+'" stroke-width="2.1" stroke-linejoin="round"/>');
+    g.push('<text class="ax" x="'+xS+'" y="'+(CV_H-6)+'">'+sLo+'</text>');
+    g.push('<text class="ax" x="'+(xS+wS)+'" y="'+(CV_H-6)+'" text-anchor="end">'+sHi+'</text>');
+    g.push('<text class="ulab" x="'+xS+'" y="9" fill="'+cssvar("--sigma")+'">&#963; bulk S/m</text>');
+    g.push('<path d="'+stair(xS, wS, function(u){return sigmaBulk(u,m);}, sgScale)+
+           '" fill="none" stroke="'+cssvar("--sigma")+'" stroke-width="2.1" stroke-linejoin="round"/>');
+    g.push('</svg>');
+    document.getElementById("curves").outerHTML = g.join("");
+  }
+
+  // ── inspector ───────────────────────────────────────────────────────────
+  function slider(id, label, lo, hi, stepv, val, hint, digits, extra){
+    return '<div class="fld"><label for="'+id+'">'+label+'</label>'+
+           '<span class="val" id="'+id+'-v">'+fmt(val,digits)+'</span>'+
+           '<input type="range" id="'+id+'" min="'+lo+'" max="'+hi+'" step="'+stepv+'" value="'+val+'">'+
+           (extra||"")+(hint?'<span class="hint" id="'+id+'-h">'+hint+'</span>':'')+'</div>';
+  }
+  function drawInspector(){
+    var u = S.units[sel], h = [];
+    document.getElementById("selidx").textContent = (sel+1)+" of "+S.units.length;
+    document.getElementById("unitcount").textContent = S.units.length+" units";
+    if(!u){ document.getElementById("inspector").innerHTML = '<p class="ok">No unit selected.</p>';
+            document.getElementById("derived").innerHTML = ""; return; }
+    h.push('<div class="fld full"><label for="u-name">name</label>'+
+           '<input type="text" id="u-name" value="'+esc(u.name)+'"></div>');
+    var opts = "";
+    for(var i=0;i<LITH_ORDER.length;i++){
+      var k = LITH_ORDER[i];
+      opts += '<option value="'+k+'"'+(k===lithOf(u)?" selected":"")+'>'+k+'</option>';
+    }
+    h.push('<div class="fld full"><label for="u-lith">lithology</label>'+
+           '<select id="u-lith">'+opts+'</select>'+
+           '<span class="hint">sets the symbol, and <button type="button" class="chip" id="u-fill">'+
+           'fill phi, clay and sigma_clay from it</button></span></div>');
+    h.push(slider("u-phi","phi — porosity v/v", 0.01, 0.6, 0.01, u.phi,
+                  "fraction of bulk volume. Must be in (0,1).", 2));
+    h.push(slider("u-S","S — saturation", 0.05, 1, 0.01, u.S,
+                  "fraction of that porosity holding water", 2));
+    h.push(slider("u-clay","clay — matrix fraction", 0, 1, 0.01, u.clay,
+                  "removes free water and adds surface conduction", 2));
+    var chips = '<span class="chips">';
+    for(var j=0;j<MINERAL_ORDER.length;j++){
+      var mk = MINERAL_ORDER[j];
+      chips += '<button type="button" class="chip mineral'+
+               (Math.abs(sclayOf(u)-MINERAL_PRESET[mk])<0.005?" on":"")+
+               '" data-sclay="'+MINERAL_PRESET[mk]+'">'+mk+'</button>';
+    }
+    chips += '</span>';
+    h.push(slider("u-sclay","sigma_clay — clay surface S/m", 0.02, 2.5, 0.01, sclayOf(u),
+                  mineralLabel(sclayOf(u))+". Free, not a mineral choice: the mineral "+
+                  "values are indicative, not measurements.", 2, chips));
+    h.push(slider("u-sw","sigma_w — pore water S/m", 0.005, 3, 0.005, u.sw,
+                  "≈ "+Math.round(u.sw*MGL_PER_SM).toLocaleString()+" mg/L TDS", 3));
+    document.getElementById("inspector").innerHTML = h.join("");
+    drawDerived();
+  }
+
+  // ONE builder for the derived readout, rather than the two copies this had.
+  function drawDerived(){
+    var u = S.units[sel]; if(!u) return;
+    var th = thetaSMR(u, S.p_clay), sb = sigmaBulk(u, S.m_archie);
+    var sw = u.sw*Math.pow(u.phi*u.S, S.m_archie), sc = sclayOf(u)*u.clay;
+    document.getElementById("derived").innerHTML =
+      '<span class="k">thickness</span><span>'+fmt(unitBot(sel)-u.top,1)+' m</span>'+
+      '<span class="k">total water phi&middot;S</span><span>'+fmt(u.phi*u.S,3)+'</span>'+
+      '<span class="k">free water &theta;<sub>SMR</sub></span><span class="t">'+fmt(th,3)+'</span>'+
+      '<span class="k">clay-bound, invisible to SMR</span><span>'+fmt(u.phi*u.S-th,3)+'</span>'+
+      '<span class="k">&sigma; from pore water</span><span class="s">'+fmt(sw,4)+'</span>'+
+      '<span class="k">&sigma; from clay surfaces</span><span class="s">'+fmt(sc,4)+'</span>'+
+      '<span class="k">&sigma;<sub>bulk</sub> total</span><span class="s">'+fmt(sb,4)+' S/m</span>'+
+      '<span class="k">pore water as TDS</span><span>'+Math.round(u.sw*MGL_PER_SM).toLocaleString()+' mg/L</span>'+
+      '<span class="k">clay share of &sigma;<sub>bulk</sub></span><span>'+Math.round(100*sc/sb)+'%</span>';
+  }
+
+  // ── checks, mirroring the Julia validation ──────────────────────────────
+  function drawChecks(){
+    var is = [], i, u;
+    for(i=0;i<S.units.length;i++){
+      u = S.units[i];
+      if(!(u.phi > 0 && u.phi < 1)) is.push(["e", "unit "+(i+1)+": phi "+u.phi+" is not in (0,1)"]);
+      if(!(u.clay >= 0 && u.clay <= 1)) is.push(["e", "unit "+(i+1)+": clay is not in [0,1]"]);
+      if(!(u.sw > 0)) is.push(["e", "unit "+(i+1)+": sigma_w must be positive"]);
+      if(!(sclayOf(u) > 0)) is.push(["e", "unit "+(i+1)+": sigma_clay must be positive"]);
+      if(i > 0 && u.top <= S.units[i-1].top) is.push(["e", "unit "+(i+1)+": top is not below the unit above"]);
+      if(unitBot(i) - u.top < 2) is.push(["w", "unit "+(i+1)+" is "+fmt(unitBot(i)-u.top,1)+
+          " m thick, thinner than the gradational boundary it sits between"]);
+      if(!u.name.trim()) is.push(["w", "unit "+(i+1)+" has no name"]);
+    }
+    if(S.units.length && S.units[0].top !== 0) is.push(["e","the first unit must start at 0 m"]);
+    if(S.units.length && S.units[S.units.length-1].top >= S.zmax)
+      is.push(["e","the last unit starts at or below grid.zmax"]);
+    var el = document.getElementById("checks");
+    if(!is.length){ el.innerHTML = '<p class="ok">Valid. '+S.units.length+
+        ' contiguous units to '+S.zmax+' m.</p>'; return; }
+    var h = '<ul class="issues">';
+    for(i=0;i<is.length;i++) h += '<li class="'+is[i][0]+'"><span class="dot"></span><span>'+esc(is[i][1])+'</span></li>';
+    el.innerHTML = h + "</ul>";
+  }
+
+  // ── TOML, in the shape the scenario loader expects ──────────────────────
+  function drawToml(){
+    var L = [], i, u;
+    L.push('name = "'+S.name+'"');
+    L.push('description = """');
+    L.push('Built with the section builder. '+S.units.length+' units to '+S.zmax+' m.');
+    L.push('"""');
+    L.push("");
+    L.push("[grid]");
+    L.push("dz   = 0.25        # fine grid spacing (m)");
+    L.push("zmax = "+fmt(S.zmax,1)+"       # bottom of the model (m)");
+    L.push("");
+    L.push("[petrophysics]");
+    L.push("p_clay     = "+S.p_clay+"   # theta_SMR = phi*S*(1-clay)^p_clay");
+    L.push("m_archie   = "+S.m_archie+"   # sigma_bulk = sigma_w*(phi*S)^m + sigma_clay*clay");
+    L.push("");
+    L.push("[smr]");
+    L.push("loop_side       = 100.0     # m, square loop");
+    L.push("Be_nT           = 58000.0");
+    L.push("inclination_deg = -66.5");
+    L.push("");
+    L.push("[variability]");
+    L.push("seed            = 20261012");
+    L.push("corr_length     = 6.0");
+    L.push("log_sd_phi      = 0.10");
+    L.push("log_sd_clay     = 0.15");
+    L.push("transition_min  = 3.0");
+    L.push("transition_max  = 6.0");
+    for(i=0;i<S.units.length;i++){
+      u = S.units[i];
+      L.push("");
+      L.push("[[unit]]");
+      L.push("top = "+fmt(u.top,1));
+      L.push('name = "'+u.name.replace(/"/g,'\\"')+'"');
+      // lithology carries the symbol and the sd_phi / sd_clay defaults; the
+      // explicit values below win over whatever it would have filled.
+      L.push('lithology = "'+lithOf(u)+'"');
+      L.push("phi = "+fmt(u.phi,2));
+      L.push("S = "+fmt(u.S,2));
+      L.push("clay = "+fmt(u.clay,2));
+      // sigma_clay, NOT clay_mineral: the loader errors on both, and an
+      // explicit value is what it honours first.
+      L.push("sigma_clay = "+fmt(sclayOf(u),2)+"        # "+mineralLabel(sclayOf(u)));
+      L.push("sigma_w = "+fmt(u.sw,3)+"          # ~"+Math.round(u.sw*MGL_PER_SM).toLocaleString()+" mg/L");
+    }
+    document.getElementById("toml").textContent = L.join("\n");
+  }
+
+  function render(){
+    drawColumn(); bindColumn(); drawKey(); drawCurves();
+    drawInspector(); bindInspector(); drawChecks(); drawToml(); save();
+  }
+  function lightRender(){     // after a slider move: no inspector rebuild
+    drawColumn(); bindColumn(); drawCurves(); drawDerived(); drawChecks(); drawToml(); save();
+  }
+
+  // ── interaction ─────────────────────────────────────────────────────────
+  function clampTop(i, z){
+    var lo = S.units[i-1].top + MIN_THICK;
+    var hi = (i+1 < S.units.length ? S.units[i+1].top : S.zmax) - MIN_THICK;
+    return Math.max(lo, Math.min(hi, z));
+  }
+  function bindColumn(){
+    var svg = document.getElementById("col");
+    svg.querySelectorAll(".unitblock").forEach(function(n){
+      function pick(){ sel = +n.dataset.unit; render(); }
+      n.addEventListener("click", pick);
+      n.addEventListener("keydown", function(e){
+        if(e.key === "Enter" || e.key === " "){ e.preventDefault(); pick(); }
+      });
+    });
+    svg.querySelectorAll(".handle").forEach(function(n){
+      var i = +n.dataset.contact;
+      n.addEventListener("pointerdown", function(e){
+        e.preventDefault();
+        var box = svg.getBoundingClientRect();
+        function move(ev){
+          var y = (ev.clientY - box.top) * (COL_H / box.height);
+          S.units[i].top = Math.round(clampTop(i, zOf(y))*2)/2;
+          lightRender();
+        }
+        function up(){ window.removeEventListener("pointermove", move);
+                       window.removeEventListener("pointerup", up); render(); }
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+      });
+      n.addEventListener("keydown", function(e){
+        var d = e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0;
+        if(!d) return;
+        e.preventDefault();
+        S.units[i].top = Math.round(clampTop(i, S.units[i].top + d*(e.shiftKey?5:0.5))*2)/2;
+        lightRender();
+        var hh = document.getElementById("col").querySelector('[data-contact="'+i+'"]');
+        if(hh) hh.focus();
+      });
+    });
+  }
+  function bindInspector(){
+    var u = S.units[sel]; if(!u) return;
+    function on(id, ev, fn){ var e = document.getElementById(id); if(e) e.addEventListener(ev, fn); }
+    on("u-name","input", function(e){ u.name = e.target.value;
+      drawColumn(); bindColumn(); drawChecks(); drawToml(); save(); });
+    on("u-lith","change", function(e){ u.lith = e.target.value; lightRender(); });
+    on("u-fill","click", function(){
+      var k = lithOf(u), pre = LITH[k];
+      u.phi = pre.phi; u.clay = pre.clay; u.sclay = pre.sclay;
+      render();
+    });
+    [["u-phi","phi",2],["u-S","S",2],["u-clay","clay",2],["u-sw","sw",3]].forEach(function(t){
+      on(t[0],"input", function(e){
+        u[t[1]] = parseFloat(e.target.value);
+        document.getElementById(t[0]+"-v").textContent = fmt(u[t[1]], t[2]);
+        if(t[1] === "sw") document.getElementById("u-sw-h").textContent =
+          "≈ "+Math.round(u.sw*MGL_PER_SM).toLocaleString()+" mg/L TDS";
+        lightRender();
+      });
+    });
+    on("u-sclay","input", function(e){
+      u.sclay = parseFloat(e.target.value);
+      document.getElementById("u-sclay-v").textContent = fmt(u.sclay,2);
+      document.getElementById("u-sclay-h").textContent = mineralLabel(u.sclay) +
+        ". Free, not a mineral choice: the mineral values are indicative, not measurements.";
+      document.querySelectorAll("button.chip.mineral").forEach(function(b){
+        b.classList.toggle("on", Math.abs(u.sclay - parseFloat(b.dataset.sclay)) < 0.005);
+      });
+      lightRender();
+    });
+    document.querySelectorAll("button.chip.mineral").forEach(function(b){
+      b.addEventListener("click", function(){
+        u.sclay = parseFloat(b.dataset.sclay);
+        var r = document.getElementById("u-sclay");
+        if(r) r.value = u.sclay;
+        document.getElementById("u-sclay-v").textContent = fmt(u.sclay,2);
+        document.getElementById("u-sclay-h").textContent = mineralLabel(u.sclay) +
+          ". Free, not a mineral choice: the mineral values are indicative, not measurements.";
+        document.querySelectorAll("button.chip.mineral").forEach(function(b2){
+          b2.classList.toggle("on", Math.abs(u.sclay - parseFloat(b2.dataset.sclay)) < 0.005);
+        });
+        lightRender();
+      });
+    });
+  }
+
+  function g(id){ return document.getElementById(id); }
+  g("g-name").value = S.name; g("g-zmax").value = S.zmax;
+  g("g-m").value = S.m_archie; g("g-p").value = S.p_clay;
+  g("g-name").addEventListener("input", function(e){ S.name = e.target.value.replace(/\s+/g,"_"); drawToml(); save(); });
+  g("g-zmax").addEventListener("change", function(e){
+    var v = parseFloat(e.target.value);
+    if(isFinite(v) && v > 20){ S.zmax = v; render(); }
+  });
+  g("g-m").addEventListener("input", function(e){ var v = parseFloat(e.target.value);
+    if(isFinite(v)){ S.m_archie = v; drawCurves(); drawDerived(); drawToml(); save(); } });
+  g("g-p").addEventListener("input", function(e){ var v = parseFloat(e.target.value);
+    if(isFinite(v)){ S.p_clay = v; drawCurves(); drawDerived(); drawToml(); save(); } });
+
+  g("btn-add").addEventListener("click", function(){
+    var i = sel < 0 ? S.units.length-1 : sel;
+    var bot = unitBot(i), top = S.units[i].top;
+    if(bot - top < 2*MIN_THICK) return;
+    var mid = Math.round(((top + bot)/2)*2)/2;
+    var u = S.units[i];
+    S.units.splice(i+1, 0, {top:mid, name:"new unit", lith:u.lith, sclay:u.sclay,
+                            phi:u.phi, S:u.S, clay:u.clay, sw:u.sw});
+    sel = i+1; render();
+  });
+  g("btn-del").addEventListener("click", function(){
+    if(S.units.length < 2 || sel < 0) return;
+    S.units.splice(sel, 1);
+    if(S.units[0]) S.units[0].top = 0;
+    sel = Math.min(sel, S.units.length-1); render();
+  });
+  g("btn-reset").addEventListener("click", function(){
+    S = defaultSection(); sel = 2;
+    g("g-name").value = S.name; g("g-zmax").value = S.zmax;
+    g("g-m").value = S.m_archie; g("g-p").value = S.p_clay;
+    render();
+  });
+  g("btn-copy").addEventListener("click", function(){
+    var t = g("toml").textContent, btn = g("btn-copy");
+    function done(ok){ btn.textContent = ok ? "Copied" : "Select and copy";
+                       setTimeout(function(){ btn.textContent = "Copy"; }, 1600); }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(function(){ done(true); }, function(){ selectToml(); done(false); });
+    } else { selectToml(); done(false); }
+  });
+  // Saving a file only works in the LOCAL copy. The hosted artifact runs in a
+  // sandbox that blocks any download the page starts itself, including a
+  // blob: or data: href, and it fails silently -- so the button is shown only
+  // on file://, rather than offering something that does nothing.
+  if(location.protocol === "file:"){
+    var sb = g("btn-save");
+    sb.hidden = false;
+    sb.addEventListener("click", function(){
+      var blob = new Blob([g("toml").textContent], {type:"text/plain"});
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = (S.name || "scenario") + ".toml";
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 0);
+      sb.textContent = "Saved";
+      setTimeout(function(){ sb.textContent = "Save .toml"; }, 1600);
+    });
+  }
+
+  function selectToml(){
+    var pre = g("toml"), r = document.createRange();
+    r.selectNodeContents(pre);
+    var s2 = window.getSelection(); s2.removeAllRanges(); s2.addRange(r); pre.focus();
+  }
+
+  render();
+})();
+</script>

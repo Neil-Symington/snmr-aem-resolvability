@@ -45,6 +45,12 @@ TIER="typical"        # optimistic | typical | sceptical | field
 CONDS="C2"            # C2 is the corrected log prior on the Stage 1 median
 
 # Drop a name to skip that stage. Order is fixed and enforced below.
+#
+#   STAGES="truth quicklook"   checks both inversions in ~2 min, no MCMC.
+#                              It answers "do the inversions run and fit", NOT
+#                              what the water content is. No posterior, no
+#                              detection, no verdict. Use it on a new column
+#                              before spending the day below.
 STAGES="truth stage1 draws smrdata stage2 site"
 
 #                     samples   AEM chains   AEM draws
@@ -97,6 +103,7 @@ out_of() {
         draws)   echo "data/aem_draws_${TAG}.jld2" ;;
         smrdata) echo "data/smr_data_murray${TAG}T.jld2" ;;
         stage2)  echo "data/cond_${CONDS%%,*}_${TIER}${TAG}T.jld2" ;;
+        quicklook) echo "" ;;    # cheap enough to always redo, and it is a check
         site)    echo "" ;;      # run_site.jl is itself resumable, via --from
     esac
 }
@@ -113,6 +120,7 @@ cost_of() {
         stage2production)             echo "hours" ;;
         sitesmoke)                    echo "~45 min, nearly all Stage 4" ;;
         siteproduction)               echo "~1.5 h, nearly all Stage 4" ;;
+        quicklooksmoke|quicklookproduction) echo "~2 min, no MCMC" ;;
     esac
 }
 
@@ -158,7 +166,7 @@ run_stage() {
 wants() { case " $STAGES " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 for s in $STAGES; do
-    case "$s" in truth|stage1|draws|smrdata|stage2|site) ;;
+    case "$s" in truth|quicklook|stage1|draws|smrdata|stage2|site) ;;
         *) echo "unknown stage '$s' in STAGES"; exit 2 ;;
     esac
 done
@@ -180,6 +188,12 @@ if wants truth; then
     run_stage truth bash -c "julia --project=. synthetics/scripts/build_truth.jl '$TRUTH_CONFIG' && \
                              cp '$TRUTH_SRC' '$TRUTH_DST'" || true
 fi
+# The cheap check. Deterministic Occam on both halves, so it needs no workers
+# and no sample count: it reports whether each inversion converged and fit, and
+# refuses to report anything that would look like an inference result.
+wants quicklook && [ -z "$FAILED" ] && \
+    run_stage quicklook julia --project=. tools/quicklook.jl "$TAG" || true
+
 # Stage 1 takes POSITIONAL arguments, not flags: parse(Int, "--nsamples") is
 # what you get for passing them, and a reviewer did.
 wants stage1  && [ -z "$FAILED" ] && \

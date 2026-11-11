@@ -235,6 +235,30 @@ julia --project=. synthetics/scripts/plot_truth.jl  synthetics/output/confined_a
 julia --project=. synthetics/scripts/forward.jl     synthetics/output/confined_aquifer_truth.jld2
 ```
 
+To build a scenario by eye instead of by hand:
+
+```bash
+julia --project=. tools/builder.jl
+```
+
+That opens `tools/section_builder.html` in your browser. Drag the contacts, set
+porosity, saturation, clay fraction and pore-water conductivity per unit, watch
+the AEM and surface NMR forward curves update, then save the scenario TOML and
+pass it to `build_truth.jl`. It needs no server and no network. The curves are
+piecewise constant with sharp contacts, so judge contrast with it, not detail.
+
+To check a column without the day-long chain:
+
+```bash
+julia --project=. tools/quicklook.jl <TAG>
+```
+
+Deterministic Occam on both halves, about two minutes. It reports whether each
+inversion converged and fit, and how close the recovered profiles sit to the
+truth. It reports nothing else: no posterior, no water-content integral, no
+detection and no verdict, because a deterministic solve has no prior width and
+the screen selection pins to the base of the grid without one.
+
 `synthetics/README.md` documents the config schema. The two were merged because
 `src/aem_setup.jl` existed in both and diverged: the noise-seed fix landed in
 one copy and not the other, so every published AEM number came from the wrong
