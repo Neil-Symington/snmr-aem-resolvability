@@ -27,13 +27,26 @@
 using Distributed, Printf
 
 const ARG = Dict{String,String}()
+# Valueless flags, listed so the pair-wise loop below does not eat the token
+# AFTER them. `--force --tier typical` would otherwise store force="--tier" and
+# then skip "typical", silently running the default tier -- the same shape of
+# defect as everything else in this file's history.
+const FLAGS = ("--force",)
 let i = 1
     while i <= length(ARGS)
-        if startswith(ARGS[i], "--") && i < length(ARGS)
+        if ARGS[i] in FLAGS
+            ARG[ARGS[i][3:end]] = "true"; i += 1
+        elseif startswith(ARGS[i], "--") && i < length(ARGS)
             ARG[ARGS[i][3:end]] = ARGS[i+1]; i += 2
         else; i += 1; end
     end
 end
+# --force recomputes a condition whose output file already exists. Without it
+# this stage SKIPPED any existing output and said so in one line, with no check
+# that the existing answer came from the inputs now on disk -- so re-running
+# after rebuilding Stage 1, or after changing the tier or the sample count,
+# quietly kept the old posterior and every downstream number derived from it.
+const FORCE = haskey(ARG, "force")
 const TIER   = get(ARG, "tier", "typical")
 # --tag 2 switches to the two-aquifer column and its Occam-derived SMR data,
 # and writes cond_<C>_<tier>2.jld2 so the two experiments never collide.
@@ -150,6 +163,23 @@ function kernel_for(σ_aem, z_aem, zsmr, R, ϕ, Be)
     SNMRForward.MRSForward_square(R, zsmr, QGRID, ϕ, 0.0, Be, ct)
 end
 
+"""
+Everything upstream whose change would change this condition's posterior,
+collapsed to one UInt64 and stored in the output as `input_sig`. It is what
+lets a re-run tell "already done" apart from "done from something else",
+which this stage could not do: it skipped on the mere existence of the file.
+
+Covers the SNMR data actually used (V, sigma-hat), the kernel conductivity and
+both grids, the instrument geometry, the sampler's size, and for C4 the AEM
+draws. `hash` is stable within a Julia version and not across them; install.jl
+pins Julia 1.12, and a version change surfaces as a mismatch, which errors with
+instructions rather than silently reusing the file.
+"""
+inputsig(cond, islog, V, σ̂, σref, zA, zsmr, R, ϕ, Be, qgrid, kernelfile, draws) =
+    hash((cond, TIER, TAG, LABEL, islog, NSAMP, NENS, NCHAIN,
+          cond == "C4" ? NDRAWS : 0, basename(kernelfile),
+          V, σ̂, σref, zA, zsmr, R, ϕ, Be, qgrid, draws))
+
 function main()
     T = load(joinpath(OUT, "truth_murray$(TTAG).jld2"))
     dpath = joinpath(OUT, "smr_data_murray$(TAG).jld2")
@@ -208,7 +238,54 @@ function main()
     for cond in todo
         f = joinpath(OUT, "cond_$(cond)_$(TIER)$(TAG).jld2")
         cond == "C4" && (f = joinpath(OUT, "cond_C4_$(TIER)_shard$(SHARD).jld2"))
-        if isfile(f); @printf("%s already done, skipping\n", cond); continue; end
+        sig = inputsig(cond, cond == "C2", V, σ̂, σref, zA, zsmr, R, ϕ, Be,
+                       QGRID, kernelfile,
+                       # haskey, not a bare index: C4 against the Occam column
+                       # (TAG "2") has no draws, and the branch below warns and
+                       # skips it gracefully. Indexing here would throw first.
+                       cond == "C4" && haskey(A, "σ_draws") ? A["σ_draws"] : nothing)
+        if isfile(f) && !FORCE
+            stored = try
+                get(load(f), "input_sig", nothing)
+            catch e
+                @warn "$cond output exists but will not load; recomputing" file=f err=e
+                nothing
+            end
+            if stored !== nothing && UInt64(stored) == sig
+                @printf("%s already done from these exact inputs, skipping\n", cond)
+                continue
+            elseif stored !== nothing
+                error("""
+                $cond output exists but was built from DIFFERENT inputs.
+
+                  file: $f
+
+                  Its input signature is $(UInt64(stored)); the inputs on disk now
+                  give $(sig). Something upstream changed: the SNMR data, the AEM
+                  kernel, the tier, the sample count, the ensemble or chain count,
+                  or (for C4) the number of AEM draws.
+
+                  This stage used to skip here without looking, so a re-run after
+                  rebuilding Stage 1 kept the old posterior and reported it as
+                  current. Choose deliberately:
+
+                    --force          recompute and overwrite
+                    rm $f            then re-run
+                """)
+            else
+                @warn """
+                $cond output exists but carries NO input signature, so it cannot be
+                checked against the inputs on disk. It predates this check.
+
+                  file: $f
+
+                  Skipping it, as this stage always did -- but if anything upstream
+                  has been rebuilt since it was written, this is a stale answer.
+                  Pass --force to recompute, or delete the file to be certain.
+                """
+                continue
+            end
+        end
         t0 = time()
         if cond in ("C1", "C2")
             islog = cond == "C2"
@@ -220,7 +297,7 @@ function main()
             ens, _ = run_condition("$(cond)_$(TIER)$(TAG)", V, σ̂, F50, islog, zsmr, pids)
             jldsave(f; ens = ens, cond = cond, tier = TIER, islog = islog,
                     kernel = basename(kernelfile),
-                    nsamples = NSAMP, zsmr = zsmr)
+                    nsamples = NSAMP, zsmr = zsmr, input_sig = sig)
         elseif cond == "C4" && TAG == "2"
             @warn "C4 needs AEM posterior draws; the Occam run has none. Skipping."
             continue
@@ -242,7 +319,8 @@ function main()
                 jldsave(joinpath(OUT, "cond_C4_$(TIER)_shard$(SHARD).jld2");
                         ens_by_draw = allens, cond = "C4", tier = TIER,
                         kernel = "AEM_draws", nsamples = NSAMP, zsmr = zsmr,
-                        σ_draws = draws, z_aem = zA, shard = SHARD, nshard = NSHARD)
+                        σ_draws = draws, z_aem = zA, shard = SHARD,
+                        nshard = NSHARD, input_sig = sig)
             end
         else
             @warn "C3/C3b run no sampler — they reuse C2. Nothing to do." cond
