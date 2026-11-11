@@ -765,15 +765,38 @@
   if(location.protocol === "file:"){
     var sb = g("btn-save");
     sb.hidden = false;
-    sb.addEventListener("click", function(){
-      var blob = new Blob([g("toml").textContent], {type:"text/plain"});
+    function flash(msg){
+      sb.textContent = msg;
+      setTimeout(function(){ sb.textContent = "Save .toml"; }, 1800);
+    }
+    sb.addEventListener("click", async function(){
+      var text = g("toml").textContent, name = (S.name || "scenario") + ".toml";
+      // A REAL save dialog where the browser has one: you pick the folder and
+      // the name, and you may overwrite. Chromium has it; Firefox does not, and
+      // it is refused from some file:// contexts, hence the fallback.
+      if(window.showSaveFilePicker){
+        try{
+          var handle = await window.showSaveFilePicker({
+            suggestedName: name,
+            types: [{description: "TOML", accept: {"text/plain": [".toml"]}}]
+          });
+          var w = await handle.createWritable();
+          await w.write(text); await w.close();
+          flash("Saved");
+          return;
+        }catch(err){
+          if(err && err.name === "AbortError") return;   // you cancelled
+          // anything else: fall through to the plain download
+        }
+      }
+      // Fallback. This does NOT ask and does NOT overwrite: the browser puts it
+      // in your downloads folder and adds a numeric suffix on a name clash.
       var a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = (S.name || "scenario") + ".toml";
+      a.href = URL.createObjectURL(new Blob([text], {type:"text/plain"}));
+      a.download = name;
       document.body.appendChild(a); a.click();
       setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 0);
-      sb.textContent = "Saved";
-      setTimeout(function(){ sb.textContent = "Save .toml"; }, 1600);
+      flash("Sent to downloads");
     });
   }
 
