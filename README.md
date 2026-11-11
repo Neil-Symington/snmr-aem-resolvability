@@ -121,8 +121,21 @@ Stage 1 and 2 products, which are not published, so on a clean tree it stops and
 names what produces them. The second line used to be `--from 3` with no warning,
 and two reviewers in a row hit it and got a path with no remedy.
 
-To actually compute something, build a column and drive the chain yourself —
-`configs/smoke_2P.toml` ships for exactly this, with a reduced gate grid:
+To actually compute something, use `run_all.sh`. Open it, edit the block at the
+top, run it:
+
+```bash
+./run_all.sh --dry-run    # print the chain it would run, run nothing
+./run_all.sh              # run it
+./run_all.sh --force      # redo stages whose output already exists
+```
+
+It writes one log per stage under `logs/`, prints a timing for each, skips a
+stage whose output is already there, and exits non-zero naming the stage if
+anything fails or produces no output. Everything scientific stays in the
+configs; what the script sets is only what used to be argv.
+
+The seven commands it runs, if you would rather drive them yourself:
 
 ```bash
 julia --project=. synthetics/scripts/build_truth.jl synthetics/config/confined_aquifer.toml
@@ -132,9 +145,15 @@ julia --project=. tools/aem_HYP.jl 2001 2P 2 _smoke
 julia --project=. tools/aem_draws.jl 2P 50 _smoke
 julia --project=. tools/smr_data.jl transd --tag 2P --label _smoke
 julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 \
-      --tag 2PT --label _smoke --nsamples 2001 --nchains 2
+      --tag 2PT --label _smoke --nsamples 2001
 julia --project=. run_site.jl configs/smoke_2P.toml
 ```
+
+The first four take positional arguments, not flags. Stage 2 runs four chains
+and four ensembles whatever you ask for: `stage2_snmr.jl` holds both as
+constants and reads no flag for either, so a `--nchains 2` on that line is
+accepted and ignored. This README and `run_site.jl` both printed one until
+12 Nov 2026.
 
 That reaches a verdict table. It is **not a result** — 2001 samples and 50 draws
 moved the Stage 5 TDS median by 50% between two machines — but every stage runs

@@ -82,9 +82,14 @@ function main()
 
     julia --project=. tools/aem_HYP.jl 2001 <T> 2 <L>
     julia --project=. tools/aem_draws.jl <T> 50 <L>
-    julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 --tag <T>T --label <L> --nsamples 2001 --nchains 2
+    julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 --tag <T>T --label <L> --nsamples 2001
 
-  Stage 2's default is 100,001 samples and takes hours.
+  Stage 2's default is 100,001 samples and takes hours. It runs four chains and
+  four ensembles whatever you ask: both are constants in that stage and it reads
+  no flag for either. This hint printed --nchains 2 until 12 Nov 2026, which the
+  stage accepted and ignored.
+
+  Or run the whole chain with ./run_all.sh, which edits at the top.
 """
         isfile(s1) || @printf("\n  STAGE 1 INPUT MISSING: %s\n%s",
                               cfg["data"]["stage1_draws"], chain)
