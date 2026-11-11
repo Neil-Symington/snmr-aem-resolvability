@@ -150,6 +150,34 @@ Three things must change as the stage scripts move, and none are cosmetic:
    list from a filter expression. It stays a provenance script, not part of the
    batch.
 
+## Data preparation
+
+Two Python tools in `tools/`, neither part of the batch. Both want a python
+with `pyarrow`; the project's conda env does not have one, so
+`python3 -m pip install pyarrow` first.
+
+`aseg_to_geoparquet.py` converts a GA ASEG-GDF2 delivery (the `.dfn` layout
+plus the fixed-width `.dat`) to one GeoParquet file with a WKB point geometry
+column, streaming it so the 4.9 GB Upper Darling delivery converts in about
+three minutes. `--schema` prints the parsed layout and writes nothing, which is
+the quickest way to see a delivery's gate structure. `--selftest` checks the
+reader against a built-in fixture and needs no delivery files.
+
+It refuses rather than guesses in the two places that matter. If the record
+width in the `.dfn` does not match the `.dat` it stops, because shifted
+fixed-width numbers still parse and the output would look right and be wrong.
+If the `.dfn` carries no `EPSGCODE` on the coordinate fields it stops and prints
+what it did find, because the 2017 Ord-Keep delivery states its datum only as
+"(GDA94)" in free text and a GeoParquet with a wrong CRS is silently wrong.
+Checked against both deliveries: 195 columns from 39 DEFN entries at a 2788
+character record for Upper Darling, 286 at 4184 with a leading `DATA` marker for
+Ord-Keep.
+
+`assemble_example.py` builds `example/` from the source archives, and is
+provenance rather than something a reader runs. It does not subset the ASEG
+delivery; `example/aem/nav_clip.parquet` was produced outside the repository,
+which is the gap the converter above closes.
+
 ## Relationship to the synthetic workflow
 
 Shared: the install, `Project.toml`, `Manifest.toml`, the depth grid, the
