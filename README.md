@@ -20,10 +20,12 @@ so defensibly rather than to produce a number. Two properties make that possible
 
 ## Install
 
-**Julia 1.12 or newer.** `[sources]`, which pins an unregistered dependency
+**Julia 1.12.x, not newer.** `[sources]`, which pins an unregistered dependency
 below, needs 1.11 — but the pinned `Manifest.toml` resolves `PrecompileTools`
 1.3.4, which needs `Base.ReinferUtils` or `Base.StaticData`, and neither exists
-before 1.12. On 1.11 `install.jl` fails at step 2. Install from
+before 1.12. On 1.11 `install.jl` fails at step 2, and setup is reported to
+fail on 1.13 as well, so the requirement is the 1.12 series rather than a
+floor. Install from
 <https://julialang.org/downloads/> or with `juliaup`; the `Manifest.toml` was
 resolved on 1.12.6.
 
@@ -236,15 +238,18 @@ defeated by a reviewer, sixteen times in total.
 
 ## The examples
 
-`configs/synth_3P.toml` and `configs/synth_2P.toml` are two synthetic columns — an
-unconfined sand and a confined aquifer pair. Each has a saline control (`3S`, `2S`)
-that shares its parent's clay, porosity and water content bit for bit and differs
-*only* in pore-water conductivity, so any difference between a column and its control
-can be nothing but the water. A control names its parent in `[data].parent` and the
-validator refuses one that does not: comparing a control against the wrong parent has
-already produced one retracted finding in this project.
+`configs/synth_2P.toml` is a confined aquifer pair, and the one worked example
+these instructions follow. Every synthetic column also ships a saline control
+that shares its parent's clay, porosity and water content bit for bit and
+differs *only* in pore-water conductivity, so any difference between a column
+and its control can be nothing but the water. A control names its parent in
+`[data].parent` and the validator refuses one that does not: comparing a control
+against the wrong parent has already produced one retracted finding here.
 
-Release of the field data is Geoscience Australia's decision, not this repository's.
+The other columns, and which figure reads which, are in `docs/columns.md`.
+
+Release of the field data is Geoscience Australia's decision, not this
+repository's.
 
 ## Configuration
 
@@ -274,93 +279,28 @@ outputs and skip, loudly, without them.
 ## Figures
 
 `figures/` holds the nine scripts that draw the paper's figures and write the
-number CSVs the text quotes. **Neither README mentioned this directory until a
-reviewer went looking**, and none of the scripts runs from the Quick start: they
-need columns the smoke chain does not produce.
+number CSVs the text quotes. None of them runs from the Quick start: they need
+columns the smoke chain does not produce.
 
 ```bash
-julia --project=. figures/fig05_interval.jl     # needs 3P and 2P
-julia --project=. figures/fig07_gate_sigmin1e-3.jl   # needs 3P 3S 2P 2S + ensembles
-julia --project=. figures/export_numbers_v2.jl  # needs all four
+julia --project=. figures/fig05_interval.jl
 ```
 
-What they need, which was written down nowhere:
+Which script reads which column, how to build the paper's test-one column, and
+the two traps that each cost a reviewer an hour are in `docs/columns.md`.
 
-| Script | Columns | Also needs |
-|---|---|---|
-| `fig02` | 3P, 3S, 2P, 2S | `data/truth_murray<tag>.jld2` |
-| `fig03` | 3P, 2P (+ 2PJ if present) | `tools/extract_full_draws.jl`, `tools/aem_sensitivity.jl` outputs |
-| `fig04`, `fig05` | 3P, 2P | truth files and Stage 3 outputs |
-| `fig06` | 3P, 2P (+ 2PJ if present) | Stage 5 outputs |
-| `figS8` | 3P, 3S, 2P, 2S | Stage 4 outputs |
-| `fig07`, `export_numbers_v2` | 3P, 3S, 2P, 2S | Stage 4 post, and `singlepass_archive/` if present |
-| `fig08` | 2P | `tools/section6_bore_value.jl` |
+**Every per-column figure verifies its own label.** `FigStyle.assert_column`
+compares the tag against the `column` the Stage 0 artefact recorded, and the
+artefact's `truth_file_sha` against the hash of the truth file. The second check
+is the one that matters: `column` is copied from the config, so a config naming
+one column while pointing at another's truth seals cleanly without it.
 
-### Building the 3P column, and the two things that will stop you
-
-`synthetics/config/paper_3P.toml` is the paper's test-one column and the only
-one of the six that ships. With it and `confined_aquifer.toml` (which is 2P) you
-have the two columns `fig04`, `fig05` and `fig06` need. Both were measured by a
-reviewer on a clean clone:
-
-**1. The smoke gate grid does not bracket 3P.** `smoke_2P.toml`'s
-`n_nodes_coarse = 4, n_nodes_fine = 3` fails on a 3P column after **19 minutes**
-with *"the coarse pass found 1 reachable node(s) of 4. The fine grid cannot be
-bracketed."* 3P's reachable range is roughly 0.0037–0.0215 S/m, 0.57 dex, and a
-4-node grid 1.33 dex apart lands one node in it at best. Use:
-
-```toml
-[gate]
-n_nodes_coarse = 8      # 4 does NOT bracket 3P
-n_nodes_fine   = 4
-```
-
-That brackets, and takes **53 minutes** to Stage 4 post on smoke ensembles.
-The grid is column-specific — this is why the smoke config is named for 2P.
-
-**2. Stage 5 on 3P needs `data/aem_draws_3M.jld2`, which nothing above builds.**
-`configs/synth_3P.toml` points at the `3M` tag for the same reason
-`synth_2P.toml` points at `2M`: the paper's Stage 1 for that column ran under
-the older tag, and σ_bulk is identical. The chain here builds `aem_draws_3P`, so:
-
-```bash
-cp data/aem_draws_3P.jld2 data/aem_draws_3M.jld2
-```
-
-`run_site.jl` does print `STAGE 1 INPUT MISSING: data/aem_draws_3M.jld2` early,
-but it is non-fatal and the chain hint never mentions `3M` — so the run proceeds
-through Stages 3 and 4 and then dies in Stage 5 an hour later. A reviewer lost
-that hour.
-
-An earlier version of this table was **wrong for three of its rows** — `fig02`
-and `figS8` read four columns, not one or two, and `fig06` reads two. It was
-presented as the thing nobody had written down, which made being wrong worse
-than being absent. Counts above are from the tags each script actually
-references.
-
-`singlepass_archive/` is read by `fig07` and **written by nothing** — it is an
-archive of an earlier grid mode, and its absence is handled.
-
-**Every per-column figure verifies its own label**, and it is now true: all eight
-that carry column tags call `FigStyle.assert_column`. When this was first
-claimed, four were unwired — including `figS8`, which was one of three a reviewer
-drew from fabricated columns with no message at all.
-
-The check does two things. It compares the tag against the `column` the Stage 0
-artefact recorded, and it compares the artefact's `truth_file_sha` against the
-hash of `data/truth_murray<tag>.jld2`. The second is needed because `column` is
-copied from the config: a config declaring `column = "3P"` while pointing at
-another column's truth is sealed cleanly by the real Stage 0, and a reviewer did
-exactly that and drew two figures from it.
-
-**With no Stage 0 artefact it is an error, not a warning.** It warned and drew
-anyway at first, which means a paper figure from unverified data. Set
+**With no Stage 0 artefact it is an error, not a warning.** Set
 `FIGS_ALLOW_UNVERIFIED=1` to override, and do not use the result in the paper.
 
-A figure built from a **smoke** run is still not marked as such on the image.
-`FigStyle.provenance` prints the column and config of each panel to the build
-log; treat any figure whose log says `smoke_2P.toml` as a shape check, not a
-result.
+A figure built from a smoke run is not marked as such on the image.
+`FigStyle.provenance` prints each panel's column and config to the build log, so
+treat any figure whose log names `smoke_2P.toml` as a shape check, not a result.
 
 `fig07` smooths with scipy when it is available and falls back to a linear
 interpolation when it is not. The conda environment `install.jl` builds carries
