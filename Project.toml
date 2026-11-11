@@ -23,8 +23,22 @@ SNMRForward = "7a571783-2426-4210-b64c-8cc94fde9200"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 
+# SMRPInversion is not registered, and the runs used a BRANCH of it, not main:
+# add-occam-deterministic-inversion carries the hierarchical heteroscedastic
+# noise model and the Occam bootstrap that every result here depends on.
+# Installing main instead silently reproduces different numbers, so the branch
+# and the commit are pinned here rather than left to a README instruction.
+#
+# RESTORED 11 Nov 2026. `Pkg.add` had dropped this block and the [compat] one
+# below when MAT was added, and the NOTE at the top of this file says to put
+# them back. They were not put back, so the branch carried a pin with no stated
+# reason and merging it into main would have deleted the reason from main too.
 [sources]
 SMRPInversion = {rev = "add-occam-deterministic-inversion", url = "https://github.com/Neil-Symington/SMRPInversion.jl"}
 
 [compat]
+# 1.12, not 1.11. The pinned Manifest resolves PrecompileTools 1.3.4, whose
+# src/invalidations.jl needs Base.ReinferUtils or Base.StaticData, and neither
+# exists before 1.12. An independent review hit this on 1.11.7: install.jl
+# fails at step 2. [sources] needs 1.11, so that is a floor but not the floor.
 julia = "1.12"
