@@ -1,0 +1,444 @@
+COMM JOB NUMBER                                                       10087
+COMM GA PROJECT NUMBER:                                                5011
+COMM SURVEY COMPANY:                                       SKYTEM Australia
+COMM CLIENT:                                           Geoscience Australia
+COMM SURVEY TYPE:                                           25Hz SkyTEM 312
+COMM SURVEY AREA:                                  Upper Darling Floodplain
+COMM STATE:                                                             NSW
+COMM COUNTRY:                                                     Australia
+COMM SURVEY FLOWN:                                   March 2022 - July 2022
+COMM
+COMM DATUM:                                                         GDA2020
+COMM PROJECTION:                                                        MGA
+COMM ZONE:                                                               55
+COMM
+COMM SURVEY SPECIFICATIONS:
+COMM
+COMM NOMINAL TERRAIN CLEARANCE:                                   45 - 60 m
+COMM FINAL LINE KILOMETRES:        PRODUCTION: L100001 - L800103 25492.1 km
+COMM                               REPEAT    : L912001 - L912022   118.6 km
+COMM                               HIGH LEVEL: L913001 - L913108   716.2 km
+COMM
+COMM PRODUCTION LINE KILOMETERS AND NOMINAL 
+COMM LINE DIRECTION AND SPACING BY AREA:                      
+COMM                  5KM SPACING 145/325 deg: L100001 - L109601  6623.0 km
+COMM                 500M SPACING 145/325 deg: L200001 - L267502 12850.2 km
+COMM          250M SPACING INFILL 145/325 deg: L300001 - L331601  4486.8 km
+COMM   250M SPACING AT BREWARRINA 000/180 deg: L400001 - L402901   161.4 km
+COMM   250M SPACING AT LAKE PEERY 090/270 deg: L500001 - L505801   416.5 km
+COMM             RIVER TRAVERSES variable deg: L600001 - L601201   829.6 km
+COMM   SOUTHERN AREA EW TRAVERSES 090/270 deg: L700001 - L700101    53.5 km
+COMM      NORTHERN AREA NE TRAVERSES ~053/233: L800001 - L801201    71.1 km
+COMM
+COMM SAMPLE INTERVAL                                                0.5 sec
+COMM
+COMM NOMINAL SPACING                                250 - 5000m OR VARIABLE
+COMM
+COMM ----------------------------------------------------------------------
+COMM SURVEY EQUIPMENT                                                      
+COMM INSTRUMENT POSITION SIGN CONVENTION                                   
+COMM THE Z AXIS IS POSITIVE BELOW THE TX LOOP WIRE. POSITIVE X AND Y AXIS  
+COMM ARE IN THE FLIGHT DIRECTION AND TO THE STARBOARD SIDE RESPECTIVELY,   
+COMM FORMING A RIGHT HANDED CORDINATE SYSTEM                               
+COMM REFERENCED TO CENTRE OF THE FRAME                                     
+COMM ----------------------------------------------------------------------
+COMM AIRCRAFT:                                             AS350 B3, VH-UAZ
+COMM                                                                       
+COMM LASER ALTIMETER                                           MDL ACE IM3R
+COMM INCLINOMETERS (Tilt meters)                          BJERRE TECHNOLOGY
+COMM FRAME GPS                                               NOVATEL OEM628
+COMM BASE GPS                                                NOVATEL OEM628
+COMM ELECTROMAGNETIC SYSTEM:              275Hz/25Hz Dual Moment SkyTEM 312
+COMM INSTALLATION:                                        Towed Rigid Frame
+COMM                                         Receiver coil in a Rigid Frame
+COMM COIL ORIENTATION:                                                  X,Z
+COMM                                                                       
+COMM
+COMM NAVIGATION:                                 Real-time differential GPS
+COMM
+COMM INSTRUMENT POSITION RELATIVE TO FRAME CENTRE
+COMM   (Relative to Loop Centre)              X (m)      Y (m)        Z (m)
+COMM                Z-coil                  -13.29      0.00          -2.00
+COMM                X-coil                  -14.68      0.00          -0.00
+COMM                Tilt meter set 1 and 2   12.89      1.64          -0.12
+COMM                Laser Altimeter 1        12.89      1.79          -0.12
+COMM                Laser Altimeter 2        12.89     -1.79          -0.12
+COMM                GPS 1                    11.77      2.79          -0.16
+COMM                GPS 2                    10.61      3.95          -0.16
+COMM
+COMM Tx LOOP GEOMETRY RELATIVE TO FRAME CENTRE                             
+COMM   (Relative to Loop Centre)              X (m)      Y (m)             
+COMM                                        -12.64     -2.10               
+COMM                                         -6.14     -8.58               
+COMM                                          6.14     -8.58               
+COMM                                         11.41     -3.31               
+COMM                                         11.41      3.31               
+COMM                                          6.14      8.58               
+COMM                                         -6.14      8.58               
+COMM                                        -12.64      2.10               
+COMM                                        -12.64     -2.10               
+COMM ----------------------------------------------------------------------
+COMM TRANSMITTER SPECIFICATIONS                                            
+COMM ----------------------------------------------------------------------
+COMM           Tx Loop Area        342 m2                                  
+COMM           Tx moments          Low Moment (LM and High Moment (HM)     
+COMM           Tx Turns            LM = 2  HM = 12                         
+COMM           Tx Current          LM = 5.94 A  HM = 110.5 A               
+COMM           Peak Moment         LM ~ 4,036 Am2  HM ~ 447,336 Am2        
+COMM      Nominal Tx Frame Height  45 - 60 m                               
+COMM
+COMM ----------------------------------------------------------------------
+COMM Tx WAVEFORM SPECIFICATIONS                                            
+COMM ----------------------------------------------------------------------
+COMM           Base Freq           LM = 275 Hz  HM = 25 Hz                 
+COMM           Duty Cycle          LM = 44%   HM = 25%                     
+COMM           Tx On-time          LM = 0.8 ms  HM = 5.0 ms                
+COMM           TX Off-time         LM = 1.018 ms HM = 15.0 ms              
+COMM ----------------------------------------------------------------------
+COMM LM Tx WAVEFORM
+COMM ----------------------------------------------------------------------
+COMM     Time[s]         Amplitude
+COMM    -2.6180E-03      0.0000E+00
+COMM    -2.5576E-03     -9.9789E-02
+COMM    -2.4458E-03     -2.5196E-01
+COMM    -1.8180E-03     -1.0000E+00
+COMM    -1.8170E-03     -9.4264E-01
+COMM    -1.8161E-03     -8.4921E-01
+COMM    -1.8133E-03     -4.5511E-01
+COMM    -1.8107E-03     -1.6728E-01
+COMM    -1.8084E-03     -4.5357E-02
+COMM    -1.8058E-03      0.0000E+00
+COMM    -8.0000E-04      0.0000E+00
+COMM    -7.3960E-04      9.9783E-02
+COMM    -6.2783E-04      2.5193E-01
+COMM     0.0000E+00      1.0000E+00
+COMM     3.2880E-07      9.8807E-01
+COMM     1.0648E-06      9.3826E-01
+COMM     1.9688E-06      8.4188E-01
+COMM     2.3048E-06      7.9337E-01
+COMM     2.6488E-06      7.5004E-01
+COMM     3.1448E-06      6.7073E-01
+COMM     4.0648E-06      5.5438E-01
+COMM     4.6328E-06      4.6349E-01
+COMM     6.0648E-06      2.8483E-01
+COMM     7.2888E-06      1.6799E-01
+COMM     8.6408E-06      8.2725E-02
+COMM     9.6328E-06      4.4079E-02
+COMM     1.1041E-05      1.2779E-02
+COMM     1.2217E-05      0.0000E+00
+COMM ----------------------------------------------------------------------
+COMM HM Tx Waveform
+COMM ----------------------------------------------------------------------
+COMM     Time [s]        Amplitude
+COMM    -2.5000E-02      0.0000E+00
+COMM    -2.4800E-02     -6.5107E-01
+COMM    -2.4715E-02     -8.9524E-01
+COMM    -2.4692E-02     -9.3776E-01
+COMM    -2.4051E-02     -9.6677E-01
+COMM    -2.0000E-02     -1.0000E+00
+COMM    -1.9891E-02     -6.5617E-01
+COMM    -1.9702E-02     -1.3563E-02
+COMM    -1.9696E-02      0.0000E+00
+COMM    -5.0000E-03      0.0000E+00
+COMM    -4.9025E-03      3.2775E-01
+COMM    -4.8002E-03      6.5055E-01
+COMM    -4.7155E-03      8.9397E-01
+COMM    -4.7064E-03      9.1670E-01
+COMM    -4.6920E-03      9.3776E-01
+COMM    -4.3829E-03      9.5989E-01
+COMM    -4.0505E-03      9.6678E-01
+COMM    -1.7826E-03      9.7902E-01
+COMM     0.0000E+00      1.0000E+00
+COMM     4.8566E-05      8.5110E-01
+COMM     1.0945E-04      6.5471E-01
+COMM     1.8545E-04      4.0016E-01
+COMM     2.9847E-04      1.1948E-02
+COMM     3.0379E-04      0.0000E+00
+COMM ----------------------------------------------------------------------
+COMM RECEIVER SPECIFICATIONS                                               
+COMM ----------------------------------------------------------------------
+COMM           EM Sensors                dB/dt coils                       
+COMM           Rx coil effective area    Z = 325 m2 X = 115.5 m2           
+COMM           Rx coil cut-off Freq.     Z = 203.6 kHz X = 340 kHz         
+COMM    Rx electronics low pass cut-off  300 kHz                           
+COMM
+COMM All data were acquired using SkyTEM뭩 patented interleaved low and    
+COMM high moment transmitter modes, consisting of 110 low moment positive  
+COMM and negative pulse pairs at 275 Hz, and 30 high moment pulse pairs at 
+COMM 25Hz, which repeats every 1.6 seconds.
+COMM
+COMM ----------------------------------------------------------------------
+COMM LM GATE TIMES SUPPLIED                                                
+COMM ALL GATE TIMES ARE FROM THE INITIATION OF CURRENT SWITCH OFF          
+COMM ----------------------------------------------------------------------
+
+COMM LM Gate No.   Gate Width    Gate Open   Gate Centre   Gate Close      
+COMM                  (탎)         (탎)        (탎)          (탎)          
+COMM     9            3.57        14.63       16.415        18.2	
+COMM     10           4.57        18.63       20.915        23.2	
+COMM     11           5.57        23.63       26.415        29.2	
+COMM     12           7.57        29.63       33.415        37.2	
+COMM     13           9.57        37.63       42.415        47.2	
+COMM     14           12.57       47.63       53.915        60.2	
+COMM     15           15.57       60.63       68.415        76.2	
+COMM     16           19.57       76.63       86.415        96.2	
+COMM     17           24.57       96.63       108.915      121.2	
+COMM     18           30.57       121.63      136.915      152.2	
+COMM     19           50.57       152.63      177.915      203.2	
+COMM     20           50.57       203.63      228.915      254.2	
+COMM     21           50.57       254.63      279.915      305.2	
+COMM     22           100.57      305.63      355.915      406.2	
+COMM     23           100.57      406.63      456.915      507.2	
+COMM     24           100.57      507.63      557.915      608.2	
+COMM     25           151.57      608.63      684.415      760.2	
+COMM     26           201.57      760.63      861.415      962.2	
+COMM
+COMM ----------------------------------------------------------------------
+COMM HM GATE TIMES SUPPLIED                                                
+COMM ALL GATE TIMES ARE FROM THE INITIATION OF CURRENT SWITCH OFF          
+COMM ----------------------------------------------------------------------
+
+COMM HM Gate No.   Gate Width    Gate Open   Gate Centre   Gate Close      
+COMM                  (탎)         (탎)        (탎)          (탎)          
+COMM    16           19.57       426.63       436.415	    446.20
+COMM    17           24.57       446.63       458.915	    471.20
+COMM    18           30.57       471.63       486.915	    502.20
+COMM    19           50.57       502.63       527.915	    553.20
+COMM    20           50.57       553.63       578.915	    604.20
+COMM    21           50.57       604.63       629.915	    655.20
+COMM    22           100.57      655.63       705.915	    756.20
+COMM    23           100.57      756.63       806.915	    857.20
+COMM    24           100.57      857.63       907.915	    958.20
+COMM    25           151.57      958.63      1034.415	    1110.20
+COMM    26           201.57      1110.63     1211.415	    1312.20
+COMM    27           252.57      1312.63     1438.915	    1565.20
+COMM    28           353.57      1565.63     1742.415	    1919.20
+COMM    29           403.57      1919.63     2121.415	    2323.20
+COMM    30           504.57      2323.63     2575.915	    2828.20
+COMM    31           707.57      2828.63     3182.415	    3536.20
+COMM    32           807.57      3536.63     3940.415	    4344.20
+COMM    33           1009.57     4344.63     4849.415	    5354.20
+COMM    34           1211.57     5354.63     5960.415	    6566.20
+COMM    35           1415.57     6566.63     7274.415	    7982.20
+COMM    36           1819.57     7982.63     8892.415	    9802.20
+COMM    37           2019.57     9802.63     10812.415      11822.20
+COMM    38           2729.57     11822.63    13187.415	    14552.20
+COMM
+COMM ----------------------------------------------------------------------
+COMM EM RESPONSE SIGN CONVENTION
+COMM ----------------------------------------------------------------------
+COMM Z-Component response will be positive over a purely conductive        
+COMM halfspace.
+COMM X-Component is positive in the flight direction
+COMM
+COMM ----------------------------------------------------------------------
+COMM TILT METER SIGN CONVENTION
+COMM ----------------------------------------------------------------------
+COMM Angle X is positive when the nose of the Tx loop is pitched up.       
+COMM Angle Y is positive when the starboard side of the frame is lower     
+COMM       than the poert side over level ground.
+COMM
+COMM ----------------------------------------------------------------------
+COMM Magnetometer System
+COMM ----------------------------------------------------------------------
+COMM Geometrics G822A   Caesium Vapour magnetometer sensor, mounted on the 
+COMM                    front of the Tx loop frame.
+COMM Kroum VS KMAG4     Counter, sample interval 50Hz, (Down sampled in    
+COMM                    processing)
+COMM Base Magnetometer  GEM Systems GSM19 proton precession sample at 1 sec
+COMM
+COMM ----------------------------------------------------------------------
+COMM DATA PROCESSING
+COMM ----------------------------------------------------------------------
+COMM
+COMM GPS POSITION
+COMM Only the Omnistar HP differentially corrected GPS, GP2 position       
+COMM information were used for the survey. The data were recorded  
+COMM in the WGS84 datum.                                                   
+COMM The GPS positions were then translated to the centre of the frame     
+COMM based on the instrument x, y and z positions on the system frame.     
+COMM The corrected positions were transformed to GDA2020 datum, Map Grid of  
+COMM Australia Zone 50 Projection
+COMM 
+COMM LASER ALTIMETER
+COMM The height processing involves manual and automated routines using a  
+COMM combination of the SkyTEM in-house software and comercial packages.   
+COMM The processing involves the following steps:                          
+COMM Keeping the 5 largest of the 30 values acquired per second, and       
+COMM discarding the remainder to correct for the canopy effect;            
+COMM 3 sec running box-car filter (smoothing filter);                      
+COMM Tilt correction, using the inclinometer data, to account for the      
+COMM altimeter not pointing vertically downward;                           
+COMM Averaging of the tilt corrected values from the two laser altimeters; 
+COMM A 3 sec low pass filter is then applied to the final result.          
+COMM 
+COMM ELECTROMAGNETIC DATA 
+COMM Raw (binary) SkyTEM data have been processed using SkyTEM proprietary 
+COMM software.
+COMM Prior to processing, primary field correction (PFC) was applied to    
+COMM the early LM moment gates (9 to 14) to remove the effects of residual 
+COMM currents that occur due to magnetic coupling between the receiver     
+COMM coils and the transmitter loop. PFC is performed by collecting        
+COMM Low Moment data whilst flying the system so the LM response is clear  
+COMM of any influence from the ground. The primary magnetic field coupling 
+COMM between the receiver coils and the transmitter loop is continuously   
+COMM hardware-monitored, providing a separate value for the magnetic field 
+COMM coupling during each transient sounding. These data are used for raw  
+COMM data correction in a separate post-processing step. The primary field 
+COMM compensation technique has proven stable and has routinely yielded a  
+COMM reduction of the primary field influence in very early time gates by  
+COMM a factor exceeding 17dB.                                              
+COMM
+COMM Following PFC on the Low Moment data  the data are normalized in      
+COMM respect to the effective Rx coil area, Tx coil area, number of turns  
+COMM and current giving the units [pV/(m4*A)].
+COMM The EM data is filtered adaptively based on the signal-to-noise ratio 
+COMM The applied EM filtering method is based on iterative weighted spline 
+COMM fitting routines, which operate in positive/negative symmetric        
+COMM transform spaces. The data weighting scheme relies on an extensive    
+COMM noise evaluation performed on the individual gate values of the raw   
+COMM data decays. Optimised sets of averaging filters are used for each    
+COMM measured moment and type of receiver coil in a stepwise averaging     
+COMM process. This allows for optimal suppression of motion induced noise  
+COMM as well as cultural noise components, while keeping track of the      
+COMM resulting data uncertainty.
+COMM 
+COMM DIGITAL TERRAIN DATA 
+COMM The digital terrain was determined by subtracting the processed laser 
+COMM altimeter (height above ground) data from the GPS altitude (height    
+COMM above the GRS80 ellipsoid) data to yield the height of the ground     
+COMM above the GRS80 ellipsoid.  Then the ellipsoid-geoid separation       
+COMM (N-value) was subtracted to yield the elevation of the ground above   
+COMM the Australian Height Datum (AHD).                                    
+COMM
+COMM MAGNETIC DATA PROCESSING
+COMM Final processing of the magnetic data involved the application of     
+COMM conventional corrections to compensate for diurnal variation,         
+COMM International Geomagnetic Reference Field (IGRF) removal, and heading 
+COMM effects prior to gridding. Processing of magnetic data involved:      
+COMM  1 Pre-processing of static (1 Hz) magnetic data acquired at the      
+COMM    magnetic base stations
+COMM  2 Pre-processing of airborne magnetic data
+COMM  3 Standard corrections to compensate the diurnal variation.
+COMM  4 IGRF correction
+COMM  5 Micro-Levelling of gridded data
+COMM
+COMM BASE MAG CONSTANTS
+COMM For the UDF survey , the base station magnetometers were used at various locations throughout the survey area.
+COMM The base station constants, added back into the TMI data after subtraction of the diurnal, were caluclated through 
+COMM simultanoues base magnetometer measurements at different locations.  
+COMM
+COMM     DATE             Serial#   Location          	Longitude	Latitude	Base Mag Constant                   
+COMM 20220329 - 20220421: 5581      Wilcannia           143.394694	-31.570444      56823 nT              
+COMM 20220422 - 20220506: 11915     Tilpa         	144.420861	-30.926111      56370 nT              
+COMM 20220507 - 20220507: 5581      Tilpa        	144.420139	-30.925861      56399 nT              
+COMM 20220508 - 20220509: 11915     Trilby        	144.941667	-30.645556      56130 nT              
+COMM 20220510 - 20220515: 5581      Rose Aisle        	145.376944	-30.432500	55916 nT              
+COMM 20220516 - 20220519: 11915     Rose Aisle          145.376944	-30.432222      55917 nT              
+COMM 20220520 - 20220520: 5581      Rose Aisle        	145.376944	-30.432500	55916 nT              
+COMM 20220526 - 20220604: 11915     Bourke        	145.954639	-30.042972      55615 nT              
+COMM 20220605 - 20220614: 5581      Brewarrina       	146.879806	-29.972500	55376 nT              
+COMM 20220615 - 20220619: 11915     Walgett           	148.089472	-30.025889      55220 nT
+COMM 20220702 - 20220703: 5581      Brewarrina      	146.879722	-29.971667      55372 nT
+COMM 20220704 - 20220707: 5581      Caringle         	146.822778	-29.355556      55219 nT
+COMM 20220708 - 20220708: 11915     Bourke             	145.954639	-30.042972      55616 nT              
+COMM 20220709 - 20220709: 5581      Wilcannia        	143.394694	-31.570444	56822 nT              
+COMM
+COMM
+COMM LOCATED DATA FORMAT
+COMM
+COMM  Output field format : ASCII ASEG-GDF
+COMM
+COMM FIELD     CHANNEL               DESCRIPTION                                                                                       UNITS                  NULL             FORMAT 
+COMM   1       GA_Project            Geoscience Australia airborne survey project number                                                                    -99999999           I10
+COMM   2       Contractor_Job_No     SkyTEM Australia Job Number                                                                                            -99999999           I10
+COMM   3       Flight                Flight number                                                                                                          -9999999.99         F12.2
+COMM   4       Line                  Line number                                                                                                            -99999999           I10
+COMM   5       Fiducial              Fiducial Number                                                                                     s                  -9999999999.99      F15.2
+COMM   6       Date_Local            Local Date                                                                                        yyyymmdd             -99999999           I10
+COMM   7       Date_UTC              UTC Date                                                                                          yyyymmdd             -99999999           I10
+COMM   8       Time_Local            Local Time                                                                                        hhmmss.ss            -9999999.99         F12.2
+COMM   9       Time_UTC              UTC Time                                                                                          hhmmss.ss            -9999999.99         F12.2
+COMM  10       DateTime              Decimal Days since midnight 31/12/1899                                                             days                -99999.9999999999   F18.10
+COMM  11       Longitude             Longitude GDA2020                                                                                   deg                -999.999999         F12.6
+COMM  12       Latitude              Latitude  GDA2020                                                                                   deg                -999.999999         F12.6
+COMM  13       Easting               Easting (GDA2020 MGA Zone 53)                                                                        m                 -9999999.99         F12.2
+COMM  14       Northing              Northing (GDA2020 MGA Zone 53)                                                                       m                 -9999999.99         F12.2
+COMM  15       GPS_Altitude          GPS altitude of Tx loop centre (GRS80 datum)                                                         m                 -99999.99           F10.2
+COMM  16       Frame_Height          Laser altimeter measured height of the Tx loop centre above ground                                   m                 -99999.99           F10.2
+COMM  17       DTM_AHD               Digital terrain model (Australian Height Datum)                                                      m                 -99999.99           F10.2
+COMM  18       AngleX                Tilt of frame from horizontal - flight direction                                                    deg                -99999.99           F10.2
+COMM  19       AngleY                Tilt of frame from horizontal - perpendicular from flight direction                                 deg                -99999.99           F10.2
+COMM  20       Ground_Speed          Frame ground speed                                                                                  km/h               -99999.99           F10.2
+COMM  21       TxRx_Dx               Horizontal in-line transmitter to receiver separation - positive in flight line direction            m                 -99.99              F7.2
+COMM  22       TxRx_Dy               Horizontal transverse transmitter to receiver separation - positive toward the starboard             m                 -99.99              F7.2
+COMM  23       TxRx_Dz               Vertical transmitter to receiver separation - positive downward                                      m                 -99.99              F7.2
+COMM  24       Curr_LM               Low moment peak transmitter current                                                                  A                 -99999.99           F10.2
+COMM  25       Curr_HM               High moment peak transmitter current                                                                 A                 -99999.99           F10.2
+COMM  26       Powerline_Monitor     Power line noise indicator                                                                                             -99999.99           F10.2
+COMM  27:44    LM_X                  X-comp LM dB/dt Gates 9-26 processed and normalised (Gates 1-8 undefined)                      pV/A.turns.m4           -9999999.99999    18F15.5
+COMM  45:62    LM_Z                  Z-comp LM dB/dt Gates 9-26 processed and normalised (Gates 1-8 undefined)                      pV/A.turns.m4           -9999999.99999    18F15.5
+COMM  63:85    HM_X                  X-comp HM dB/dt Gates 16-38 processed and normalised (Gates 1-15 undefined)                    pV/A.turns.m4           -9999999.99999    23F15.5
+COMM  86:108   HM_Z                  Z-comp HM dB/dt Gates 16-38 processed and normalised (Gates 1-15 undefined)                    pV/A.turns.m4           -9999999.99999    23F15.5
+COMM  109:126  RUNC_LM_X             X-comp LM dB/dt relative uncertainty (noise estimate as a fraction of the measured response)                           -9999999.99999    18F15.5
+COMM  127:144  RUNC_LM_Z             Z-comp LM dB/dt relative uncertainty (noise estimate as a fraction of the measured response)                           -9999999.99999    18F15.5
+COMM  145:167  RUNC_HM_X             X-comp HM dB/dt relative uncertainty (noise estimate as a fraction of the measured response)                           -9999999.99999    23F15.5
+COMM  168:190  RUNC_HM_Z             Z-comp HM dB/dt relative uncertainty (noise estimate as a fraction of the measured response)                           -9999999.99999    23F15.5
+COMM  191      MA1                   Raw recorded total magnetic intensity                                                                nT                -99999.99           F10.2
+COMM  192      BMAG                  Base station diurnal magnetic field                                                                  nT                -99999.99           F10.2
+COMM  193      TMI                   Total magnetic intensity corrected for diurnal variation                                             nT                -99999.99           F10.2
+COMM  194      IGRF                  International Geomagnetic Reference Field                                                            nT                -99999.99           F10.2
+COMM  195      TMI_MLEV_IGRF         Micro-levelled TMI corrected for IGRF                                                                nT                -99999.99           F10.2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

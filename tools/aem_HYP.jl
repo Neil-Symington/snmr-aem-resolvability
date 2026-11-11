@@ -81,6 +81,41 @@ function main()
     opt = make_aem_opt(grid.znall, "hypsynth_aem_")
     old = pwd(); cd(rundir)
     t0 = time()
+    # THE CHAIN IS NOT SEEDED, AND CANNOT BE FROM HERE. `Random.seed!(SEED)`
+    # used to live BELOW this call, next to the subsampling, where it seeds only
+    # the randperm that picks which NDRAWS draws to keep -- so `seed = SEED`
+    # went into every aem_posterior.jld2 describing the subsampling while the
+    # MCMC ran from whatever RNG state its worker task held. Measured on the
+    # field branch: two runs, one config, one seed, gave sigma_draws differing
+    # by 8.05 S/m with draw_ix IDENTICAL, which is the tell that the seeded part
+    # reproduced and the chain did not.
+    #
+    # Moving the seed here does NOT fix it, and these lines are kept only
+    # because they are correct for anything the master draws. Julia's default
+    # RNG is TASK-LOCAL and Distributed runs every remotecall in a fresh task,
+    # so seeding a worker in one call does not reach the sampling done in the
+    # next. Measured directly, on Julia 1.12.6:
+    #
+    #   seed-then-draw in separate remote calls reproduces: false
+    #   seed-and-draw in the SAME remote call reproduces:   true
+    #
+    # Worse, HiQGA's MCMC_Driver.jl issues a fresh remotecall_fetch(do_mcmc_step)
+    # for EVERY step, so each step is a new task and a once-per-chain seed would
+    # be lost after the first one. It does no seeding of its own and main() takes
+    # no seed argument, so the per-chain RNG is not reachable from a caller.
+    # Fixing it needs HiQGA to carry an explicit RNG in the chain state, or to
+    # reseed each step from (chain_seed, step). Until then this posterior is one
+    # draw from a distribution of runs, not a reproducible result, and the
+    # `seed` field below does not describe it. This mirrors the comment in
+    # fieldrun/stages/run_aem_transd.jl: the defect is identical on both
+    # branches and was fixed there first.
+    let sd = SEED   # a local: the closure must carry the VALUE to the worker,
+                    # not a reference to a Main binding the worker lacks
+        @sync for p in workers()
+            @async remotecall_fetch(() -> (Random.seed!(sd + myid()); nothing), p)
+        end
+    end
+    Random.seed!(SEED)
     try
         transD_GP.main(opt, aem; Tmax = TMAX, nsamples = NSAMPLES,
                        nchains = NCHAINS, nchainsatone = 1)
@@ -101,14 +136,24 @@ function main()
     pct(p) = [quantile(view(σ, i, :), p) for i in axes(σ, 1)]
     σ10, σ50, σ90 = pct(0.10), pct(0.50), pct(0.90)
 
-    Random.seed!(SEED)
+    # A separate, deliberate stream for the subsampling, so which draws are
+    # retained does not depend on how many proposals the chain happened to make.
+    # This line used to be the ONLY seeding in the tool, which is the defect
+    # above. Same offset as fieldrun/stages/run_aem_transd.jl so the two
+    # branches agree.
+    Random.seed!(SEED + 1_000_000)
     ix = n >= NDRAWS ? randperm(n)[1:NDRAWS] : collect(1:n)
     σ_draws = σ[:, ix]
 
     jldsave(joinpath(rundir, "aem_posterior.jld2");
         zall_aem = grid.zall, σ10 = σ10, σ50 = σ50, σ90 = σ90,
         σ_draws = σ_draws, draw_ix = ix, ndraws_total = n,
-        σ_aem_truth = built.σ_aem_truth, seed = SEED)
+        # `seed` is kept under its old name so existing readers still load, but
+        # it governs the SUBSAMPLING ONLY -- see the comment above the chain.
+        # seed_subsample is the stream that actually produced draw_ix. Renaming
+        # `seed` across every artefact is a release decision, not a fix.
+        σ_aem_truth = built.σ_aem_truth, seed = SEED,
+        seed_subsample = SEED + 1_000_000, chain_seeded = false)
 
     # Sanity: does the AEM posterior separate the fresh upper from the brackish
     # lower aquifer? That contrast is the design requirement in §1.

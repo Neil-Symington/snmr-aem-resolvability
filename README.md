@@ -165,7 +165,7 @@ julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 --tag <T>T
 
 The `T` on the last line is not a typo: `smr_data.jl`'s trans-D branch writes a
 `T` suffix so the Occam and trans-D kernels cannot collide. Stage 1 at 200,001
-samples takes hours; 2001 samples on 2 chains finishes in minutes and exercises
+samples takes hours; 2001 samples on 2 chains finishes in a few minutes and exercises
 every path.
 
 **Run Stage 0 first, once.** A bare `run_site.jl` starts there; it re-seals the

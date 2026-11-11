@@ -7,6 +7,36 @@
 #
 # Nothing here is tuned to a site (spec §0). Departures are listed at the bottom
 # and are reproduced verbatim in RESULTS_PRERUN.md.
+#
+# ── READ THIS BEFORE EDITING A VALUE (added by review, 11 Nov 2026) ─────────
+# This module is a SECOND declaration of parameters the field control file also
+# declares. `fieldrun/common/prerun_data.jl` aliases it to `CFG`, so a stage
+# writing `CFG.SAVE_FREQ` is reading THIS FILE, not the control file, and
+# nothing in the stage says which source won. Thirty-two values are declared in
+# both places; thirty agree, which is why the duplication survived review.
+#
+# `fieldrun/test/test_fieldconfig.jl` now pins the two copies together, so
+# editing one without the other fails the suite. If you add a parameter here
+# that the control file also carries, add it to that list.
+#
+# Which source each stage actually reads:
+#   run_smr_transd.jl   THIS FILE for NMIN NMAX LAMBDA_GP DELTA FBOUNDS
+#                       GP_KERNEL SAVE_FREQ BURNINFRAC GATE_RHAT GATE_MIN_ESS
+#                       GATE_DEPTHS TREND_SIGMA DOI_WIDTHFRAC DOI_WIDTHFRAC_ALT;
+#                       the CONTROL FILE for all five [noise] keys, [kernel]
+#                       n_draws, [mcmc] nchains/tmax/nsamples_snmr
+#   run_aem_transd.jl   NEITHER -- make_aem_opt hardcodes λ=[2.0], δ=0.1,
+#                       save_freq=50 inline, so the AEM chain's GP settings
+#                       match neither declaration (δ by 1000×)
+#   detect_aquifer.jl   NEITHER -- it defines its own THETA_MIN=0.15,
+#                       THICK_MIN=10.0, against 0.10/5.0 declared twice below
+#   run_aem_occam.jl    NEITHER -- reads no parameter from either source
+#
+# Constants below that NO fieldrun stage reads (East Kimberley pre-run only):
+#   S_BOUNDS S_SDEV NSAMPLES NCHAINS NENSEMBLES RUN_ALL GATE_SPLITHALF_DW
+#   OCCAM_REGTYPE OCCAM_W0 OCCAM_BETA2 OCCAM_LAM2MIN OCCAM_LAM2MAX
+#   OCCAM_UNCERTAINTY DOI_REFS DETECT_THETA DETECT_MINTHICK DETECT_OCCAM_CHI2
+#   KL_NBINS
 
 module PrerunConfig
 
@@ -44,8 +74,19 @@ const GP_KERNEL         = transD_GP.GP.OrstUhn()
 # structure, not a flat shape dressed up.
 const SIGMA_HAT_BRANCH  = :fid_residual_per_q
 const S_PRIOR_CENTER    = 1.0          # s₀ — no WP1 tail σ, so "trust σ̂ⱼ level"
-const S_PRIOR_TAU       = 0.5          # log-normal width
+# SUPERSEDED, and not read by any fieldrun stage. The field control file
+# carries s_prior_tau = 2.0 and run_smr_transd.jl reads it from there; its
+# header records why 0.5 is wrong (at 0.5 the East Kimberley posterior s sat at
+# chi2/N 2.90 against SSC's 1.02, the prior too narrow by about 1.7x in sigma).
+# Left in place because the East Kimberley pre-run numbers were produced with
+# it. Do not copy it forward.
+const S_PRIOR_TAU       = 0.5          # log-normal width -- see note above
 const S_SDEV            = [0.3]        # Gaussian RW in ln s
+# SUPERSEDED likewise, and in a way that bites: the control file's
+# s_bounds_log10 = [-2, 4] is 1e-2..1e4, this is 1e-2..1e2, and the smoke
+# posterior puts s in the tens, so the 1e2 upper bound would PIN s where 1e4
+# does not. Natural log here, log10 in the control file; run_smr_transd.jl
+# converts. Not read by any fieldrun stage.
 const S_BOUNDS          = [log(1e-2) log(1e2)]   # wide; the prior does the shaping
 const S_INIT            = 1.0
 
@@ -90,6 +131,12 @@ const OCCAM_BETA2       = 0.01
 # ── §6 Derived-output settings ──────────────────────────────────────────────
 const DOI_WIDTHFRAC     = 0.6          # primary; 0.5 and 0.7 for sensitivity
 const DOI_WIDTHFRAC_ALT = (0.5, 0.7)
+# NOT READ by detect_aquifer.jl, which defines THETA_MIN = 0.15 and
+# THICK_MIN = 10.0 of its own ("stage1_target.jl default") and uses those for
+# the headline detection. The control file declares 0.10/5.0 too, so there are
+# two agreeing declarations and a third value that actually runs. Which is
+# correct is an open question for the field spec, not a code defect to patch
+# silently -- see REVIEW_RESPONSE_FABLE_20261111.md.
 const DETECT_THETA      = 0.10         # v/v
 const DETECT_MINTHICK   = 5.0          # m
 const DETECT_OCCAM_CHI2 = 1.5          # Occam detection also requires χ²/N ≤ this
