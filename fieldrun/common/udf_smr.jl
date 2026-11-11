@@ -102,13 +102,37 @@ function udf_matfile(field_id)
 end
 
 """
+Present a GMR `.mat` in the flat layout the readers below expect.
+
+Two Vista Clara exports exist. The older (`Single_Pulse_FID*.mat`, the UDF
+files) is flat: `coil_N_fid`, `time_fid`, `pulse_moment`, `detect_frequency`.
+The current one (`QC_FID*.mat`, Birrindudu) nests the same quantities under
+`fid` and `pulseSequence`, with channels named `Channel_N`. Same units and
+sampling (10240 Hz decimated) in both, so this is a renaming, nothing more.
+"""
+function gmr_flat(d::AbstractDict)
+    haskey(d, "fid") || return d
+    f, ps = d["fid"], d["pulseSequence"]
+    o = Dict{String,Any}(
+        "time_fid"         => f["Time"],
+        "pulse_moment"     => f["pulseMoment"]["Magnitude"],
+        "detect_frequency" => [Float64(ps["DetectFrequency_Hz"])],
+        "T_pulse"          => Float64(ps["ExPulseLength_s"]))
+    for k in keys(f)
+        m = match(r"^Channel_(\d+)$", k)
+        m === nothing || (o["coil_$(m[1])_fid"] = f[k])
+    end
+    o
+end
+
+"""
 Read and prepare one UDF sounding, everything except the kernel.
 
 Mirrors prerun_data.jl `build_sounding` field for field, minus the supplied
 conductivity. `F` and `cond` are filled in afterwards by the AEM draw.
 """
 function build_udf_sounding(job)
-    d = matread(job.matpath)
+    d = gmr_flat(matread(job.matpath))
     coil, swapped = pick_coil(d, job.coil)
     coil == 0 && return (ok = false, why = "no channel holds data")
     fid = Float64.(d["coil_$(coil)_fid"])
