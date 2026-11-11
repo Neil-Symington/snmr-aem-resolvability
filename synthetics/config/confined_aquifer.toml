@@ -39,6 +39,29 @@ transition_max  = 6.0
 # No [watertable] block: this column is saturated below a thin surface layer,
 # so each unit's own S applies.
 
+# ── what the four keys on every unit below mean ──────────────────────────────
+# phi      porosity, as a fraction of bulk volume. Must be in (0,1).
+# S        water saturation: the fraction of that porosity holding water, 0-1.
+#          Optional, defaults to 1.0, and every unit here is saturated.
+# clay     clay fraction of the solid matrix, 0-1. It does two things, which is
+#          why it appears in both formulas below: it removes free water, and it
+#          adds surface conduction.
+# sigma_w  pore-water conductivity, S/m, strictly positive. Give `sigma_w_mgL`
+#          instead if you have salinity in mg/L. Giving both is an error.
+#
+# What they feed, and the reason this repository exists:
+#
+#   AEM sees   sigma_bulk = sigma_w * (phi*S)^m_archie + sigma_clay * clay
+#   SMR sees   theta_SMR  = phi * S * (1 - clay)^p_clay
+#
+# AEM responds to the TOTAL water phi*S, SMR only to the free part that clay has
+# not bound. So a clay-rich unit and a fresh-water sand can arrive at the same
+# sigma_bulk by different routes, and separating them is the whole problem.
+# m_archie and p_clay are the exponents set in [petrophysics] above.
+#
+# A `lithology` preset can fill phi and clay instead; anything stated explicitly
+# wins. synthetics/config/template.toml lists every available key.
+
 [[unit]]
 top = 0.0
 name = "Shepparton Fm, unsaturated"
