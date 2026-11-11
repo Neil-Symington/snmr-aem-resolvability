@@ -126,3 +126,90 @@ end
     @test !refuses(c -> c["mcmc"]["nsamples_aem"] = 2e5)  # TOML float, integral
     @test !refuses(c -> nothing)                        # the shipped file itself
 end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The control file is not the only declaration of these parameters.
+#
+# `src/prerun_config.jl` (module PrerunConfig) hardcodes the survey pre-run
+# spec, and `fieldrun/common/prerun_data.jl` aliases it to `CFG`. So a stage
+# writing `CFG.SAVE_FREQ` reads THAT FILE, not the control file, and nothing at
+# the call site says which source won. Thirty-two values are declared in both
+# places. Thirty agree, which is exactly why nobody noticed; where they
+# disagree the code wins silently, and that is how `s_prior_tau` shipped at 0.5
+# in the control file while the stage ran 2.0 (fixed, in the other direction).
+#
+# These tests pin the two copies together. Edit one and this fails, naming the
+# parameter. They are deliberately TEXTUAL -- prerun_config.jl is parsed as a
+# string rather than loaded -- so the test asserts what a reader of the file
+# sees and costs no HiQGA load.
+const PCSRC = read(joinpath(FR, "..", "src", "prerun_config.jl"), String)
+
+"The literal right-hand side of `const NAME = ...`, comment stripped."
+pcraw(name) = begin
+    m = match(Regex("^const\\s+" * name * "\\s*=\\s*([^#\\n]+)", "m"), PCSRC)
+    m === nothing && error("prerun_config.jl declares no const $name")
+    strip(m.captures[1])
+end
+
+"Every number in that right-hand side, so `[0.5, 0.7]` and `0.5` compare alike."
+pcnums(name) = [parse(Float64, replace(m.match, "_" => "")) for m in
+                eachmatch(r"-?\d+(?:_\d+)*(?:\.\d+)?(?:[eE][-+]?\d+)?", pcraw(name))]
+
+tonums(v) = v isa AbstractArray ? Float64.(collect(Iterators.flatten(v))) : [Float64(v)]
+
+@testset "control file and prerun_config.jl declare the same values" begin
+    # BASE, not the loaded config: load_config applies the smoke overlay, which
+    # would make nsamples_snmr 2001 against the module's 150001 and report a
+    # disagreement that is not one.
+    for (sec, key, name) in (
+            ("grid", "nz",             "NZ"),
+            ("grid", "zstart",         "ZSTART"),
+            ("grid", "dz",             "DZ"),
+            ("grid", "extendfrac",     "EXTENDFRAC"),
+            ("mcmc", "nchains",        "NCHAINS"),
+            ("mcmc", "tmax",           "TMAX"),
+            ("mcmc", "nsamples_snmr",  "NSAMPLES"),
+            ("mcmc", "burninfrac",     "BURNINFRAC"),
+            ("mcmc", "save_freq",      "SAVE_FREQ"),
+            ("mcmc", "seed_base",      "SEED_BASE"),
+            ("mcmc", "lambda_gp",      "LAMBDA_GP"),
+            ("mcmc", "delta",          "DELTA"),
+            ("mcmc", "fbounds",        "FBOUNDS"),
+            ("noise", "s_prior_center", "S_PRIOR_CENTER"),
+            ("noise", "s_sdev",         "S_SDEV"),
+            ("detect", "theta",             "DETECT_THETA"),
+            ("detect", "min_thick_m",       "DETECT_MINTHICK"),
+            ("detect", "occam_chi2_max",    "DETECT_OCCAM_CHI2"),
+            ("detect", "doi_widthfrac",     "DOI_WIDTHFRAC"),
+            ("detect", "doi_widthfrac_alt", "DOI_WIDTHFRAC_ALT"),
+            ("occam", "w0",    "OCCAM_W0"),
+            ("occam", "beta2", "OCCAM_BETA2"),
+            ("convergence", "rhat",         "GATE_RHAT"),
+            ("convergence", "min_ess",      "GATE_MIN_ESS"),
+            ("convergence", "splithalf_dw", "GATE_SPLITHALF_DW"),
+            ("convergence", "trend_sigma",  "TREND_SIGMA"),
+            ("convergence", "depths_m",     "GATE_DEPTHS"),
+        )
+        @test tonums(BASE[sec][key]) ≈ pcnums(name)
+    end
+    # declared as one line, `const NMIN, NMAX = 2, 40`
+    @test [Float64(BASE["mcmc"]["nmin"]), Float64(BASE["mcmc"]["nmax"])] ≈
+          pcnums("NMIN,\\s*NMAX")
+    # and as two separate consts
+    @test tonums(BASE["occam"]["lam2_log10"]) ≈
+          vcat(pcnums("OCCAM_LAM2MIN"), pcnums("OCCAM_LAM2MAX"))
+
+    # ── KNOWN STALE COPIES ──────────────────────────────────────────────────
+    # These two disagree, and the CONTROL FILE is the one that runs:
+    # run_smr_transd.jl:127-133 reads both from [noise], and its header records
+    # why tau = 2.0 and an upper bound of 1e4 are the right values. The module's
+    # copies are left because the East Kimberley pre-run was produced with them.
+    #
+    # @test_broken, so that deleting or correcting a stale copy shows up as an
+    # "Unexpected Pass" and asks for its line here to be removed rather than
+    # quietly agreeing.
+    @test_broken tonums(BASE["noise"]["s_prior_tau"]) ≈ pcnums("S_PRIOR_TAU")
+    # log10 in the control file, natural log in the module, so compare the
+    # bounds themselves: 1e-2..1e4 against 1e-2..1e2.
+    @test_broken (10.0 .^ tonums(BASE["noise"]["s_bounds_log10"])) ≈ pcnums("S_BOUNDS")
+end
