@@ -37,20 +37,53 @@
 # yet the build still fails without the PATH change. The alias step is kept as
 # a fallback for older Miniconda that may genuinely have lacked it.
 # Verified from an empty depot.
-# STEP 0: refuse Julia before 1.12. [compat] julia = "1.12" does NOT enforce
+# STEP 0: refuse anything but the 1.12 series. [compat] julia does NOT enforce
 # this -- Pkg prints a warning for the active project and carries on, which a
 # review proved by installing on 1.11.7 and crashing deep inside
 # PrecompileTools with an UndefVarError for Base.StaticData. The pinned
 # Manifest resolves PrecompileTools 1.3.4, whose src/invalidations.jl wants
 # Base.ReinferUtils or Base.StaticData, and neither exists before 1.12. So the
 # check has to be here, where it can actually stop.
+#
+# IT IS A RANGE, NOT A FLOOR, since 12 Nov 2026. The check read
+# `VERSION < v"1.12"` and the message said "1.12 or newer", so 1.13 passed it
+# and the install failed later, somewhere with no mention of the version. This
+# is the same shape as the defects this project keeps finding: a stated
+# requirement that does not match what is enforced.
+#
+# EVIDENCE STATUS, so nobody takes this as measured when it is not:
+#   MEASURED here  the Manifest declares julia_version = "1.12.6" and pins
+#                  stdlib versions from that series (LinearAlgebra 1.12.0,
+#                  Printf/Random/Statistics 1.11.0), and the old gate accepted
+#                  1.13 -- both checked on this tree
+#   REPORTED       the maintainer hit a failed setup on 1.13 on 12 Nov 2026
+#   NOT RECORDED   the 1.13 error text. It was not reproduced here: only 1.12.6
+#                  is installed on the machine where this was written. If you
+#                  hit it, paste the error into this block.
 if VERSION < v"1.12"
     println("""
-    ERROR: this project needs Julia 1.12 or newer; you are on $VERSION.
+    ERROR: this project needs Julia 1.12.x; you are on $VERSION, which is older.
 
       Why: the pinned Manifest.toml resolves PrecompileTools 1.3.4, which
       needs Base.ReinferUtils or Base.StaticData. Neither exists before
       1.12, so the install fails inside PrecompileTools rather than here.
+
+      Get 1.12 with juliaup:  juliaup add 1.12 && juliaup default 1.12
+      or from https://julialang.org/downloads/
+    """)
+    exit(1)
+elseif VERSION >= v"1.13"
+    println("""
+    ERROR: this project needs Julia 1.12.x; you are on $VERSION, which is newer.
+
+      Why: Manifest.toml is machine-generated, was resolved on 1.12.6, and
+      declares julia_version = "1.12.6" along with stdlib versions from that
+      series. Setup is reported to fail on 1.13.
+
+      Re-resolving the Manifest on 1.13 would get past this, but it would
+      also change the dependency set the published numbers were produced
+      with, so it is not something to do casually: SMRPInversion is pinned to
+      a branch and the AEM results depend on it.
 
       Get 1.12 with juliaup:  juliaup add 1.12 && juliaup default 1.12
       or from https://julialang.org/downloads/

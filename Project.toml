@@ -37,8 +37,15 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 SMRPInversion = {rev = "add-occam-deterministic-inversion", url = "https://github.com/Neil-Symington/SMRPInversion.jl"}
 
 [compat]
-# 1.12, not 1.11. The pinned Manifest resolves PrecompileTools 1.3.4, whose
-# src/invalidations.jl needs Base.ReinferUtils or Base.StaticData, and neither
-# exists before 1.12. An independent review hit this on 1.11.7: install.jl
-# fails at step 2. [sources] needs 1.11, so that is a floor but not the floor.
-julia = "1.12"
+# The 1.12 SERIES, not 1.12-or-newer. Below it the pinned Manifest resolves
+# PrecompileTools 1.3.4, whose src/invalidations.jl needs Base.ReinferUtils or
+# Base.StaticData, and neither exists before 1.12; an independent review hit
+# that on 1.11.7, where install.jl fails at step 2. Above it, setup is reported
+# to fail on 1.13 (12 Nov 2026), which is unsurprising: this Manifest is
+# machine-generated, declares julia_version = "1.12.6", and pins stdlib
+# versions from that series.
+#
+# `~1.12` is [1.12.0, 1.13.0). This is ADVISORY -- Pkg warns for the active
+# project and carries on -- so install.jl enforces the range itself, and it
+# used to enforce only the floor.
+julia = "~1.12"
