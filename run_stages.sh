@@ -164,6 +164,32 @@ prov_record() {
     mv "$PROV.tmp" "$PROV"
 }
 
+# ONE skip decision, so the engine and the stages cannot disagree about it.
+# They did: the engine printed "Rebuilding" and stage2_snmr.jl then refused,
+# because that stage has its own input-signature guard and will not overwrite an
+# output built from different inputs without --force. The run died at Stage 2
+# AFTER Stage 1 had spent 3.5 h. Prints one of: absent, match, unrecorded, changed.
+skip_state() {
+    local out want have
+    out=$(out_of "$1")
+    if [ -z "$out" ] || [ ! -e "$out" ]; then echo absent; return; fi
+    want=$(sig_of "$1")
+    have=$(prov_recorded "$1") || have="__none__"
+    if   [ "$have" = "$want" ];    then echo match
+    elif [ "$have" = "__none__" ]; then echo unrecorded
+    else                                echo changed
+    fi
+}
+
+# Is the engine about to rebuild over an existing output? A stage with its own
+# guard must be told, or it will refuse what the engine has already decided.
+rebuilding_over_existing() {
+    [ "$(skip_state "$1")" = absent ] && return 1
+    [ "$FORCE" -eq 1 ] && return 0
+    [ "$REUSE_STALE" -eq 1 ] && return 1
+    case "$(skip_state "$1")" in match) return 1 ;; *) return 0 ;; esac
+}
+
 declare -a TIMED=()
 FAILED=""
 
@@ -173,17 +199,18 @@ run_stage() {
     local log="$LOGDIR/$name.log"
 
     if [ -n "$out" ] && [ -e "$out" ] && [ "$FORCE" -eq 0 ]; then
-        local want have
+        local want have state
         want=$(sig_of "$name")
         have=$(prov_recorded "$name") || have="__none__"
-        if [ "$have" = "$want" ]; then
+        state=$(skip_state "$name")
+        if [ "$state" = match ]; then
             echo "  SKIP  $name -- $out, built with these exact settings"
             TIMED+=("$name skipped")
             return 0
         fi
         # Existence is not provenance. Rebuild by default and say why: a wrong
         # answer in the right filename costs more than the time to redo it.
-        if [ "$have" = "__none__" ]; then
+        if [ "$state" = unrecorded ]; then
             echo "  STALE $name -- $out exists but no run recorded building it,"
             echo "        so what produced it is unknown. Rebuilding."
         else
@@ -266,10 +293,21 @@ wants smrdata && [ -z "$FAILED" ] && \
     run_stage smrdata julia --project=. tools/smr_data.jl transd --tag "$TAG" --label "$LABEL" || true
 # The T suffix is not a typo: smr_data.jl's trans-D branch writes it so the
 # Occam and trans-D kernels cannot collide, and Stage 2 must be told the same.
-wants stage2  && [ -z "$FAILED" ] && \
+# stage2_snmr.jl keeps its OWN input-signature guard, which is right: it stops
+# a hand-run stage from quietly overwriting an answer built from other inputs.
+# But it means the engine has to tell it when the engine has already decided.
+# Without this the engine said "Rebuilding", the stage refused, and the run
+# ended at Stage 2 having spent 3.5 h on Stage 1. Worse, when the existing file
+# carried no signature at all the stage SKIPPED and wrote nothing, the engine
+# saw the old file still there and recorded THIS run's provenance against it --
+# laundering a smoke output into one that looks like production.
+if wants stage2 && [ -z "$FAILED" ]; then
+    S2_FORCE=""
+    rebuilding_over_existing stage2 && S2_FORCE="--force"
     run_stage stage2 julia --project=. stages/stage2_snmr.jl \
         --tier "$TIER" --conds "$CONDS" --tag "${TAG}T" --label "$LABEL" \
-        --nsamples "$NSAMPLES" --ndraws "$DRAWS" || true
+        --nsamples "$NSAMPLES" --ndraws "$DRAWS" $S2_FORCE || true
+fi
 
 # The trap that cost a reviewer an hour: a site config can name a different
 # Stage 1 tag than the one just built (synth_2P.toml names 2M, synth_3P.toml
@@ -278,10 +316,26 @@ wants stage2  && [ -z "$FAILED" ] && \
 # hour later. Copy it here instead, and say so.
 if wants site && [ -z "$FAILED" ]; then
     WANT_DRAWS=$(julia -e 'import TOML; print(get(TOML.parsefile(ARGS[1])["data"], "stage1_draws", ""))' "$SITE_CONFIG")
-    if [ -n "$WANT_DRAWS" ] && [ ! -e "$WANT_DRAWS" ] && [ -e "data/aem_draws_${TAG}.jld2" ]; then
-        echo "  NOTE  $SITE_CONFIG wants $WANT_DRAWS; copying data/aem_draws_${TAG}.jld2 to it."
-        echo "        Same sigma_bulk under a different tag. Stage 5 would die an hour in without this."
-        [ "$DRY" -eq 1 ] || cp "data/aem_draws_${TAG}.jld2" "$WANT_DRAWS"
+    SRC_DRAWS="data/aem_draws_${TAG}.jld2"
+    if [ -n "$WANT_DRAWS" ] && [ -e "$SRC_DRAWS" ]; then
+        if [ ! -e "$WANT_DRAWS" ]; then
+            echo "  NOTE  $SITE_CONFIG wants $WANT_DRAWS; copying $SRC_DRAWS to it."
+            echo "        Same sigma_bulk under a different tag. Stage 5 would die an hour in without this."
+            [ "$DRY" -eq 1 ] || cp "$SRC_DRAWS" "$WANT_DRAWS"
+        elif ! cmp -s "$SRC_DRAWS" "$WANT_DRAWS"; then
+            # The copy is only made when the target is ABSENT, so on a second
+            # run the target is last run's file and Stage 5 reads that instead
+            # of this run's draws, silently. Not overwritten here because the
+            # target may legitimately be the paper's own draws under its older
+            # tag, which this run has no business replacing. So: say so.
+            cat <<EOF
+  WARNING  Stage 5 reads $WANT_DRAWS, which EXISTS and DIFFERS from this run's
+           $SRC_DRAWS. It is NOT what this run produced -- most likely the
+           previous run's draws, or the paper's own under its older tag.
+           Either  rm $WANT_DRAWS   to have this run's copied in,
+           or set [data].stage1_draws = "$SRC_DRAWS" in $SITE_CONFIG.
+EOF
+        fi
     fi
     run_stage site julia --project=. run_site.jl "$SITE_CONFIG" || true
 fi

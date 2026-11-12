@@ -118,6 +118,20 @@ jobs:
             echo "FAIL: smoke settings in a production run were not refused (exit $rc)"
             exit 1
           fi
+          # A stale Stage 2 output must be REBUILT, not refused. stage2_snmr.jl
+          # keeps its own input-signature guard and will not overwrite an output
+          # built from other inputs without --force, so the engine has to pass
+          # it. Without that the engine printed "Rebuilding", the stage refused,
+          # and the run died at Stage 2 after Stage 1 had spent 3.5 h.
+          : > data/cond_C2_typical2PT.jld2
+          ./run_production.sh --dry-run | tee ci_stale.log
+          grep -q "STALE stage2" ci_stale.log || {
+            echo "FAIL: an unrecorded Stage 2 output was not reported stale"; exit 1; }
+          grep -A1 "RUN   stage2" ci_stale.log | grep -q -- "--force" || {
+            echo "FAIL: the engine decided to rebuild Stage 2 but did not pass --force,"
+            echo "      so the stage would refuse what the engine had already decided"
+            exit 1; }
+          rm -f data/cond_C2_typical2PT.jld2 ci_stale.log
           echo "shell drivers OK"
 
       # Pure Python and portable, but it is the only non-Julia tool shipped, so
