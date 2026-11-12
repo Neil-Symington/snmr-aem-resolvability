@@ -364,6 +364,21 @@ treat any figure whose log names `smoke_2P.toml` as a shape check, not a result.
 interpolation when it is not. The conda environment `install.jl` builds carries
 matplotlib and numpy but **not scipy**, so the fallback is the normal path here.
 
+## The retired field workflow
+
+A field workflow ran this method on real Upper Darling Floodplain soundings. It
+was retired on 12 Nov 2026 and is in the tag `fieldrun-archive-20261112`,
+complete with a two-site example built from real data.
+
+`docs/field_run.md` is the instructions for getting that example running again:
+how to restore it, what the stages cost, the five traps, and what the workflow
+never established. Read it before trusting any number from a restored run.
+
+```bash
+git checkout fieldrun-archive-20261112 -- fieldrun   # bring it back
+git show fieldrun-archive-20261112:fieldrun/README.md   # or just read it
+```
+
 ## Citing and licence
 
 See `CITATION.cff`. MIT; see `LICENSE`.
