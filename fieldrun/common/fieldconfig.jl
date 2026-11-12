@@ -64,7 +64,11 @@ const KNOWN = Dict(
     "snmr"        => ["mat_preference", "min_pulse_moments", "loop_shape"],
     "aem"         => ["nominal_unc", "lm_gates", "hm_gates", "lm_ramp_hold",
                       "hm_ramp_hold", "lowpass_hz", "tx_area_m2", "rx_radius_m",
-                      "rx_dz_m", "max_sep_m"],
+                      "rx_dz_m", "max_sep_m",
+                      # the system switch (absent = "skytem"), and what a
+                      # single-moment central-loop system (XCite) needs
+                      "system", "gates", "halt_noise_pv", "max_tilt_deg",
+                      "rho_bounds_log10"],
     "grid"        => ["nz", "zstart", "dz", "extendfrac"],
     # nensembles is deliberately absent: it duplicated [kernel] n_draws,
     # which is what run_smr_transd.jl reads. A config still carrying that
@@ -142,6 +146,7 @@ function check_values(c::Dict, path)
               ("grid","dz"), ("grid","zstart"), ("grid","extendfrac"), ("mcmc","tmax"),
               ("mcmc","burninfrac"), ("aem","nominal_unc"), ("aem","tx_area_m2"),
               ("aem","rx_radius_m"), ("aem","rx_dz_m"), ("aem","max_sep_m"),
+              ("aem","max_tilt_deg"),
               ("aem","lm_ramp_hold"), ("aem","hm_ramp_hold"), ("detect","theta"),
               ("detect","min_thick_m"), ("detect","occam_chi2_max"),
               ("detect","doi_widthfrac"), ("convergence","rhat"),
@@ -164,7 +169,7 @@ function check_values(c::Dict, path)
     # Strings, before anything calls strip() on them: `name = 5` gave a raw
     # MethodError from strip(::Int64), and list elements gave
     # MethodError: isless(::Int64, ::String) from the ordering checks.
-    for (sec, k) in (("run","name"), ("run","mode"), ("snmr","loop_shape"),
+    for (sec, k) in (("run","name"), ("run","mode"), ("snmr","loop_shape"), ("aem","system"),
                      ("detect","metric"), ("occam","regtype"), ("occam","uncertainty"),
                      ("noise","sigma_hat_branch"), ("paths","outputs"), ("paths","logs"))
         haskey(c, sec) && haskey(c[sec], k) || continue
@@ -172,6 +177,7 @@ function check_values(c::Dict, path)
             chk(false, "[$sec] $k must be a string, got $(repr(c[sec][k]))")
     end
     numlists = (("gate","thresholds_mgL"), ("aem","lm_gates"), ("aem","hm_gates"),
+                ("aem","gates"), ("aem","halt_noise_pv"), ("aem","rho_bounds_log10"),
                 ("aem","lowpass_hz"), ("mcmc","fbounds"), ("mcmc","lambda_gp"),
                 ("noise","s_sdev"), ("noise","s_bounds_log10"), ("occam","lam2_log10"),
                 ("detect","doi_widthfrac_alt"), ("convergence","depths_m"))
@@ -217,7 +223,8 @@ function check_values(c::Dict, path)
         chk(c["mcmc"]["nmin"] <= c["mcmc"]["nmax"],
             "[mcmc] nmin must be <= nmax, got $(c["mcmc"]["nmin"]) and $(c["mcmc"]["nmax"])")
     end
-    for (sec, k) in (("mcmc","fbounds"), ("occam","lam2_log10"), ("noise","s_bounds_log10"))
+    for (sec, k) in (("mcmc","fbounds"), ("occam","lam2_log10"), ("noise","s_bounds_log10"),
+                     ("aem","rho_bounds_log10"))
         if haskey(c, sec) && haskey(c[sec], k)
             v = c[sec][k]
             chk(length(v) == 2 && v[1] < v[2], "[$sec] $k must be [lo, hi] with lo < hi, got $v")
@@ -231,6 +238,34 @@ function check_values(c::Dict, path)
             chk(length(v) == 2 && all(isintegral, v) && v[1] >= 1 && v[1] <= v[2],
                 "[$sec] $k must be [first, last] WHOLE gate numbers with 1 <= first <= last, got $v")
         end
+    end
+    # The system switch. The two systems need different keys, and a SkyTEM key
+    # in an XCite config (or the reverse) would be read by nothing, so each is
+    # refused by name -- the same rule as an unknown key.
+    sysname = get(c["aem"], "system", "skytem")
+    if sysname == "skytem"
+        for k in ("gates", "halt_noise_pv", "max_tilt_deg")
+            haskey(c["aem"], k) && chk(false, "[aem] $k is an XCite key; this config's system is \"skytem\"")
+        end
+    elseif sysname == "xcite"
+        for k in ("nominal_unc", "halt_noise_pv", "lowpass_hz", "tx_area_m2", "rx_dz_m", "max_sep_m")
+            haskey(c["aem"], k) || chk(false, "[aem] $k is required when system = \"xcite\"")
+        end
+        for k in ("lm_gates", "hm_gates", "lm_ramp_hold", "hm_ramp_hold", "rx_radius_m")
+            haskey(c["aem"], k) && chk(false, "[aem] $k is a SkyTEM key; XCite is a single-moment central-loop system")
+        end
+        haskey(c["aem"], "halt_noise_pv") && chk(all(>(0), c["aem"]["halt_noise_pv"]),
+            "[aem] halt_noise_pv must be positive, got $(c["aem"]["halt_noise_pv"])")
+        if haskey(c["aem"], "gates")
+            v = c["aem"]["gates"]
+            # the .des numbers XCite gates from 0
+            chk(length(v) == 2 && all(isintegral, v) && v[1] >= 0 && v[1] <= v[2],
+                "[aem] gates must be [first, last] whole gate numbers with 0 <= first <= last, got $v")
+        end
+        haskey(c["aem"], "max_tilt_deg") && chk(0 < c["aem"]["max_tilt_deg"] < 90,
+            "[aem] max_tilt_deg must be in (0, 90), got $(c["aem"]["max_tilt_deg"])")
+    else
+        chk(false, "[aem] system must be \"skytem\" or \"xcite\", got \"$sysname\"")
     end
     haskey(c["aem"], "lm_ramp_hold") && haskey(c["aem"], "hm_ramp_hold") &&
         chk(0 < c["aem"]["lm_ramp_hold"] < c["aem"]["hm_ramp_hold"],

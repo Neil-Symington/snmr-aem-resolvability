@@ -16,7 +16,12 @@ module OccamUDF
 
 using Statistics, Printf, LinearAlgebra, SparseArrays
 using HiQGA.transD_GP
-const SK = transD_GP.SkyTEM1DInversion
+# getresidual is HiQGA's GENERIC function (declared in AbstractOperator.jl and
+# extended by each system module), so this works for any HiQGA 1D AEM operator:
+# SkyTEM1DInversion.dBzdt (UDF) and VTEM1DInversion.dBzdt (XCite) alike. It was
+# called as SkyTEM1DInversion.getresidual, which is the same function object --
+# spelled here by its generic name so the system-independence is visible.
+const getresidual = transD_GP.getresidual
 
 export chi2, makeR1, occam, occam_multi, Bounds
 
@@ -33,7 +38,7 @@ end
 Bounds() = Bounds(-4.0, 0.5)
 
 chi2(aem, m; computeJ = false) =
-    (SK.getresidual(aem, m; computeJ = computeJ); norm(aem.W * aem.res)^2)
+    (getresidual(aem, m; computeJ = computeJ); norm(aem.W * aem.res)^2)
 
 function makeR1(n)
     I_, J_, V_ = Int[], Int[], Float64[]

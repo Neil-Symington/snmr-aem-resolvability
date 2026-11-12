@@ -48,7 +48,10 @@ const NCHAINS  = NCHAINS_CFG    # from [mcmc], or --nchains
 const TMAX     = 2.5
 const NDRAWS   = 200           # intact profiles retained for Stage 2 and Stage 5
 const SEED     = 20261028
-const FBOUNDS  = [-1.0 3.0]    # log10 resistivity, set from the smooth models
+# log10 resistivity prior bounds, [aem] rho_bounds_log10. The default is the UDF
+# value (see the header: 0.1 to 1,000 ohm.m for a conductive floodplain); other
+# ground needs its own, and Birrindudu's is more resistive.
+const FBOUNDS  = permutedims(Float64.(get(FCFG["aem"], "rho_bounds_log10", [-1.0, 3.0])))
 
 isempty(SITE) && error("--site is required")
 
@@ -88,12 +91,12 @@ function main()
     g = load_gates(SITE)
     grid = build_grid()
     # same operator the Occam and the gate use, at the same calibrated noise
-    aem = build_operator(g.d_lm, g.σ_lm, g.d_hm, g.σ_hm, A["height_m"];
+    aem = build_operator(g, A["height_m"];
                          grid = grid, calcjacobian = false,
                          σ_scale = A["noise_scale"])
     ndata = length(aem.res)
-    @printf("%s: %d LM + %d HM gates, ndata %d, noise x %.3f\n",
-            SITE, length(g.d_lm), length(g.d_hm), ndata, A["noise_scale"])
+    @printf("%s: %s gates (%s), ndata %d, noise x %.3f\n", SITE, AEM_SYSTEM,
+            join(["$(length(ix)) $b" for (b, ix) in data_blocks(g)], " + "), ndata, A["noise_scale"])
     @printf("  %d samples x %d chains, Tmax %.1f, log10rho bounds [%.1f, %.1f]\n",
             NSAMPLES, NCHAINS, TMAX, FBOUNDS[1], FBOUNDS[2]); flush(stdout)
 
