@@ -89,7 +89,8 @@ function main()
   no flag for either. This hint printed --nchains 2 until 12 Nov 2026, which the
   stage accepted and ignored.
 
-  Or run the whole chain with ./run_all.sh, which edits at the top.
+  Or run the whole chain with ./run_smoke.sh or ./run_production.sh, each of
+  which edits at the top.
 """
         isfile(s1) || @printf("\n  STAGE 1 INPUT MISSING: %s\n%s",
                               cfg["data"]["stage1_draws"], chain)

@@ -196,7 +196,7 @@ function main()
       Build the column first:
         julia --project=. synthetics/scripts/build_truth.jl synthetics/config/<scenario>.toml
         cp synthetics/output/<name>_truth.jld2 $tf
-      or run ./run_all.sh with STAGES="truth".
+      or run ./run_smoke.sh with STAGES="truth".
     """)
     println("="^72)
     @printf("quicklook — tag %s — DO THE INVERSIONS RUN AND FIT?\n", TAG)

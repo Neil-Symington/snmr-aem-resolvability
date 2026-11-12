@@ -121,28 +121,40 @@ Stage 1 and 2 products, which are not published, so on a clean tree it stops and
 names what produces them. The second line used to be `--from 3` with no warning,
 and two reviewers in a row hit it and got a path with no remedy.
 
-To actually compute something, use `run_all.sh`. Open it, edit the block at the
-top, run it:
+To actually compute something there are two scripts. Open the one you want,
+edit the block at the top, run it:
 
 ```bash
-./run_all.sh --dry-run    # print the chain it would run, run nothing
-./run_all.sh              # run it
-./run_all.sh --force      # redo stages whose output already exists
+./run_smoke.sh --dry-run        # print the chain it would run, run nothing
+./run_smoke.sh                  # about 1 h. Proves the paths run.
+./run_production.sh --dry-run
+./run_production.sh             # about a day. Use tmux or nohup.
 ```
 
-It writes one log per stage under `logs/`, prints a timing for each, and exits
+Two scripts rather than one with a mode switch, because a switch is a thing to
+get wrong: it set the sample counts and left the label and the site config
+behind, so five stages skipped in silence and a smoke answer came out under a
+production label. Each script now carries a settings block that is internally
+consistent, and the engine they share, `run_stages.sh`, refuses a production run
+whose settings have been edited into a smoke one.
+
+Both write one log per stage under `logs/`, print a timing for each, and exit
 non-zero naming the stage if anything fails or produces no output. Everything
-scientific stays in the configs; what the script sets is only what used to be
+scientific stays in the configs; what the scripts set is only what used to be
 argv.
 
-**It skips a stage only when it recorded building that output with the settings
-you are asking for now.** Three of the six outputs are named with neither the
-mode nor the label, so a smoke file and a production file share a path and
-existence alone cannot tell them apart. Anything unrecorded or built with other
-settings is reported as `STALE` and rebuilt. Switching `MODE` to `production`
-while leaving `LABEL="_smoke"` or the smoke site config in place is refused
-outright, naming the lines to change, because that combination silently reused
-smoke outputs and produced a verdict table that looked complete.
+**A stage is skipped only when a run recorded building that output with the
+settings you are asking for now.** Three of the six outputs carry neither the
+run kind nor the label in their filename, so a smoke file and a production file
+share a path and existence alone cannot tell them apart. Anything unrecorded or
+built with other settings is reported `STALE` and rebuilt; `--reuse-stale`
+overrides and says the provenance is not this run's.
+
+**Never quote a number from a smoke run.** At 2001 samples the hierarchical
+noise scale runs far above its production value and the gate grid is reduced
+from 16+15 nodes to 4+3, so it is a different answer rather than a smaller one.
+For the cheapest honest check on a new column, `STAGES="truth quicklook"` runs
+in about two minutes and reports only whether the inversions fit.
 
 The seven commands it runs, if you would rather drive them yourself:
 
