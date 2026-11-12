@@ -1,3 +1,0 @@
-Field_ID,easting,northing,zone,azimuth,bo_inc_angle_deg,declination,bo_dec_angle_deg,coil_diameter,detect_coil,noise_coil,pulse_sequence,pulse_width,year
-SMR_UD21,315059.0,6622676.711,55,44.99999934,-61.92,9.42,-35.57999934,100,1,0,FID,70,2022
-SMR_UD24,371232.0,6654668.0,55,0.0,-61.57,9.54,9.54,100,1,0,FID,60,2022

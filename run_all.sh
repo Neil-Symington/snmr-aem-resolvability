@@ -10,8 +10,9 @@
 # NOT run Stages 1 and 2: each is a trans-dimensional MCMC of hours, and the
 # driver printed the commands rather than starting a job that outlives your
 # terminal. That left seven commands to copy by hand, in order, with three
-# traps in them, and the field half of the repository had fieldrun/run_batch.sh
-# while the synthetic half had nothing. This is the synthetic equivalent.
+# traps in them, and nothing drove the whole thing. (The field half once had
+# its own driver; that workflow was retired on 12 Nov 2026 and is in the tag
+# fieldrun-archive-20261112.)
 #
 # IT IS NOT A NEW SOURCE OF TRUTH. Every scientific choice still lives in the
 # site config under configs/ and the scenario config under synthetics/config/.

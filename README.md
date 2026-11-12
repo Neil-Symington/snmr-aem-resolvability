@@ -259,6 +259,21 @@ truth. It reports nothing else: no posterior, no water-content integral, no
 detection and no verdict, because a deterministic solve has no prior width and
 the screen selection pins to the base of the grid without one.
 
+To turn a GA ASEG-GDF AEM delivery into GeoParquet:
+
+```bash
+python3 tools/aseg_to_geoparquet.py <stem> -o out.parquet   # needs pyarrow
+python3 tools/aseg_to_geoparquet.py <stem> --schema         # layout only
+python3 tools/aseg_to_geoparquet.py --selftest              # no files needed
+```
+
+It reads the `.dfn` layout, streams the fixed-width `.dat`, and writes one
+GeoParquet with a WKB point geometry column, about three minutes for a 4.9 GB
+delivery. It refuses rather than guesses in two places: if the record width in
+the `.dfn` does not match the `.dat`, and if the `.dfn` names no `EPSGCODE` on
+the coordinate fields. Checked against two real deliveries, one with a leading
+record-type marker and one without.
+
 `synthetics/README.md` documents the config schema. The two were merged because
 `src/aem_setup.jl` existed in both and diverged: the noise-seed fix landed in
 one copy and not the other, so every published AEM number came from the wrong

@@ -29,7 +29,7 @@
 # It also closes a producer gap. tools/smr_data.jl and stages/stage2_snmr.jl
 # both READ data/aem_occam<TAG>.jld2, and nothing in the repository wrote it --
 # which is why [inversion.aem] engine = "occam" had no producer. This writes it,
-# so an Occam kernel is now reachable on the synthetic side as it is in fieldrun.
+# so an Occam kernel is reachable on the synthetic side.
 using JLD2, Statistics, Printf, LinearAlgebra
 using SNMRForward, SMRPInversion
 

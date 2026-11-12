@@ -106,9 +106,9 @@ function main()
     # Fixing it needs HiQGA to carry an explicit RNG in the chain state, or to
     # reseed each step from (chain_seed, step). Until then this posterior is one
     # draw from a distribution of runs, not a reproducible result, and the
-    # `seed` field below does not describe it. This mirrors the comment in
-    # fieldrun/stages/run_aem_transd.jl: the defect is identical on both
-    # branches and was fixed there first.
+    # `seed` field below does not describe it. The field stages carried the
+    # identical defect and were fixed first; that workflow was retired on
+    # 12 Nov 2026 and is in the tag fieldrun-archive-20261112.
     let sd = SEED   # a local: the closure must carry the VALUE to the worker,
                     # not a reference to a Main binding the worker lacks
         @sync for p in workers()
@@ -139,8 +139,8 @@ function main()
     # A separate, deliberate stream for the subsampling, so which draws are
     # retained does not depend on how many proposals the chain happened to make.
     # This line used to be the ONLY seeding in the tool, which is the defect
-    # above. Same offset as fieldrun/stages/run_aem_transd.jl so the two
-    # branches agree.
+    # above. The offset matches what the retired field stage used, so an
+    # artefact from either is directly comparable.
     Random.seed!(SEED + 1_000_000)
     ix = n >= NDRAWS ? randperm(n)[1:NDRAWS] : collect(1:n)
     σ_draws = σ[:, ix]
