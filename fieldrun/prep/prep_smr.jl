@@ -3,12 +3,23 @@
 #   julia --project=. fieldrun/prep/prep_smr.jl --src <delivery dir> --out <prepared dir>
 #         [--sites Mulan31,Mulan32] [--prefix ""] [--year 2026]
 #
-# A SITE is any directory under --src holding a *_params.txt (antenna corners
-# and side length, from the site-layout tool). Beside it, anywhere in that
-# directory, it must find one *_agrf25.txt (AGRF25 field model: D and I) and one
-# *.mat (raw/QC FID export, either the nested QC_FID layout or the older flat
-# Single_Pulse_FID layout). Folder nesting and .mat names are free: only these
-# three file patterns are relied on, as in staging/scripts/smrp_invert.jl.
+# A SITE is found from its *_params.txt (antenna corners and side length, from
+# the site-layout tool). Two layouts are accepted:
+#
+#   DELIVERY (the full dataset):   <site>/SiteInfo/<site>_params.txt
+#                                  <site>/SiteInfo/<site>_agrf25.txt
+#                                  <site>/Reprocessed_<mm_yy>/QC_FID <date>/QC_FID <date>[_noemi].mat
+#                                  (+ photos, shapefiles, FIG/PNG we do not read)
+#     The site root is the parent of SiteInfo; the agrf25 must sit beside the
+#     params file and the .mat anywhere under the site root OUTSIDE SiteInfo.
+#
+#   FLAT (the first staging copy): <site>/{_params.txt, _agrf25.txt, .mat}
+#
+# Several .mat per site is normal (raw and _noemi, repeat reprocessings). The
+# choice is made the way udf_smr.jl's udf_matfile makes it: under the newest
+# Reprocessed_* folder if there are several, then by the processing preference
+# harmonic_removed_noemi > noemi > harmonic_removed > raw. What was chosen and
+# what was passed over are both printed.
 #
 # Writes, under --out:
 #   snmr_metadata.csv          one row per site, the columns udf_smr.jl reads
@@ -40,6 +51,27 @@ function one_match(files, re, what, site)
     isempty(m) && error("$site: no $what")
     length(m) > 1 && error("$site: $(length(m)) candidates for $what, expected one:\n  " * join(m, "\n  "))
     only(m)
+end
+
+"""
+The processed .mat for a site: newest Reprocessed_* folder first, then the
+processing preference. Returns (chosen, passed_over).
+"""
+function pick_mat(mats, root, site)
+    isempty(mats) && error("$site: no .mat under $root")
+    # newest reprocessing: Reprocessed_<mm>_<yy>, compared as (yy, mm)
+    stamp(f) = (m = match(r"Reprocessed_(\d{1,2})_(\d{2})", relpath(f, root));
+                m === nothing ? (-1, -1) : (parse(Int, m[2]), parse(Int, m[1])))
+    newest = maximum(stamp.(mats))
+    pool = filter(f -> stamp(f) == newest, mats)
+    for pat in ("harmonic_removed_noemi", "noemi", "harmonic_removed", "")
+        c = filter(f -> occursin(pat, basename(f)), pool)
+        isempty(c) && continue
+        length(c) > 1 && pat != "" && error("$site: $(length(c)) candidates for \"$pat\":\n  " * join(c, "\n  "))
+        # the raw ("") tier can hold several only if no processed one exists
+        length(c) > 1 && error("$site: $(length(c)) .mat files and none marked as processed:\n  " * join(c, "\n  "))
+        return only(c), setdiff(mats, c)
+    end
 end
 
 "Antenna geometry from *_params.txt."
@@ -114,12 +146,17 @@ function main(args)
            "n_pulse_moments", "live_channels", "mat_layout", "src_mat", "src_params", "src_agrf"]
     rows = Vector{Vector{String}}()
     for pf in sort(pfiles)
-        sdir = dirname(pf)
+        pdir = dirname(pf)
         site = replace(basename(pf), r"_params\.txt$"i => "")
         want !== nothing && site ∉ want && continue
-        sf = filter(f -> startswith(f, sdir * "/"), files)
-        af = one_match(sf, r"_agrf25\.txt$"i, "*_agrf25.txt", site)
-        mf = one_match(sf, r"\.mat$"i, "*.mat (pass a cleaner tree, or remove repeats)", site)
+        nested = lowercase(basename(pdir)) == "siteinfo"
+        root = nested ? dirname(pdir) : pdir
+        af = one_match(filter(f -> dirname(f) == pdir, files), r"_agrf25\.txt$"i, "*_agrf25.txt beside $(basename(pf))", site)
+        mats = filter(f -> startswith(f, root * "/") && occursin(r"\.mat$"i, f) &&
+                           !(nested && startswith(f, pdir * "/")), files)
+        mf, passed = pick_mat(mats, root, site)
+        isempty(passed) || println("  $site: chose $(relpath(mf, root)); passed over ",
+                                   join(relpath.(passed, root), ", "))
         p, g, m = read_params(pf), read_agrf(af), read_mat(mf)
         isempty(m.live) && error("$site: no channel in $(basename(mf)) holds data")
         length(m.live) > 1 && @warn "$site: channels $(m.live) all hold data; using $(m.live[1]) as detect"
@@ -134,6 +171,13 @@ function main(args)
 
         fid = pre * site
         dst = joinpath(out, "snmr", fid * "_" * replace(basename(mf), r"\s+" => "_"))
+        # a site's earlier copies go first: udf_matfile picks by preference
+        # among everything prefixed with the site, so a stale raw .mat from a
+        # previous prep could be picked over nothing, or a stale _noemi over
+        # a newer reprocessing
+        for f in readdir(joinpath(out, "snmr"))
+            startswith(f, fid * "_") && f != basename(dst) && rm(joinpath(out, "snmr", f))
+        end
         cp(mf, dst; force = true)
         yr  = get(A, "year", string(year(DateTime(p.date[1:19], dateformat"yyyy-mm-dd HH:MM:SS"))))
         push!(rows, string.([fid, @sprintf("%.2f", p.easting), @sprintf("%.2f", p.northing), p.zone, round(az, digits = 3), g.I,
