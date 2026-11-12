@@ -3,8 +3,14 @@
 # verdict table. Edit the block below and run it.
 #
 #   ./run_all.sh                 # smoke: one column end to end, ~1 h
-#   ./run_all.sh --force         # redo stages whose output already exists
 #   ./run_all.sh --dry-run       # print what it would run, run nothing
+#   ./run_all.sh --force         # redo every stage, whatever is on disk
+#   ./run_all.sh --reuse-stale   # keep outputs built with OTHER settings
+#
+# A stage is skipped only when its output exists AND this script recorded
+# building it with the settings you are asking for now. Anything else is STALE
+# and gets rebuilt, because a smoke file and a production file share a filename
+# for three of the six stages and existence cannot tell them apart.
 #
 # WHY THIS EXISTS. run_site.jl drives Stages 0 and 3-6 but deliberately does
 # NOT run Stages 1 and 2: each is a trans-dimensional MCMC of hours, and the
@@ -60,12 +66,14 @@ PROD_NSAMPLES=200001; PROD_CHAINS=4;   PROD_DRAWS=600
 
 # ─── STOP EDITING ────────────────────────────────────────────────────────────
 
-FORCE=0; DRY=0
+FORCE=0; DRY=0; REUSE_STALE=0
 while [ $# -gt 0 ]; do
     case "$1" in
-        --force)   FORCE=1; shift ;;
-        --dry-run) DRY=1; shift ;;
-        *) echo "unknown argument: $1"; echo "usage: $0 [--force] [--dry-run]"; exit 2 ;;
+        --force)        FORCE=1; shift ;;
+        --dry-run)      DRY=1; shift ;;
+        --reuse-stale)  REUSE_STALE=1; shift ;;
+        *) echo "unknown argument: $1"
+           echo "usage: $0 [--force] [--dry-run] [--reuse-stale]"; exit 2 ;;
     esac
 done
 
@@ -78,6 +86,39 @@ esac
 for f in "$TRUTH_CONFIG" "$SITE_CONFIG"; do
     [ -f "$f" ] || { echo "no config at $f"; exit 1; }
 done
+
+# A production run with smoke settings left in place is not a production run,
+# and it is the mistake this block exists to make impossible. Changing MODE
+# alone used to look like it had worked: five stages skipped without warning and
+# a verdict table came out that said "Config smoke_2P.toml" in small print.
+if [ "$MODE" = production ]; then
+    wrong=""
+    case "$LABEL" in
+        *smoke*) wrong="$wrong
+    LABEL is \"$LABEL\"  ->  set LABEL=\"\" or LABEL=\"_prod\"" ;;
+    esac
+    case "$(basename "$SITE_CONFIG")" in
+        smoke*) wrong="$wrong
+    SITE_CONFIG is $SITE_CONFIG  ->  set SITE_CONFIG=\"configs/synth_${TAG}.toml\"
+                 (the smoke config also carries a REDUCED gate grid, 4+3 nodes
+                  against production's 16+15, so Stage 4 answers a smaller
+                  problem)" ;;
+    esac
+    if [ -n "$wrong" ]; then
+        cat <<EOF
+REFUSING: MODE is "production" but smoke settings are still in the block above.
+$wrong
+
+  Changing MODE alone is not enough. The sample counts come from MODE, but the
+  LABEL and the site config are separate lines, and the draws, SMR-data and
+  Stage 2 outputs are named without either -- so a production run would have
+  reused the smoke files and produced a smoke answer wearing a production label.
+
+  Fix those lines and re-run. --dry-run first to see every stage say RUN.
+EOF
+        exit 2
+    fi
+fi
 
 # The Julia version is the commonest setup failure and the error it causes
 # names something else entirely, so check it before doing an hour of work.
@@ -125,6 +166,45 @@ cost_of() {
     esac
 }
 
+# ── PROVENANCE, which is what makes a skip safe ─────────────────────────────
+# Three of the six outputs are named with neither the mode nor the label:
+# aem_draws_<TAG>.jld2, smr_data_murray<TAG>T.jld2 and cond_*_<TIER><TAG>T.jld2.
+# The tools that write them take the label but do not put it in the filename, so
+# a smoke file and a production file are the same path and existence alone
+# cannot tell them apart. Skipping on existence therefore reused smoke outputs
+# in a production run, silently -- the same shape as every other defect this
+# project has recorded: something that looks like it governs a stage and does
+# not. This ledger records the settings each output was built under, and a stage
+# is skipped ONLY when they match exactly.
+PROV="data/.run_all_provenance"
+
+sig_of() {
+    case "$1" in
+        truth)   printf 'truth|%s' "$TRUTH_CONFIG" ;;
+        stage1)  printf 'mode=%s|label=%s|nsamples=%s|chains=%s' "$MODE" "$LABEL" "$NSAMPLES" "$CHAINS" ;;
+        draws)   printf 'mode=%s|label=%s|ndraws=%s' "$MODE" "$LABEL" "$DRAWS" ;;
+        smrdata) printf 'mode=%s|label=%s' "$MODE" "$LABEL" ;;
+        stage2)  printf 'mode=%s|label=%s|tier=%s|conds=%s|nsamples=%s|ndraws=%s' \
+                        "$MODE" "$LABEL" "$TIER" "$CONDS" "$NSAMPLES" "$DRAWS" ;;
+        *)       printf '' ;;
+    esac
+}
+prov_recorded() {
+    [ -f "$PROV" ] || return 1
+    awk -F'\t' -v s="$1" -v t="$TAG" '$1==s && $2==t {print $3; found=1; exit}
+                                      END{exit !found}' "$PROV"
+}
+prov_record() {
+    mkdir -p "$(dirname "$PROV")"
+    if [ -f "$PROV" ]; then
+        awk -F'\t' -v s="$1" -v t="$TAG" '!($1==s && $2==t)' "$PROV" > "$PROV.tmp"
+    else
+        : > "$PROV.tmp"
+    fi
+    printf '%s\t%s\t%s\n' "$1" "$TAG" "$(sig_of "$1")" >> "$PROV.tmp"
+    mv "$PROV.tmp" "$PROV"
+}
+
 declare -a TIMED=()
 FAILED=""
 
@@ -134,9 +214,30 @@ run_stage() {
     local log="$LOGDIR/$name.log"
 
     if [ -n "$out" ] && [ -e "$out" ] && [ "$FORCE" -eq 0 ]; then
-        echo "  SKIP  $name -- $out exists (--force to redo)"
-        TIMED+=("$name skipped")
-        return 0
+        local want have
+        want=$(sig_of "$name")
+        have=$(prov_recorded "$name") || have="__none__"
+        if [ "$have" = "$want" ]; then
+            echo "  SKIP  $name -- $out, built with these exact settings"
+            TIMED+=("$name skipped")
+            return 0
+        fi
+        # Existence is not provenance. Rebuild by default and say why: a wrong
+        # answer in the right filename costs more than the time to redo it.
+        if [ "$have" = "__none__" ]; then
+            echo "  STALE $name -- $out exists but this script did not record building it,"
+            echo "        so what produced it is unknown. Rebuilding."
+        else
+            echo "  STALE $name -- the settings changed since $out was built:"
+            echo "          built with: $have"
+            echo "          asked for : $want"
+            echo "        Rebuilding."
+        fi
+        if [ "$REUSE_STALE" -eq 1 ]; then
+            echo "        --reuse-stale given, so keeping it. Its provenance is NOT this run's."
+            TIMED+=("$name reused-stale")
+            return 0
+        fi
     fi
     echo "  RUN   $name  ($(cost_of "$name"))  -> $log"
     if [ "$DRY" -eq 1 ]; then
@@ -149,6 +250,7 @@ run_stage() {
         local dt=$(( $(date +%s) - t0 ))
         printf "        done in %dm %02ds\n" $((dt/60)) $((dt%60))
         TIMED+=("$name $((dt/60))m$((dt%60))s")
+        [ -n "$(sig_of "$name")" ] && prov_record "$name"
         if [ -n "$out" ] && [ ! -e "$out" ]; then
             # Exiting 0 without writing the output is the failure mode that let
             # a whole field run print "complete" having produced nothing.

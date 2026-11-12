@@ -130,10 +130,19 @@ top, run it:
 ./run_all.sh --force      # redo stages whose output already exists
 ```
 
-It writes one log per stage under `logs/`, prints a timing for each, skips a
-stage whose output is already there, and exits non-zero naming the stage if
-anything fails or produces no output. Everything scientific stays in the
-configs; what the script sets is only what used to be argv.
+It writes one log per stage under `logs/`, prints a timing for each, and exits
+non-zero naming the stage if anything fails or produces no output. Everything
+scientific stays in the configs; what the script sets is only what used to be
+argv.
+
+**It skips a stage only when it recorded building that output with the settings
+you are asking for now.** Three of the six outputs are named with neither the
+mode nor the label, so a smoke file and a production file share a path and
+existence alone cannot tell them apart. Anything unrecorded or built with other
+settings is reported as `STALE` and rebuilt. Switching `MODE` to `production`
+while leaving `LABEL="_smoke"` or the smoke site config in place is refused
+outright, naming the lines to change, because that combination silently reused
+smoke outputs and produced a verdict table that looked complete.
 
 The seven commands it runs, if you would rather drive them yourself:
 
