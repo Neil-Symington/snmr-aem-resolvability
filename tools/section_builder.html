@@ -1,8 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Synthetic Section Builder</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
+  /* This file is opened from disk, so it carries its own document wrapper and
+     the small reset a host would otherwise supply. Without the doctype above
+     it ran in quirks mode. */
+  *, *::before, *::after { box-sizing: border-box; }
+  html { color-scheme: light dark; }
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+
   :root {
     --ground:#eceff3; --panel:#fbfcfd; --panel2:#f3f6f9;
     --ink:#18212c; --muted:#5e6c7b; --line:#c9d2dc; --line2:#dde4ec;
@@ -77,7 +91,7 @@
   svg{display:block; width:100%; height:auto; max-width:100%;}
   .unitblock{cursor:pointer;}
   .unitblock:hover .ubrect{stroke:var(--sel); stroke-width:1.6;}
-  .handle{cursor:ns-resize;}
+  .handle{cursor:ns-resize; touch-action:none;}
   .handle:hover .hbar,.handle:focus-visible .hbar{stroke:var(--sel); stroke-width:3;}
   text{font-family:var(--sans); fill:var(--ink);}
   text.ax{font-size:9.5px; fill:var(--muted); font-family:var(--mono);}
@@ -117,6 +131,8 @@
   .muted{color:var(--muted);}
   @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important;}}
 </style>
+</head>
+<body>
 
 <div class="wrap">
   <header class="top">
@@ -228,12 +244,19 @@
   }
 
   var MGL_PER_SM = 6400;            // Lithology.jl MGL_PER_SM
+  // Written into [variability] below, and used by the thin-unit check so the
+  // warning and the file cannot disagree.
+  var TRANSITION_MIN = 3.0, TRANSITION_MAX = 6.0;
   var MIN_THICK  = 1.0;             // m, so a drag cannot invert two contacts
 
   // Opens on the column run_all.sh builds, so the first look is a real section.
   function defaultSection(){
     return {
-      name:"confined_aquifer", zmax:200, m_archie:1.7, p_clay:1.5,
+      // NOT "confined_aquifer": build_truth.jl writes <name>_truth.jld2, and
+      // run_all.sh copies confined_aquifer_truth.jld2 to data/truth_murray2P.jld2.
+      // Defaulting to the shipped name meant opening this, nudging a slider and
+      // building would overwrite the 2P truth.
+      name:"my_section", zmax:200, m_archie:1.7, p_clay:1.5,
       units:[
         {top:0,  name:"Shepparton Fm, unsaturated", lith:"sandy clay",        sclay:0.80, phi:0.33, S:1.0, clay:0.40, sw:0.05},
         {top:4,  name:"Shepparton Fm, clay cap",    lith:"clay",              sclay:0.80, phi:0.35, S:1.0, clay:0.45, sw:0.05},
@@ -242,7 +265,7 @@
         {top:46, name:"Renmark Gp — AQUIFER 2",     lith:"sand",              sclay:0.15, phi:0.28, S:1.0, clay:0.10, sw:0.60},
         {top:62, name:"weathered Palaeozoic",       lith:"weathered bedrock", sclay:0.15, phi:0.12, S:1.0, clay:0.30, sw:1.00},
         {top:78, name:"saprock",                    lith:"saprock",           sclay:0.15, phi:0.06, S:1.0, clay:0.12, sw:1.20},
-        {top:85, name:"unweathered Palaeozoic",     lith:"fresh bedrock",     sclay:0.15, phi:0.03, S:1.0, clay:0.03, sw:1.50}
+        {top:85, name:"unweathered Palaeozoic",     lith:"fresh bedrock",     sclay:0.15, phi:0.02, S:1.0, clay:0.03, sw:1.50}
       ]
     };
   }
@@ -557,8 +580,12 @@
       if(!(u.sw > 0)) is.push(["e", "unit "+(i+1)+": sigma_w must be positive"]);
       if(!(sclayOf(u) > 0)) is.push(["e", "unit "+(i+1)+": sigma_clay must be positive"]);
       if(i > 0 && u.top <= S.units[i-1].top) is.push(["e", "unit "+(i+1)+": top is not below the unit above"]);
-      if(unitBot(i) - u.top < 2) is.push(["w", "unit "+(i+1)+" is "+fmt(unitBot(i)-u.top,1)+
-          " m thick, thinner than the gradational boundary it sits between"]);
+      // Tied to transition_min, which is what the sentence claims. It used to
+      // fire below 2 m while naming a 3-6 m boundary, so a 2.5 m unit -- which
+      // IS thinner than its own contacts -- passed silently.
+      if(unitBot(i) - u.top < TRANSITION_MIN) is.push(["w", "unit "+(i+1)+" is "+
+          fmt(unitBot(i)-u.top,1)+" m thick, thinner than the "+TRANSITION_MIN+
+          "-"+TRANSITION_MAX+" m gradational boundary it sits between"]);
       if(!u.name.trim()) is.push(["w", "unit "+(i+1)+" has no name"]);
     }
     if(S.units.length && S.units[0].top !== 0) is.push(["e","the first unit must start at 0 m"]);
@@ -572,10 +599,18 @@
     el.innerHTML = h + "</ul>";
   }
 
+  // A basic TOML string body. The old version escaped a quote in a unit name
+  // and not a backslash, and did not escape the scenario name at all, so either
+  // could produce a file the loader refuses.
+  function tomlstr(v){
+    return String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+                    .replace(/[\r\n\t]/g, " ");
+  }
+
   // ── TOML, in the shape the scenario loader expects ──────────────────────
   function drawToml(){
     var L = [], i, u;
-    L.push('name = "'+S.name+'"');
+    L.push('name = "'+tomlstr(S.name)+'"');
     L.push('description = """');
     L.push('Built with the section builder. '+S.units.length+' units to '+S.zmax+' m.');
     L.push('"""');
@@ -598,17 +633,24 @@
     L.push("corr_length     = 6.0");
     L.push("log_sd_phi      = 0.10");
     L.push("log_sd_clay     = 0.15");
-    L.push("transition_min  = 3.0");
-    L.push("transition_max  = 6.0");
+    L.push("transition_min  = "+fmt(TRANSITION_MIN,1));
+    L.push("transition_max  = "+fmt(TRANSITION_MAX,1));
     for(i=0;i<S.units.length;i++){
       u = S.units[i];
       L.push("");
       L.push("[[unit]]");
       L.push("top = "+fmt(u.top,1));
-      L.push('name = "'+u.name.replace(/"/g,'\\"')+'"');
-      // lithology carries the symbol and the sd_phi / sd_clay defaults; the
-      // explicit values below win over whatever it would have filled.
-      L.push('lithology = "'+lithOf(u)+'"');
+      L.push('name = "'+tomlstr(u.name)+'"');
+      // NOT written as a key, on purpose. SNMRAEMSynthetics.jl takes sd_phi
+      // and sd_clay from the lithology PRESET whenever `lithology` is present,
+      // so writing it silently overrides [variability] log_sd_phi/log_sd_clay
+      // for that unit -- weathered bedrock and saprock would get 0.25-0.30
+      // against the 0.10 stated above, and this page does not show variability
+      // at all, so nothing would tell you. Measured when it did write the key:
+      // the built column differed from the shipped confined_aquifer.toml by up
+      // to 9% in phi, clay, theta_SMR and sigma_bulk. The shipped scenarios use
+      // no `lithology` key either. It stays a comment, for the symbol only.
+      L.push("# lithology (page symbol only): "+lithOf(u));
       L.push("phi = "+fmt(u.phi,2));
       L.push("S = "+fmt(u.S,2));
       L.push("clay = "+fmt(u.clay,2));
@@ -647,16 +689,28 @@
       var i = +n.dataset.contact;
       n.addEventListener("pointerdown", function(e){
         e.preventDefault();
+        // Capture, so the events retarget to this handle and the listeners can
+        // live on it rather than on window. The first version attached them to
+        // window and removed them on pointerup ONLY, so a cancelled drag (a
+        // tablet gesture taking over, the pointer leaving the window) left the
+        // move listener attached and the contact kept following the pointer.
+        try { n.setPointerCapture(e.pointerId); } catch (_) {}
         var box = svg.getBoundingClientRect();
         function move(ev){
           var y = (ev.clientY - box.top) * (COL_H / box.height);
           S.units[i].top = Math.round(clampTop(i, zOf(y))*2)/2;
           lightRender();
         }
-        function up(){ window.removeEventListener("pointermove", move);
-                       window.removeEventListener("pointerup", up); render(); }
-        window.addEventListener("pointermove", move);
-        window.addEventListener("pointerup", up);
+        function end(){
+          n.removeEventListener("pointermove", move);
+          n.removeEventListener("pointerup", end);
+          n.removeEventListener("pointercancel", end);
+          try { n.releasePointerCapture(e.pointerId); } catch (_) {}
+          render();
+        }
+        n.addEventListener("pointermove", move);
+        n.addEventListener("pointerup", end);
+        n.addEventListener("pointercancel", end);
       });
       n.addEventListener("keydown", function(e){
         var d = e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0;
@@ -720,8 +774,14 @@
   g("g-m").value = S.m_archie; g("g-p").value = S.p_clay;
   g("g-name").addEventListener("input", function(e){ S.name = e.target.value.replace(/\s+/g,"_"); drawToml(); save(); });
   g("g-zmax").addEventListener("change", function(e){
+    // Clamp and WRITE THE CLAMPED VALUE BACK, rather than ignoring the entry
+    // and leaving the box showing a number the section does not have.
     var v = parseFloat(e.target.value);
-    if(isFinite(v) && v > 20){ S.zmax = v; render(); }
+    if(!isFinite(v)) v = S.zmax;
+    var floor = Math.ceil(S.units[S.units.length-1].top + MIN_THICK);
+    v = Math.max(Math.max(21, floor), Math.min(2000, v));
+    e.target.value = v;
+    if(v !== S.zmax){ S.zmax = v; render(); }
   });
   g("g-m").addEventListener("input", function(e){ var v = parseFloat(e.target.value);
     if(isFinite(v)){ S.m_archie = v; drawCurves(); drawDerived(); drawToml(); save(); } });
@@ -731,7 +791,12 @@
   g("btn-add").addEventListener("click", function(){
     var i = sel < 0 ? S.units.length-1 : sel;
     var bot = unitBot(i), top = S.units[i].top;
-    if(bot - top < 2*MIN_THICK) return;
+    if(bot - top < 2*MIN_THICK){
+      var ab = g("btn-add"), was = ab.textContent;
+      ab.textContent = "too thin to split";
+      setTimeout(function(){ ab.textContent = was; }, 1800);
+      return;
+    }
     var mid = Math.round(((top + bot)/2)*2)/2;
     var u = S.units[i];
     S.units.splice(i+1, 0, {top:mid, name:"new unit", lith:u.lith, sclay:u.sclay,
@@ -770,7 +835,10 @@
       setTimeout(function(){ sb.textContent = "Save .toml"; }, 1800);
     }
     sb.addEventListener("click", async function(){
-      var text = g("toml").textContent, name = (S.name || "scenario") + ".toml";
+      // Follows the scenario name, which no longer defaults to a shipped one,
+      // so the dialog cannot suggest overwriting synthetics/config/*.toml.
+      var text = g("toml").textContent;
+      var name = (String(S.name || "scenario").replace(/[^\w.-]+/g, "_")) + ".toml";
       // A REAL save dialog where the browser has one: you pick the folder and
       // the name, and you may overwrite. Chromium has it; Firefox does not, and
       // it is refused from some file:// contexts, hence the fallback.
@@ -809,3 +877,5 @@
   render();
 })();
 </script>
+</body>
+</html>
