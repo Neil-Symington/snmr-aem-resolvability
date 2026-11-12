@@ -62,6 +62,9 @@ Vista Clara writes several: the raw sounding, `_noemi` where EMI removal ran,
 and `_harmonic_removed` where harmonics were stripped. The operator's preferred
 product is the most-processed one, so the preference order is
 harmonic+noemi > noemi > harmonic > raw, and which one was taken is recorded.
+(Disputed 2026-11-13: in the Birrindudu delivery `_noemi` is the product
+WITHOUT EMI cancellation. See the CAUTION in the body; the order is now
+[snmr] mat_preference.)
 """
 function udf_matfile(field_id)
     # TWO LAYOUTS. The GA delivery nests each site's products under
@@ -92,9 +95,21 @@ function udf_matfile(field_id)
 
       Looked for $(dir == nested ? "any .mat" : "a .mat beginning \"$field_id\"").
     """)
-    # Vista Clara writes several products; the operator's preferred one is the
-    # most processed, so this is a preference order and not a filename.
-    for pat in ("harmonic_removed_noemi", "noemi", "harmonic_removed", "")
+    # Vista Clara writes several products, so this is a preference order and
+    # not a filename: [snmr] mat_preference, first substring match wins ("" =
+    # anything). The config key existed and was never read -- this list was
+    # hardcoded to the UDF order, which is still the default.
+    #
+    # CAUTION, raised 2026-11-13: in the Birrindudu delivery "_noemi" means NO
+    # EMI cancellation (Carl). If it means the same in the UDF delivery, the
+    # UDF default below prefers the UNcancelled product. Not changed here:
+    # it is the UDF operator's call. prep_smr.jl copies one .mat per site,
+    # already chosen EMI-cancelled first, so a prepared survey never reaches
+    # this choice with more than one candidate.
+    pref = String.(get(FieldConfig.CFG[]["snmr"], "mat_preference",
+                       ["harmonic_removed_noemi", "noemi", "harmonic_removed", ""]))
+    length(cands) == 1 && return joinpath(dir, cands[1]), cands[1]
+    for pat in pref
         i = findfirst(x -> occursin(pat, x), cands)
         i !== nothing && return joinpath(dir, cands[i]), cands[i]
     end

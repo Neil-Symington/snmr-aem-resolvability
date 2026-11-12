@@ -15,11 +15,16 @@
 #
 #   FLAT (the first staging copy): <site>/{_params.txt, _agrf25.txt, .mat}
 #
-# Several .mat per site is normal (raw and _noemi, repeat reprocessings). The
-# choice is made the way udf_smr.jl's udf_matfile makes it: under the newest
-# Reprocessed_* folder if there are several, then by the processing preference
-# harmonic_removed_noemi > noemi > harmonic_removed > raw. What was chosen and
-# what was passed over are both printed.
+# Several .mat per site is normal (with and without EMI cancellation, repeat
+# reprocessings). The choice: the newest Reprocessed_* folder if there are
+# several, then EMI-CANCELLED over not, then harmonics removed over not. What
+# was chosen and what was passed over are both printed.
+#
+# "_noemi" MEANS NO EMI CANCELLATION (Carl, 2026-11-13) -- it is the file to
+# AVOID, not to prefer. An earlier version of this script copied udf_smr.jl's
+# order, harmonic_removed_noemi > noemi > harmonic_removed > raw, which reads
+# "noemi" as "EMI removed" and so picked the UNcancelled file at every site.
+# The Birrindudu sites are near a town and noisy, so the cancellation matters.
 #
 # Writes, under --out:
 #   snmr_metadata.csv          one row per site, the columns udf_smr.jl reads
@@ -54,8 +59,8 @@ function one_match(files, re, what, site)
 end
 
 """
-The processed .mat for a site: newest Reprocessed_* folder first, then the
-processing preference. Returns (chosen, passed_over).
+The processed .mat for a site: newest Reprocessed_* folder first, then
+EMI-cancelled (no "_noemi"), then harmonics removed. Returns (chosen, passed_over).
 """
 function pick_mat(mats, root, site)
     isempty(mats) && error("$site: no .mat under $root")
@@ -64,14 +69,13 @@ function pick_mat(mats, root, site)
                 m === nothing ? (-1, -1) : (parse(Int, m[2]), parse(Int, m[1])))
     newest = maximum(stamp.(mats))
     pool = filter(f -> stamp(f) == newest, mats)
-    for pat in ("harmonic_removed_noemi", "noemi", "harmonic_removed", "")
-        c = filter(f -> occursin(pat, basename(f)), pool)
-        isempty(c) && continue
-        length(c) > 1 && pat != "" && error("$site: $(length(c)) candidates for \"$pat\":\n  " * join(c, "\n  "))
-        # the raw ("") tier can hold several only if no processed one exists
-        length(c) > 1 && error("$site: $(length(c)) .mat files and none marked as processed:\n  " * join(c, "\n  "))
-        return only(c), setdiff(mats, c)
-    end
+    rank(f) = (occursin("noemi", basename(f)) ? 1 : 0,             # EMI-cancelled first
+               occursin("harmonic_removed", basename(f)) ? 0 : 1)  # then harmonics removed
+    best = minimum(rank.(pool))
+    c = filter(f -> rank(f) == best, pool)
+    length(c) > 1 && error("$site: $(length(c)) equally preferred .mat files:\n  " * join(c, "\n  "))
+    best[1] == 1 && @warn "$site: only files WITHOUT EMI cancellation (_noemi) exist; using $(basename(only(c)))"
+    return only(c), setdiff(mats, c)
 end
 
 "Antenna geometry from *_params.txt."
