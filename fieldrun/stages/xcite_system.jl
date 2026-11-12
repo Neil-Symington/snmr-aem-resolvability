@@ -167,7 +167,7 @@ end
 """
 function build_operator(d::AbstractVector, σ::AbstractVector, height::Real;
                         grid = build_grid(), calcjacobian = true,
-                        σ_scale::Real = 1.0, ρ_start::Real = 30.0)
+                        σ_scale::Real = 1.0, ρ_start::Real = 30.0, useML::Bool = false)
     length(d) == length(TIMES) || error("$(length(d)) data for $(length(TIMES)) gates")
     zTx = -float(height)
     zRx = zTx + dzRx
@@ -179,7 +179,7 @@ function build_operator(d::AbstractVector, σ::AbstractVector, height::Real;
         times = TIMES, ramp = ramp, rTx = rTx, zTx = zTx, zRx = zRx,
         z = grid.z, ρ = ρ0, nfixed = grid.nfixed,
         d = d .* k, σ = σ .* (σ_scale * k),
-        lowpassfcs = lowpassfcs, calcjacobian = calcjacobian)
+        lowpassfcs = lowpassfcs, calcjacobian = calcjacobian, useML = useML)
 end
 
 # ── the system-independent API the stages call ─────────────────────────────

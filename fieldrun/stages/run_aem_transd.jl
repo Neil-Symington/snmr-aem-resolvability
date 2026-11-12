@@ -53,6 +53,16 @@ const SEED     = 20261028
 # ground needs its own, and Birrindudu's is more resistive.
 const FBOUNDS  = permutedims(Float64.(get(FCFG["aem"], "rho_bounds_log10", [-1.0, 3.0])))
 
+# [aem] use_ml: HiQGA's maximum-likelihood noise level. The misfit becomes
+# (N/2) log chi^2 instead of chi^2/2, which integrates out an unknown overall
+# scale on sigma, so the delivered noise model fixes only the RELATIVE noise
+# between gates and the data set its level. This is how GA's own HiQGA run of
+# the Birrindudu XCite data was made (useML = true, forceML = true), and it is
+# needed there: a single sounding fits the delivered 3% + halt noise to
+# chi^2/N 0.02-0.04, i.e. sigma about 5-7x too large. Off by default, which is
+# what UDF ran with. The fitted level is recorded per retained draw below.
+const USE_ML   = Bool(get(FCFG["aem"], "use_ml", false))
+
 isempty(SITE) && error("--site is required")
 
 addprocs(NCHAINS - (nworkers() == 1 ? 0 : nworkers()))
@@ -93,12 +103,13 @@ function main()
     # same operator the Occam and the gate use, at the same calibrated noise
     aem = build_operator(g, A["height_m"];
                          grid = grid, calcjacobian = false,
-                         σ_scale = A["noise_scale"])
+                         σ_scale = A["noise_scale"], useML = USE_ML)
     ndata = length(aem.res)
     @printf("%s: %s gates (%s), ndata %d, noise x %.3f\n", SITE, AEM_SYSTEM,
             join(["$(length(ix)) $b" for (b, ix) in data_blocks(g)], " + "), ndata, A["noise_scale"])
-    @printf("  %d samples x %d chains, Tmax %.1f, log10rho bounds [%.1f, %.1f]\n",
-            NSAMPLES, NCHAINS, TMAX, FBOUNDS[1], FBOUNDS[2]); flush(stdout)
+    @printf("  %d samples x %d chains, Tmax %.1f, log10rho bounds [%.1f, %.1f], noise level %s\n",
+            NSAMPLES, NCHAINS, TMAX, FBOUNDS[1], FBOUNDS[2],
+            USE_ML ? "FITTED (useML)" : "fixed"); flush(stdout)
 
     rundir = joinpath(OUT, "aem_td_$(SITE)"); mkpath(rundir)
     prefix = "udftd_$(SITE)_"
@@ -180,6 +191,15 @@ function main()
     @printf("  Occam smooth model there: %.5f S/m\n",
             10^mean(log10.(A["sigma"][k60])))
 
+    # The noise level the data support, per retained draw: chi^2/N at that
+    # model under the noise model as given. Under useML this is the variance
+    # factor HiQGA's misfit integrates over -- the same quantity GA's summary
+    # plots label "Max likelihood variance adjustment" -- so sqrt of it is the
+    # factor on sigma. Computed either way, so a fixed-noise run reports it too.
+    mlf = [chi2(aem, log10.(σ[:, j])) / ndata for j in ix]
+    @printf("  noise level: chi2/N over retained draws p10/p50/p90 %.4f / %.4f / %.4f  (sigma x %.3f at p50)\n",
+            quantile(mlf, 0.1), median(mlf), quantile(mlf, 0.9), sqrt(median(mlf)))
+
     jldsave(joinpath(OUT, "aem_td_$(SITE).jld2");
         field_id = SITE, zall = grid.zall, zbnd = grid.zbnd,
         sigma10 = σ10, sigma50 = σ50, sigma90 = σ90,
@@ -187,7 +207,9 @@ function main()
         splithalf_first = d1, splithalf_second = d2,
         nsamples = NSAMPLES, nchains = NCHAINS, Tmax = TMAX,
         noise_scale = A["noise_scale"], ndata = ndata,
-        fbounds = FBOUNDS, seed = SEED, secs = time() - t0)
+        fbounds = FBOUNDS, seed = SEED, secs = time() - t0,
+        use_ml = USE_ML, ml_variance_factor = mlf,
+        ml_variance_factor_p50 = median(mlf), ml_sigma_factor_p50 = sqrt(median(mlf)))
     println("  wrote aem_td_$(SITE).jld2 ($(length(ix)) intact profiles retained)")
 end
 

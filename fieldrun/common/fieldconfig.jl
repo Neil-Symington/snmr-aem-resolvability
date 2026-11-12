@@ -68,7 +68,7 @@ const KNOWN = Dict(
                       # the system switch (absent = "skytem"), and what a
                       # single-moment central-loop system (XCite) needs
                       "system", "gates", "halt_noise_pv", "max_tilt_deg",
-                      "rho_bounds_log10"],
+                      "rho_bounds_log10", "use_ml"],
     "grid"        => ["nz", "zstart", "dz", "extendfrac"],
     # nensembles is deliberately absent: it duplicated [kernel] n_draws,
     # which is what run_smr_transd.jl reads. A config still carrying that
@@ -239,6 +239,8 @@ function check_values(c::Dict, path)
                 "[$sec] $k must be [first, last] WHOLE gate numbers with 1 <= first <= last, got $v")
         end
     end
+    haskey(c["aem"], "use_ml") && chk(c["aem"]["use_ml"] isa Bool,
+        "[aem] use_ml must be true or false, got $(repr(c["aem"]["use_ml"]))")
     # The system switch. The two systems need different keys, and a SkyTEM key
     # in an XCite config (or the reverse) would be read by nothing, so each is
     # refused by name -- the same rule as an unknown key.

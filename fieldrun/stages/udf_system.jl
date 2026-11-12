@@ -201,7 +201,7 @@ dB/dt in pV/(A.turns.m^4); `height` is the laser height of the Tx loop centre.
 """
 function build_operator(d_lm, σ_lm, d_hm, σ_hm, height::Real;
                         grid = build_grid(), calcjacobian = true,
-                        σ_scale::Real = 1.0, ρ_start::Real = 30.0)
+                        σ_scale::Real = 1.0, ρ_start::Real = 30.0, useML::Bool = false)
     zTx = -float(height)
     zRx = zTx + dzRx
     k = PV / MU0
@@ -217,7 +217,7 @@ function build_operator(d_lm, σ_lm, d_hm, σ_hm, height::Real;
         z = grid.z, ρ = ρ0,
         dlow = d_lm .* k, dhigh = d_hm .* k,
         σlow = σ_lm .* (σ_scale * k), σhigh = σ_hm .* (σ_scale * k),
-        lowpassfcs = lowpassfcs, calcjacobian = calcjacobian)
+        lowpassfcs = lowpassfcs, calcjacobian = calcjacobian, useML = useML)
 end
 
 # ── the system-independent API the stages call ─────────────────────────────
