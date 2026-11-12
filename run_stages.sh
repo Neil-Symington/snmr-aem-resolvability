@@ -287,7 +287,13 @@ if wants site && [ -z "$FAILED" ]; then
 fi
 
 echo
-printf '%s\n' "stage timings:" "${TIMED[@]/#/  }"
+# Guarded by length, NOT written as "${TIMED[@]}" bare: bash before 4.4 treats
+# the expansion of an EMPTY array under `set -u` as an unbound variable and
+# dies. macOS ships bash 3.2, so on a Mac an empty STAGES would have ended in
+# an unbound-variable error instead of "complete".
+if [ ${#TIMED[@]} -gt 0 ]; then
+    printf '%s\n' "stage timings:" "${TIMED[@]/#/  }"
+fi
 if [ -n "$FAILED" ]; then
     echo "INCOMPLETE -- failed:$FAILED"
     exit 1

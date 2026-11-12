@@ -16,14 +16,13 @@
 # Comparing hashes here would fail for the wrong reason.
 name: CI
 
-# fieldrun is included on purpose: a reviewer pointed out that its 194 tests --
-# 76 of them the control-file reader's own negative cases -- had never been run
-# by CI at all, because the triggers named main only.
+# The fieldrun branch and its 116 tests were retired on 12 Nov 2026 and are in
+# the tag fieldrun-archive-20261112, so the triggers name main only again.
 on:
   push:
-    branches: [main, fieldrun]
+    branches: [main]
   pull_request:
-    branches: [main, fieldrun]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -77,6 +76,58 @@ jobs:
       - name: dry run
         run: julia --project=. run_site.jl configs/synth_2P.toml --dry-run
 
+      # THE SHELL DRIVERS, which are the platform-sensitive part of this
+      # repository. macOS ships bash 3.2 from 2007 as /bin/bash, so this is
+      # where a GNU-only flag or a bash 4 feature shows up. The version is
+      # printed so a failure here is attributable to the shell rather than to
+      # the workflow. Nothing below runs an inversion: these are dry runs and
+      # refusal paths, seconds each.
+      - name: shell drivers
+        run: |
+          echo "bash $BASH_VERSION at $(command -v bash) on $(uname -s) $(uname -m)"
+          bash -n run_smoke.sh
+          bash -n run_production.sh
+          bash -n run_stages.sh
+          ./run_smoke.sh --dry-run
+          ./run_production.sh --dry-run
+
+          # An empty STAGES must end cleanly. Bash before 4.4 treats the
+          # expansion of an empty array under `set -u` as an unbound variable,
+          # so on macOS this ended in an unbound-variable error rather than
+          # "complete" until the summary was guarded by length.
+          sed 's/^STAGES=.*/STAGES=""/' run_smoke.sh > ci_empty.sh
+          chmod +x ci_empty.sh
+          ./ci_empty.sh --dry-run
+          rm -f ci_empty.sh
+
+          # run_stages.sh is not an entry point and must refuse to run alone.
+          if bash run_stages.sh --dry-run >/dev/null 2>&1; then
+            echo "FAIL: run_stages.sh ran with no caller to set its variables"
+            exit 1
+          fi
+
+          # A production script edited into smoke settings must refuse, exit 2.
+          # Written beside the real ones because each sources run_stages.sh from
+          # its own directory.
+          sed -e 's|^SITE_CONFIG=.*|SITE_CONFIG="configs/smoke_2P.toml"|' \
+              -e 's|^LABEL=.*|LABEL="_smoke"|' run_production.sh > ci_bad.sh
+          chmod +x ci_bad.sh
+          set +e; ./ci_bad.sh --dry-run >/dev/null 2>&1; rc=$?; set -e
+          rm -f ci_bad.sh
+          if [ "$rc" -ne 2 ]; then
+            echo "FAIL: smoke settings in a production run were not refused (exit $rc)"
+            exit 1
+          fi
+          echo "shell drivers OK"
+
+      # Pure Python and portable, but it is the only non-Julia tool shipped, so
+      # it gets checked on both platforms. 18 assertions against a built-in
+      # fixture; no delivery files needed.
+      - name: ASEG-GDF converter self-test
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pyarrow numpy
+          python3 util/aseg_to_geoparquet.py --selftest
+
   reject-old-julia:
     name: install.jl refuses Julia 1.11
     runs-on: ubuntu-latest
@@ -106,8 +157,45 @@ jobs:
           if [ "$rc" -eq 0 ]; then
             echo "FAIL: install.jl accepted Julia 1.11"; exit 1
           fi
-          echo "$out" | grep -q "needs Julia 1.12 or newer" || {
+          # Matches install.jl's actual wording. This grep said "needs Julia
+          # 1.12 or newer" and went stale the moment the gate became a RANGE
+          # rather than a floor, which would have failed this job for the wrong
+          # reason on the next push.
+          echo "$out" | grep -q "needs Julia 1.12.x" || {
             echo "FAIL: exited non-zero but not from the version gate"; exit 1; }
+          if [ "$elapsed" -gt 60 ]; then
+            echo "FAIL: took ${elapsed}s, so it did not stop at step 0"; exit 1
+          fi
+          echo "refused at step 0, as intended"
+
+  reject-new-julia:
+    name: install.jl refuses Julia 1.13
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.13'
+      # The counterpart to reject-old-julia, added when the gate became a RANGE
+      # on 12 Nov 2026. Setup failed on 1.13 and the old check let it through,
+      # because it tested only the floor and its message said "1.12 or newer" --
+      # so 1.13 passed step 0 and died later somewhere that never mentions the
+      # version. The Manifest is machine-generated, declares julia_version
+      # 1.12.6 and pins stdlibs from that series.
+      - name: must refuse at step 0, as too new
+        run: |
+          start=$(date +%s)
+          set +e
+          out=$(julia --project=. install.jl 2>&1); rc=$?
+          set -e
+          elapsed=$(( $(date +%s) - start ))
+          echo "$out"
+          echo "--- exit $rc after ${elapsed}s"
+          [ "$rc" -eq 0 ] && { echo "FAIL: install.jl accepted Julia 1.13"; exit 1; }
+          echo "$out" | grep -q "which is newer" || {
+            echo "FAIL: exited non-zero but not from the upper bound of the gate"
+            exit 1; }
           if [ "$elapsed" -gt 60 ]; then
             echo "FAIL: took ${elapsed}s, so it did not stop at step 0"; exit 1
           fi
