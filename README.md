@@ -262,9 +262,9 @@ the screen selection pins to the base of the grid without one.
 To turn a GA ASEG-GDF AEM delivery into GeoParquet:
 
 ```bash
-python3 tools/aseg_to_geoparquet.py <stem> -o out.parquet   # needs pyarrow
-python3 tools/aseg_to_geoparquet.py <stem> --schema         # layout only
-python3 tools/aseg_to_geoparquet.py --selftest              # no files needed
+python3 util/aseg_to_geoparquet.py <stem> -o out.parquet   # needs pyarrow
+python3 util/aseg_to_geoparquet.py <stem> --schema         # layout only
+python3 util/aseg_to_geoparquet.py --selftest              # no files needed
 ```
 
 It reads the `.dfn` layout, streams the fixed-width `.dat`, and writes one

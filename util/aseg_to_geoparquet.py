@@ -6,14 +6,17 @@ layout, a fixed-width `.dat` holding the records, and a `.prj` or `.des` with
 the projection and survey notes. This reads the `.dfn`, streams the `.dat`, and
 writes one GeoParquet file with a WKB point geometry column.
 
-    python3 fieldrun/tools/aseg_to_geoparquet.py <stem-or-.dat> -o out.parquet
-    python3 fieldrun/tools/aseg_to_geoparquet.py <stem> --limit 1000 --schema
+    python3 util/aseg_to_geoparquet.py <stem-or-.dat> -o out.parquet
+    python3 util/aseg_to_geoparquet.py <stem> --limit 1000 --schema
+    python3 util/aseg_to_geoparquet.py --selftest
 
 Why this exists: the deliveries are 2.8 GB and 4.9 GB, so every question about
 them ("which line passes near this site", "what is the gate structure") turned
-into a bespoke seek-reading script. `fieldrun/tools/assemble_example.py` reads
-a nav GeoParquet that was produced by hand outside the repository; this is the
-step that was missing.
+into a bespoke seek-reading script, and the nav GeoParquet the field workflow
+once consumed had been produced by hand outside the repository. This is the step
+that was missing. It is survey-data preparation, not part of any inversion
+stage, which is why it sits in util/ rather than tools/ and why it outlived the
+field workflow it was first written beside.
 
 WHAT IT GETS RIGHT, because each was checked against both real deliveries:
 
