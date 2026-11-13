@@ -48,6 +48,25 @@ true window conductance lies inside it: test one 0.2063 S in 0.0296–0.3447 S,
 test two 0.6856 S in 0.0319–7.079 S. (Those gate ranges are themselves under
 revision in M1.1; see `gate_check/results/edge_profile.md`.)
 
+## Gate threshold — UNDER REVIEW
+
+The accepted band is `chi2 <= N + 3.84` (`stage4_gate_v2.jl:260`,
+`config.toml:385`), an **absolute** criterion. The 3.84 is the one-parameter 95%
+chi-squared increment, specified in `PLAN_CHAINED_HYPOTHESES.md:237` as a
+**relative** one, `delta-chi2 <= 3.84`. Anchoring it to N instead was a
+deliberate guard against an unreliable chiref, the reason given in
+`ek_realdata/REPORT_v1_firstfive.md:559-563`: the unconstrained solve was
+observed to stall above the constrained sweep, so it is not reliably the
+minimum.
+
+Current status: **the rule is unchanged and still drives the verdict.** Both
+bands are now computed and stored per column, with truth inside or outside for
+each (`gate_check/results/both_rules.md`). Under the absolute rule truth is
+inside on all four columns; under the relative rule it is outside on 3P and the
+band is empty on 2P and 2S, the latter being direct evidence that the refits are
+not genuine minimisations. Whether the relative rule becomes usable depends on
+M1.1 item 3.
+
 ## Petrophysics
 
 **The salinity step uses porosity from the prior**, U(0.25, 0.40), with the SNMR
