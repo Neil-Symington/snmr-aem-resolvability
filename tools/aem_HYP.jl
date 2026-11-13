@@ -27,7 +27,12 @@ const TAG      = length(ARGS) >= 2 ? ARGS[2] : ""
 # wider-tempered chain cannot overwrite the production posterior.
 const NCHAINS  = length(ARGS) >= 3 ? parse(Int, ARGS[3]) : 4
 const LABEL    = length(ARGS) >= 4 ? ARGS[4] : ""
-const TMAX     = 2.5
+# Sampler knobs, overridable from the environment for the convergence test
+# (branch sampler-convergence-test). The defaults below are the production
+# values, so an unset environment reproduces the production run exactly.
+const TMAX     = haskey(ENV, "SCT_TMAX")   ? parse(Float64, ENV["SCT_TMAX"]) : 2.5
+const NMAX_K   = haskey(ENV, "SCT_NMAX")   ? parse(Int,     ENV["SCT_NMAX"]) : 40
+const NCHAIN1  = haskey(ENV, "SCT_NCHAINSATONE") ? parse(Int, ENV["SCT_NCHAINSATONE"]) : 1
 const NDRAWS   = 30
 const SEED     = 20261012
 # The AEM noise realisation is pinned to HiQGA's makenoisydata! default, 123,
@@ -76,9 +81,10 @@ function main()
         dlow = aem.dlow, dhigh = aem.dhigh,
         σlow = aem.σlow, σhigh = aem.σhigh,
         nsamples = NSAMPLES, nchains = NCHAINS, Tmax = TMAX,
+        nmax_k = NMAX_K, nchainsatone = NCHAIN1,
         noise_scale = 1.0, rseed_noise = NOISE_RSEED)
 
-    opt = make_aem_opt(grid.znall, "hypsynth_aem_")
+    opt = make_aem_opt(grid.znall, "hypsynth_aem_"; nmax = NMAX_K)
     old = pwd(); cd(rundir)
     t0 = time()
     # THE CHAIN IS NOT SEEDED, AND CANNOT BE FROM HERE. `Random.seed!(SEED)`
@@ -118,7 +124,7 @@ function main()
     Random.seed!(SEED)
     try
         transD_GP.main(opt, aem; Tmax = TMAX, nsamples = NSAMPLES,
-                       nchains = NCHAINS, nchainsatone = 1)
+                       nchains = NCHAINS, nchainsatone = NCHAIN1)
     finally
         cd(old)
     end

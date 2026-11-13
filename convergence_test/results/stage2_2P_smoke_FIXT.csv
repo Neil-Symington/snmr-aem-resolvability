@@ -1,0 +1,2 @@
+stage,tag,setting,quantity,rhat,ess_bulk,ess_tail,med_spread_factor,p05_spread_factor,p95_spread_factor,pass
+2,2P,smoke_FIXT,Q1 window water content,2.5587,50.7,43.0,1.1116,1.1247,1.1046,false
