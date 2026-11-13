@@ -19,7 +19,7 @@ mkpath(joinpath(HERE, "results"))
 "Nodes, chi2, solver flags for one column, from whichever record the file has."
 function profile(tag)
     D = load(joinpath(P, "synth_$tag", "stage4_synth_$tag.jld2"))
-    thr = D["chiref"] + 3.84
+    thr = D["ndata"] + 3.84      # stage4_gate_v2.jl:260  target = ndata + delta_chi2
     if haskey(D, "coarse")                      # two-pass: the coarse sweep
         C = D["coarse"]
         (lt = C["ltc"], chi2 = C["chi2"], good = C["good"], nbound = C["nbound"],
@@ -37,7 +37,8 @@ emit(s="") = (println(s); println(io, s))
 emit("# M1.1 — is each gate edge a data limit?")
 emit()
 emit("chi2 against forced window conductance, continued past both reported edges.")
-emit("Threshold is chiref + 3.84. Read only from stored Stage 4 output; no solves.")
+emit("Threshold is **N + 3.84** (`stage4_gate_v2.jl:260`, `target = ndata + delta_chi2`),")
+emit("an ABSOLUTE fit criterion, not a profile-likelihood one referenced to chiref.")
 emit()
 
 csv = open(joinpath(HERE, "results", "edge_profile.csv"), "w")
@@ -49,8 +50,8 @@ for tag in ("3P", "3S")
     hi_rep = haskey(D,"edge_hi_dex") ? 10^D["edge_hi_dex"]*p.L : NaN
     emit("## $tag  ($(p.which))")
     emit()
-    emit(@sprintf("chiref %.3f, threshold %.3f, window thickness %.1f m, sigma search bounds %s S/m.",
-                  p.chiref, p.thr, p.L, string(D["sigma_bounds"])))
+    emit(@sprintf("N = %d, chiref %.3f, threshold N+3.84 = %.3f, window thickness %.1f m, sigma search bounds %s S/m.",
+                  D["ndata"], p.chiref, p.thr, p.L, string(D["sigma_bounds"])))
     isnan(lo_rep) || emit(@sprintf("Reported band %.4f - %.4f S (edge_solves = %s).",
                                    lo_rep, hi_rep, string(get(D,"edge_solves","-"))))
     emit()
