@@ -65,7 +65,7 @@ subs = [
 ]
 for (a, b) in subs
     count(a, t) == 1 || error("expected exactly one occurrence of:\n  $a\nin $src (found $(count(a, t)))")
-    t = replace(t, a => b)
+    global t = replace(t, a => b)
 end
 # stage1_draws differs per column (2P points at aem_draws_2M, deliberately), so
 # it is rewritten by pattern rather than by literal.
