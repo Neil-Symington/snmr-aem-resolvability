@@ -53,6 +53,10 @@ function main()
     ix = n >= NDRAW ? sort(randperm(n)[1:NDRAW]) : collect(1:n)
     σ = hcat([10 .^ (-F[i][:]) for i in ix]...)        # S/m, per AEM cell
     @printf("%s: %d post-burn-in models, keeping %d  (%d cells)\n", TAG, n, length(ix), size(σ,1))
+    # Fewer models than asked for is a quiet way to get a thinner Stage 5 than
+    # intended, so it warns rather than sitting in an info line.
+    n < NDRAW && @warn "fewer post-burn-in models than requested: Stage 5 will " *
+                       "see a smaller sample than the config implies" wanted=NDRAW got=n
     jldsave(joinpath(OUT, "aem_draws_$(TAG).jld2");
             zall_aem = grid.zall, sigma = σ, draw_ix = ix, ndraws_total = n, seed = SEED)
     println("wrote aem_draws_$(TAG).jld2")

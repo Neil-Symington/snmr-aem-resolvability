@@ -100,6 +100,25 @@ jobs:
           ./ci_empty.sh --dry-run
           rm -f ci_empty.sh
 
+          # EXIT STATUS ON SUCCESS, for both kinds. A production run that
+          # succeeded exited 1, because `[ "$RUN_KIND" = smoke ] && echo ...`
+          # was the last command and the test is false in production. Smoke
+          # exited 0, so a smoke-only check could not see it, and --dry-run
+          # returns earlier than the line in question -- which is why the dry
+          # runs above did not catch it either. Run the empty-STAGES case for
+          # real, in both kinds, and assert 0.
+          for k in smoke production; do
+            sed 's/^STAGES=.*/STAGES=""/' "run_$k.sh" > "ci_exit_$k.sh"
+            chmod +x "ci_exit_$k.sh"
+            set +e; "./ci_exit_$k.sh" >/dev/null 2>&1; rc=$?; set -e
+            rm -f "ci_exit_$k.sh"
+            if [ "$rc" -ne 0 ]; then
+              echo "FAIL: a successful $k run exited $rc, not 0"
+              exit 1
+            fi
+          done
+          echo "both kinds exit 0 on success"
+
           # run_stages.sh is not an entry point and must refuse to run alone.
           if bash run_stages.sh --dry-run >/dev/null 2>&1; then
             echo "FAIL: run_stages.sh ran with no caller to set its variables"

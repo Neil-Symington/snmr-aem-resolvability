@@ -8,7 +8,13 @@ const mpl = PyPlot.matplotlib
 length(ARGS) >= 1 || error("usage: plot_truth.jl <truth.jld2> [zmax]")
 T = load(ARGS[1]); ZB = length(ARGS) >= 2 ? parse(Float64, ARGS[2]) : 110.0
 zf = T["z"]; units = T["units"]; tr = T["trans"]
-out = replace(ARGS[1], "_truth.jld2" => "_truth.png")
+# NOT replace(ARGS[1], "_truth.jld2" => "_truth.png"): a path that does not
+# contain that substring came back UNCHANGED, so the output path was the input
+# path. data/truth_murray2P.jld2 is exactly such a path, and it is what Stage 1
+# reads -- only matplotlib refusing to write a .jld2 stopped the truth file
+# being overwritten by its own plot.
+out = splitext(ARGS[1])[1] * ".png"
+out == ARGS[1] && error("refusing to write the plot over its own input: $out")
 
 # colour by lithology from the unit name, not by position in the list
 function litho(nm)

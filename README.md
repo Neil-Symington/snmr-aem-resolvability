@@ -191,9 +191,13 @@ Stage 1 reads `data/truth_murray<T>.jld2`, and nothing automates getting a
 generator-built column there under that name — a reviewer had to work that out
 twice. Do it explicitly:
 
+`<name>` is the scenario config's `name` and `<T>` is the column tag, so for
+the worked example they are `confined_aquifer` and `2P`. Pasted with the angle
+brackets left in, this fails with `bash: name: No such file or directory`.
+
 ```bash
 mkdir -p data
-cp synthetics/output/<name>_truth.jld2 data/truth_murray<T>.jld2
+cp synthetics/output/confined_aquifer_truth.jld2 data/truth_murray2P.jld2
 ```
 
 Then:

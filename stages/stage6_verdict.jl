@@ -193,11 +193,15 @@ function main()
     # solver's sigma_min, not at the data, so there is nothing to subtract from
     # and stage4_floor.jl returns zero.
     floor_tds = 0.0
+    floor_edge = ""          # "OPEN", "CLOSED", or "" when there is no record
     let ff = joinpath(ROOT, "outputs", "stage4_floor", "floor.jld2"),
         tag = replace(cfg["name"], "synth_" => "")
         if isfile(ff)
             D = load(ff)
-            haskey(D, tag) && (floor_tds = D[tag].floor_tds)
+            if haskey(D, tag)
+                floor_tds  = D[tag].floor_tds
+                floor_edge = String(D[tag].edge_lo_status)
+            end
         end
     end
     floor_fails = isfinite(floor_tds) && floor_tds > Float64(sv["value"])
@@ -243,8 +247,15 @@ function main()
     push!(rows, ("Verdict: water", v_water, ""))
     push!(rows, ("Stage 4 floor under stated ceilings",
         @sprintf("TDS >= %.0f mg/L", floor_tds),
-        floor_tds > 0 ? "clay, porosity and m all at their config ceilings" :
-                        "zero: the band's lower edge is OPEN, so there is no measured minimum conductance"))
+        # A zero floor has TWO causes and this row claimed only one of them.
+        # It said the lower edge was OPEN whatever the edge actually was, while
+        # stage4_floor.jl's own table in the log distinguished them: on a 2P
+        # production run the edge was CLOSED and the table said "floor below the
+        # line", and this row still blamed an open edge.
+        floor_tds > 0    ? "clay, porosity and m all at their config ceilings" :
+        floor_edge == "OPEN"   ? "zero: the band's lower edge is OPEN, so there is no measured minimum conductance" :
+        floor_edge == "CLOSED" ? "zero: the lower edge is closed, but C_lo is too low for any clay ceiling to leave water behind" :
+                                 "zero: no stage4_floor record for this column"))
     push!(rows, ("Verdict: salinity", v_sal, v_sal_note))
     push!(rows, ("Verdict: OVERALL", overall, ""))
 

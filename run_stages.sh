@@ -119,7 +119,7 @@ cost_of() {
         stage1.smoke)         echo "~10 min" ;;
         stage1.production)    echo "~3.5 h" ;;
         stage2.smoke)         echo "~10 min" ;;
-        stage2.production)    echo "hours" ;;
+        stage2.production)    echo "~25 min measured, 8 threads" ;;
         site.smoke)           echo "~45 min, nearly all Stage 4" ;;
         site.production)      echo "~1.5 h, nearly all Stage 4" ;;
     esac
@@ -269,8 +269,9 @@ echo "  logs     $LOGDIR"
 # both at 4 as constants and reads no flag for either, so nothing here pretends
 # to set them.
 echo "  Stage 2 runs 4 chains x 4 ensembles regardless; that stage takes no flag for it"
-[ "$RUN_KIND" = smoke ] && \
+if [ "$RUN_KIND" = smoke ]; then
     echo "  SMOKE: proves the paths run. Do not quote a number from it."
+fi
 echo
 
 if wants truth; then
@@ -361,8 +362,13 @@ if wants site; then
                   print(c["output"]["dir"], "/verdict_", c["name"], ".md")' "$SITE_CONFIG")
     if [ -e "$V" ]; then
         echo "complete -- verdict table at $V"
-        [ "$RUN_KIND" = smoke ] && \
+        # `[ test ] && echo` as the LAST command makes the script exit 1 when
+        # the test is false, so every successful PRODUCTION run exited 1 while
+        # smoke runs exited 0 -- which is why CI never saw it. Anything checking
+        # the exit status read a complete run as a failure.
+        if [ "$RUN_KIND" = smoke ]; then
             echo "  and it is a SMOKE table. Do not quote a number from it."
+        fi
     else
         # "the loop ended" is not "it worked". Saying complete over a run that
         # produced no output is the defect this line exists to prevent.
@@ -372,3 +378,4 @@ if wants site; then
 else
     echo "complete -- stages run: $STAGES"
 fi
+exit 0
