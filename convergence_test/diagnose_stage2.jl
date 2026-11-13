@@ -19,7 +19,7 @@ const CONDF   = length(ARGS) >= 1 ? ARGS[1] : "data/cond_C2_typical2PT.jld2"
 const TAG     = length(ARGS) >= 2 ? ARGS[2] : "2P"
 const SETTING = length(ARGS) >= 3 ? ARGS[3] : "b1"
 
-const WINDOWS = Dict("2P" => (17.5, 33.5), "1P" => (7.5, 23.5))
+const WINDOWS = Dict("2P" => (17.5, 33.5), "3P" => (7.5, 23.5))
 const WIN = get(WINDOWS, TAG, (17.5, 33.5))
 
 isfile(CONDF) || (println("missing cond file: ", CONDF); exit(1))

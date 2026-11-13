@@ -9,7 +9,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 while pgrep -f "tools/aem_HYP.jl" > /dev/null 2>&1; do sleep 20; done
 echo "machine clear at $(date -Is)"
 
-for TAG in 2P 1P; do
+for TAG in 2P 3P; do
     echo "### B1 $TAG starting $(date -Is)"
     bash "$HERE/run_stage1_setting.sh" b1 "$TAG" 200001 4
     echo "### B1 $TAG finished $(date -Is)"

@@ -38,7 +38,7 @@ const NENS    = length(ARGS) >= 3 ? parse(Int, ARGS[3]) : 4
 # itself (6-40 m). Stated here because it is a judgement, not a given.
 const WINDOWS = Dict(
     "2P" => (win = (17.5, 33.5), pkg = (4.0, 34.0)),
-    "1P" => (win = ( 7.5, 23.5), pkg = (6.0, 40.0)),
+    "3P" => (win = ( 7.5, 23.5), pkg = (6.0, 40.0)),
 )
 const W = get(WINDOWS, TAG, (win = (17.5, 33.5), pkg = (4.0, 34.0)))
 
