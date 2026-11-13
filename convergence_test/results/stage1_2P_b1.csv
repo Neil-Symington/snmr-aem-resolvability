@@ -1,0 +1,3 @@
+stage,tag,setting,quantity,rhat,ess_bulk,ess_tail,med_spread_factor,pass
+1,2P,b1,Q2 window conductance,1.1267,40.6,97.9,1.2347,false
+1,2P,b1,Q3 package conductance,1.1197,36.1,153.8,1.0537,false
