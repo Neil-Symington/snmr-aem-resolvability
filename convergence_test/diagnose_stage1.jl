@@ -23,7 +23,7 @@ const OUT  = joinpath(ROOT, "data")
 const GADI_SRC = joinpath(ROOT, "src")
 include(joinpath(ROOT, "src", "aem_setup.jl"))
 include(joinpath(ROOT, "src", "prerun_config.jl"))
-include("/home/symo/Documents/GA/AEM_SMR_Resolvability_Quickrun/ek_prerun/prerun_lib.jl")
+include(joinpath(HERE, "prerun_lib.jl"))
 using HiQGA.transD_GP
 using .PrerunLib
 const CFG = PrerunConfig

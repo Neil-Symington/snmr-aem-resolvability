@@ -11,7 +11,7 @@ using JLD2, Statistics, Printf
 const HERE = normpath(@__DIR__)
 const ROOT = normpath(joinpath(HERE, ".."))
 include(joinpath(ROOT, "src", "prerun_config.jl"))
-include("/home/symo/Documents/GA/AEM_SMR_Resolvability_Quickrun/ek_prerun/prerun_lib.jl")
+include(joinpath(HERE, "prerun_lib.jl"))
 using .PrerunLib
 const CFG = PrerunConfig
 

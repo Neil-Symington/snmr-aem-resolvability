@@ -1,0 +1,4 @@
+stage,tag,setting,quantity,rhat_or_segrhat,ess_bulk,ess_tail
+1,2P,production,Q2 window conductance,NaN,NaN,NaN
+1,2P,production,Q3 package conductance,NaN,NaN,NaN
+2,2P,production,Q1 window water content,2.5587,50.7,43.0
