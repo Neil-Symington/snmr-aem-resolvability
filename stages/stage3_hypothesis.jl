@@ -209,14 +209,22 @@ function main()
     # SHALLOWEST (cheapest to drill). Every step is a tie-break, not a model
     # choice: it only ever picks among windows the data cannot separate.
     Pmax = maximum(Pw)
-    tol  = max(sqrt(max(Pmax*(1-Pmax), 0.0)/nd), 1/nd)
+    # 1/nd is a MONTE CARLO tolerance: the smallest probability one draw can
+    # resolve. With a single draw -- a deterministic inversion fed through as a
+    # one-draw ensemble -- it evaluates to 1.0, which is the whole probability
+    # range, so `tol` swallows every window, `cand` becomes all of them, and the
+    # run reports every window tied and the criterion saturated no matter what
+    # the model says. A deterministic model has no sampling error at all, so the
+    # tolerance is zero there. Identical arithmetic for nd > 1.
+    mctol = nd == 1 ? 0.0 : 1/nd
+    tol  = max(sqrt(max(Pmax*(1-Pmax), 0.0)/nd), mctol)
     cand = findall(>=(Pmax - tol), Pw)
     bykey = sort(cand, by = q_ -> (-W5[q_],
                                    dgrid[pairs[q_][2]] - dgrid[pairs[q_][1]],
                                    dgrid[pairs[q_][1]]))
     bq = bykey[1]; bPi, bPj = pairs[bq]; bestP = Pw[bq]
     n_tied = length(cand)
-    saturated = Pmax >= 1 - 1/nd && n_tied > 1
+    saturated = Pmax >= 1 - mctol && n_tied > 1
 
     tops  = dgrid[besti]; bases = dgrid[bestj]; lens = bases .- tops
 
@@ -224,7 +232,7 @@ function main()
     # already clears the threshold on most draws, the criterion cannot fail
     # and a "PASS" on it is a property of the spec, not of the column.
     Wmin_any = minimum(W5); Wmax_any = maximum(W5)
-    frac_windows_pass = count(>=(1 - 1/nd), Pw) / np
+    frac_windows_pass = count(>=(1 - mctol), Pw) / np
     P_perdraw = count(>=(wval), bestW) / nd
     se(p) = sqrt(max(p * (1 - p), 0.0) / nd)
     q(v, p) = quantile(v, p)
