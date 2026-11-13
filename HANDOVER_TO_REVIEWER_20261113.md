@@ -141,6 +141,41 @@ for how to handle it.
 
 ---
 
+## 4b. First Occam-against-sampler result, Stage 3 on 2P
+
+Like for like, both from `stage3_*.jld2`. The sampler column is the 1–2 Nov run,
+which is why I want yours.
+
+| | sampler, 20,008 draws | Occam, 1 model | truth |
+|---|---|---|---|
+| primary intervals | 9.50–39.75 m (p_pass 1.00) **and** 41.25–60.00 m (0.61) | **5.00–60.00 m** (1.00) | aquifer 18–34 m |
+| secondary | 8.25–9.50, 39.75–41.25 | none | |
+| windows passing the water criterion | **7.6%** | **47.3%** | |
+| windows tied | 436 | 2698 | |
+| tie-break window | 17.50–33.50 m | **17.25–33.25 m** | 18–34 m |
+| W(p5), worst / best window | 0.068 / 2.833 m | 0.460 / 3.895 m | |
+
+Two things fall out, and they point opposite ways.
+
+**The location agrees.** The tie-break window lands at 17.25–33.25 m against the
+sampler's 17.50–33.50 m, and the truth aquifer is 18–34 m. A quarter of a metre
+apart. Occam finds the aquifer.
+
+**The interval does not.** Occam returns the entire allowed range, 5–60 m, and
+6.2x as many windows clear the water criterion. The mechanism is that the
+criterion is a **lower-percentile test**: P(W >= w) is driven by W(p5), and with
+no posterior spread W(p5) collapses onto the point value, which is far higher.
+The worst window's W(p5) goes from 0.068 m to 0.460 m for that reason alone.
+
+So on this column the sampler is not buying the *location* of the aquifer — it
+is buying the ability to **bound** it. That is a sharper statement of what the
+trans-D machinery is for than "the workflow depends on it", and if it holds on
+the other three columns it bears directly on how the convergence problem should
+be framed.
+
+Worth noting the sampler run is itself flagged `saturated = true` with 436 tied
+windows, so saturation is not an artefact of going deterministic.
+
 ## 5. State of play
 
 Running here: B1, the control — production settings, four independent
