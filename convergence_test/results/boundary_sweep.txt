@@ -1,0 +1,42 @@
+======================================================================================
+3P   config synthetics/config/paper_3P.toml   truth truth_murray3P.jld2  hash d9de86c430ab0165
+======================================================================================
+ensembles found: 4
+
+package conductance, top fixed at 6.0 m, base swept (S)
+base         truth | ensemble p50 (1..4)                     | mean/truth
+  36.0 m    0.3924 | 0.3344  0.3286  0.3347  0.3023          |    0.83x
+  38.0 m    0.4412 | 0.3847  0.3908  0.4100  0.3464          |    0.87x
+  40.0 m    0.9142 | 0.5041  0.4980  0.5613  0.4477          |    0.55x
+  42.0 m    1.7598 | 0.9256  0.9893  0.9256  1.1550          |    0.57x
+  44.0 m    3.5650 | 2.2072  2.1422  2.0731  2.3072          |    0.61x
+
+window 7.5-23.5 m: truth 0.2063 S
+  gate accepted range 0.0296 - 0.3447 S  (lower edge OPEN, upper edge OPEN; stage4_synth_3P.jld2)
+  TRUE window conductance is INSIDE the gate range
+  ensemble 1 sampled p05-p95 0.0964 - 0.2466 S : truth inside
+  ensemble 2 sampled p05-p95 0.0659 - 0.2365 S : truth inside
+  ensemble 3 sampled p05-p95 0.0616 - 0.2472 S : truth inside
+  ensemble 4 sampled p05-p95 0.0807 - 0.2225 S : truth inside
+
+======================================================================================
+2P   config synthetics/config/confined_aquifer.toml   truth truth_murray2P.jld2  hash 33bf02a46442711e
+======================================================================================
+ensembles found: 4
+
+package conductance, top fixed at 4.0 m, base swept (S)
+base         truth | ensemble p50 (1..4)                     | mean/truth
+  30.0 m    5.2833 | 6.0422  5.9993  6.0274  5.9708          |    1.14x
+  32.0 m    5.3416 | 6.2126  6.3351  6.3385  6.1891          |    1.17x
+  34.0 m    5.6022 | 6.4202  6.7651  6.6960  6.4571          |    1.18x
+  36.0 m    6.3086 | 6.6699  7.3228  7.1088  6.8609          |    1.11x
+  38.0 m    7.5403 | 7.0148  7.9759  7.5249  7.3519          |    0.99x
+
+window 17.5-33.5 m: truth 0.6856 S
+  gate accepted range 0.0319 - 7.0790 S  (lower edge OPEN, upper edge closed; verdict_synth_2P.csv (1-2 Nov))
+  TRUE window conductance is INSIDE the gate range
+  ensemble 1 sampled p05-p95 0.4736 - 3.0929 S : truth inside
+  ensemble 2 sampled p05-p95 0.7121 - 3.0465 S : truth **OUTSIDE**
+  ensemble 3 sampled p05-p95 0.8262 - 3.4940 S : truth **OUTSIDE**
+  ensemble 4 sampled p05-p95 0.7168 - 2.4536 S : truth **OUTSIDE**
+
