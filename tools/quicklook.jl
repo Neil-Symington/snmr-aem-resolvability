@@ -174,6 +174,19 @@ function smr_quicklook()
             χ2, χ2/nq, λ2, it)
     ok = verdict("the SNMR inversion", χ2/nq)
 
+    # Save it. This used to print the profile and keep nothing, which left the
+    # deterministic SNMR branch with no producer -- the same gap aem_occam had
+    # before this tool wrote it. Stages 3 and beyond need the profile, not the
+    # RMS, so it goes to disk under its own name and cannot collide with a
+    # cond_* ensemble file.
+    sf = joinpath(OUT, "smr_occam$(TAG).jld2")
+    jldsave(sf; θ_occam = w, zsmr = zsmr, chi2 = χ2, ndata = nq, λ² = λ2,
+            θ_true = wtru, σ_kernel = σk, z_kernel = zk,
+            regtype = String(SMR_REG), β² = SMR_BETA2, w0 = SMR_W0,
+            tag = TAG, mode = "target",
+            note = "deterministic Occam, one model, no posterior; quicklook.jl")
+    println("  wrote ", relpath(sf, ROOT))
+
     @printf("  recovered theta vs truth, RMS: %.4f v/v over %d cells\n", rms(w, wtru), nz)
     for (lo, hi) in ((0.0, 40.0), (40.0, 80.0), (80.0, zsmr[end]))
         k = band(zsmr, lo, hi)
