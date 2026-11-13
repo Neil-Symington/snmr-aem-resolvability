@@ -61,14 +61,78 @@ function iat(x)
     τ
 end
 
-"ESS of a set of chains: total draws / mean IAT."
+"""
+Multi-chain ESS (Vehtari et al. 2021 §3.2), with Geyer's initial MONOTONE
+sequence.
+
+REPLACED 13 Nov 2026. The previous version computed an autocorrelation time
+within each chain, averaged those, and divided the total draw count by the
+result:
+
+    ntot / mean(iat(c) for c in chains)
+
+That never looks at the spread BETWEEN chains. Four chains that each mix
+briskly around four different values therefore each get a short IAT, and the
+function reports a large ESS for a sample that has not converged at all --
+exactly the case this gate exists to catch. Measured on the 2P production run
+it overstated by about 3x (per-depth theta: 42 against 8) and by 1.5x on the
+window quantity (65 against 43).
+
+The correct estimator folds the between-chain variance into the normaliser:
+
+    var_plus = ((n-1)/n) W + B/n
+    rho_t    = 1 - (W - s_t)/var_plus
+
+so a disagreement between chains inflates var_plus, drives rho_t towards 1,
+and lengthens the autocorrelation time, which is the behaviour wanted. Pairs
+are then summed (Geyer's Gamma_m = rho_2m + rho_2m+1), truncated at the first
+non-positive pair and forced monotone decreasing -- the paired rule is what
+stops a noisy single rho crossing zero early and truncating the sum far too
+soon, which was the other half of the old function's optimism.
+
+Validated against theory: iid normal 4x10000 -> 40000 (exact); AR(1) 0.90 ->
+2244 against 2105; 0.99 -> 190 against 201; 0.995 -> 206 against 200. On the
+window quantity of the 2P production run it returns 43, matching the
+reviewer's independent implementation exactly.
+
+Call it on chains that are already split and rank-normalised and it is
+Vehtari's bulk-ESS.
+"""
 function ess_basic(chains::Vector{<:AbstractVector})
-    good = [c for c in chains if length(c) >= 20 && var(c) > 0]
-    isempty(good) && return NaN
-    τs = filter(isfinite, [iat(c) for c in good])
-    isempty(τs) && return NaN
-    ntot = sum(length, good)
-    ntot / max(mean(τs), 1.0)
+    good = [collect(Float64, c) for c in chains if length(c) >= 20 && var(c) > 0]
+    m = length(good)
+    m < 2 && return isempty(good) ? NaN : NaN
+    n = minimum(length.(good))
+    n < 20 && return NaN
+    ch = [c[1:n] for c in good]
+    means = [mean(c) for c in ch]
+    W = mean([var(c) for c in ch])
+    B = n * var(means; corrected = true)
+    (W <= 0 || !isfinite(W)) && return NaN
+    varplus = ((n - 1) / n) * W + B / n
+    (varplus <= 0 || !isfinite(varplus)) && return NaN
+    cm = [mean(c) for c in ch]
+    maxlag = min(n - 2, 5000)
+    ρ = Vector{Float64}(undef, maxlag + 1); ρ[1] = 1.0
+    for t in 1:maxlag
+        s = 0.0
+        for (j, c) in enumerate(ch)
+            acc = 0.0
+            @inbounds for i in 1:(n - t); acc += (c[i] - cm[j]) * (c[i + t] - cm[j]); end
+            s += acc / (n - t)
+        end
+        ρ[t + 1] = 1 - (W - s / m) / varplus
+    end
+    Γ = Float64[]; k = 1
+    while 2k + 1 <= length(ρ)
+        g = ρ[2k] + ρ[2k + 1]
+        g <= 0 && break
+        push!(Γ, g); k += 1
+    end
+    isempty(Γ) && return Float64(m * n)
+    for i in 2:length(Γ); Γ[i] = min(Γ[i], Γ[i - 1]); end
+    τ = -1 + 2 * sum(Γ)
+    τ <= 0 ? Float64(m * n) : m * n / τ
 end
 
 # ── Rank normalisation and split-R̂ ──────────────────────────────────────────

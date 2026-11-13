@@ -190,7 +190,7 @@ if !isempty(CF) && isfile(CF)
     !isempty(allr) && @printf("all %d depths: median R-hat %.3f, max %.3f; median ESS %.0f\n",
                               length(allr), median(allr), maximum(allr), median(alle))
     # node counts per ensemble, from the Stage 2 chain files
-    rundir = joinpath(OUT, "smr_runs")
+    rundir = joinpath(dirname(CF), "smr_runs")
     if isdir(rundir)
         pats = filter(f -> startswith(f,"misfits_C2_") && endswith(f,"_s.bin") &&
                            occursin("2P", f), readdir(rundir))
