@@ -1,0 +1,4 @@
+profile_minchi2  tag=probe  stage0=stage0_synth_3P.jld2
+  N = 42 data ; window 7.50-23.50 m (support 16.0000 m, 9 of 65 cells)
+  grid: log10 sigma_eff -1.80 to -1.40 step 0.20 -> 3 nodes ; lambda2 = [1.0]
+  parameter bounds, log10 sigma per cell: (-3.0, 1.0)  -> sigma 1.0e-03 to 1.0e+01 S/m

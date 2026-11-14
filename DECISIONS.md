@@ -48,6 +48,32 @@ true window conductance lies inside it: test one 0.2063 S in 0.0296–0.3447 S,
 test two 0.6856 S in 0.0319–7.079 S. (Those gate ranges are themselves under
 revision in M1.1; see `gate_check/results/edge_profile.md`.)
 
+## Gate band definition
+
+**The band is min chi2 subject to the forced window conductance and the stated
+parameter bounds. Not chi2 at the MAP.** The gate asks whether any admissible
+model fits the data; smoothness is a device for stabilising the solve, not a
+criterion for admissibility. Min chi2 errs toward a wider band and a looser
+bound, which is the conservative direction.
+
+In practice: at each node the lowest chi2 is kept over all starts, both sweep
+directions and lambda2 in {0.01, 0.1, 1, 10}. chi2 at the MAP for lambda2 = 1 is
+recorded alongside so the difference is visible; the verdict uses min chi2. The
+parameter bounds define admissibility and are written into the output, and a
+node whose min chi2 is reached with parameters on their bounds is flagged.
+
+The same standard applies to the unconstrained solve: multi-start, lowest chi2.
+The pipeline then asserts `chiref <= min over nodes of the constrained chi2`
+within tolerance and fails loudly otherwise. That is the consistency check that
+would have caught the stall described in `gate_check/results/refit_diagnosis.md`.
+
+**Parameter bounds are not a config value.** `src/occam_core.jl` holds the clamp
+on log10 sigma in mutable `Ref`s, set by `setbounds!(lo, hi)` and read by
+`getbounds()`; the default (-3, 1) corresponds to `sigma_bounds = [1e-3, 10]`.
+The per-cell clamp is what limits how low the window conductance can be forced,
+so extending the search below 1e-3 S/m (M1.1 item 2) is a `setbounds!` call and
+must be recorded per run, not assumed from the config.
+
 ## Gate threshold — UNDER REVIEW
 
 The accepted band is `chi2 <= N + 3.84` (`stage4_gate_v2.jl:260`,
