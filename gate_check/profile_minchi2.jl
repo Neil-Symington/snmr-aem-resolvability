@@ -86,8 +86,8 @@ TAG = arg("tag","col")
 @printf("profile_minchi2  tag=%s  stage0=%s\n", TAG, basename(arg("stage0","")))
 @printf("  N = %d data ; window %.2f-%.2f m (support %.4f m, %d of %d cells)\n",
         ndata, wtop, wbot, thick, length(fixidx), n)
-@printf("  grid: log10 sigma_eff %.2f to %.2f step %.2f -> %d nodes ; lambda2 = %s\n",
-        lo, hi, step, NP, string(LAMS))
+@printf("  grid: log10 sigma_eff %.3f to %.3f, %d nodes ; lambda2 = %s ; starts = %s\n",
+        first(lt), last(lt), NP, string(LAMS), STARTS)
 # Parameter bounds define admissibility. occam_core holds them in Refs, so
 # item 2 (extend the search below 1e-3 S/m) is a setbounds! call, not a config
 # edit: the per-cell clamp is what limits how low the window conductance can be
