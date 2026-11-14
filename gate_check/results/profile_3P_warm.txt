@@ -1,0 +1,34 @@
+profile_minchi2  tag=3P_warm  stage0=stage0_synth_3P.jld2
+  N = 42 data ; window 7.50-23.50 m (support 16.0000 m, 9 of 65 cells)
+  grid: log10 sigma_eff -4.000 to -1.350, 12 nodes ; lambda2 = [0.01, 0.1, 1.0, 10.0] ; starts = warm
+  parameter bounds, log10 sigma per cell: (-4.0, 1.0)  -> sigma 1.0e-04 to 1.0e+01 S/m
+  chiref single start (m0 only): 25.3744
+  chiref multi-start: 25.374, 25.374, 39.468 -> chiref = 25.3744  (m0)
+  unconstrained reference took 170.0 s
+  profile done: 96 solves, 244.7 min elapsed
+i          C (S)   min chi2   MAP l2=1  nbound winning start           
+1         0.0016        Inf     26.063       0                         
+2         0.0051     25.093     26.009       0 warm_fwd@l2=0.01        
+3         0.0160     25.091     25.891       0 warm_fwd@l2=0.01        
+4         0.0506     25.091     25.769       0 warm_fwd@l2=0.01        
+5         0.1426     25.090     25.753       0 warm_fwd@l2=0.01        
+6         0.1795     25.089     25.924       0 warm_fwd@l2=0.01        
+7         0.2260     25.094     26.539       0 warm_fwd@l2=0.01        
+8         0.2845     26.089     28.249       0 warm_fwd@l2=0.1         
+9         0.3582     29.075     32.176       0 warm_fwd@l2=0.1         
+10        0.4509     47.878     48.975      12 warm_fwd@l2=0.1         
+11        0.5677    118.086    129.487      15 warm_bwd@l2=0.1         
+12        0.7147    463.746    536.011      10 warm_bwd_seed@l2=10.0   
+non-smooth nodes (min chi2 more than 2.0 above a linear interpolation of neighbours): none
+winning combination counts:
+                             1 nodes
+  warm_fwd@l2=0.01           6 nodes
+  warm_fwd@l2=0.1            3 nodes
+  warm_bwd@l2=0.1            1 nodes
+  warm_bwd_seed@l2=10.0      1 nodes
+CONSISTENCY: chiref 25.3744  <=  min over nodes 25.0891  (+1e-6) : **FAIL**
+absolute band (N+3.84 = 45.84): 0.0051 - 0.3582 S
+relative band (chiref+3.84 = 29.21): 0.0051 - 0.3582 S
+truth window C = 0.2063 S (truth hash d9de86c430ab)
+  absolute: INSIDE   relative: INSIDE
+96 solves, 244.7 min total

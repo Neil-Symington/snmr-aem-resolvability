@@ -1,0 +1,32 @@
+profile_minchi2  tag=2P_upper  stage0=stage0_occam_2P.jld2
+  N = 42 data ; window 17.50-33.50 m (support 16.0000 m, 8 of 65 cells)
+  grid: log10 sigma_eff -0.500 to 1.000, 7 nodes ; lambda2 = [1.0] ; starts = warm
+  parameter bounds, log10 sigma per cell: (-4.0, 1.0)  -> sigma 1.0e-04 to 1.0e+01 S/m
+  chiref single start (m0 only): 28.4589
+  chiref multi-start (unconstrained): 28.459, 28.459, 28.459 -> 28.4587  (rand2)
+  unconstrained reference took 217.8 s
+  profile done: 14 solves, 76.7 min elapsed
+REFERENCE MISFIT
+  unconstrained multi-start : 28.4587
+  min over constrained nodes: 32.0402  (at C = 5.0596 S)
+  gap (unconstrained - constrained): -3.5816 
+  chiref used = 28.4587
+i          C (S)   min chi2   MAP l2=1  nbound winning start           
+1         5.0596     32.040     32.040       0 warm_fwd_seed@l2=1.0    
+2         8.9975    200.934    200.934       7 warm_fwd@l2=1.0         
+3        16.0000   1709.007   1709.007      10 warm_fwd@l2=1.0         
+4        28.4525  29768.798   8578.777      17 warm_bwd@l2=1.0         
+5        50.5964        Inf  40490.855       0                         
+6        89.9746  95911.737  80374.020      22 warm_bwd@l2=1.0         
+7       160.0000        Inf 153545.914       0                         
+non-smooth nodes (min chi2 more than 2.0 above a linear interpolation of neighbours): [5]
+winning combination counts:
+  warm_fwd_seed@l2=1.0       1 nodes
+  warm_fwd@l2=1.0            2 nodes
+  warm_bwd@l2=1.0            2 nodes
+                             2 nodes
+absolute band (N+3.84 = 45.84): 5.0596 - 5.0596 S
+relative band (chiref+3.84 = 32.30): 5.0596 - 5.0596 S
+truth window C = 0.6856 S (truth hash 33bf02a46442)
+  absolute: **OUTSIDE**   relative: **OUTSIDE**
+14 solves, 76.8 min total
