@@ -55,6 +55,12 @@ zall = A["zall"]; n = length(aem.ρ) - 1; ndata = A["ndata"]
 dzc = diff(vcat(0.0, collect(Float64, zall)))
 R = makeR1(n); m0 = fill(-2.0, n); RtR = Matrix(R'R)
 const BETA2 = 0.01
+# --starts: "warm" = both warm sweeps only (the cheap prefix, ~45 s a solve);
+#           "mref" = warm sweeps plus one cold start from mref per node;
+#           "all"  = also a cold start from m0. Cold solves cost ~7 min each.
+const STARTS  = arg("starts", "all")
+const COLD    = STARTS in ("mref", "all")
+const COLD_M0 = STARTS == "all"
 
 wtop = parse(Float64, arg("top","7.5")); wbot = parse(Float64, arg("base","23.5"))
 celltop = vcat(0.0, collect(Float64, zall)[1:end-1]); cellbot = collect(Float64, zall)
@@ -64,9 +70,16 @@ dzeff = copy(dzc); dzeff[fixidx] .= ov[fixidx]
 thick = sum(dzeff[fixidx])
 
 LAMS = parse.(Float64, split(arg("lam","1,10"), ","))
-lo = parse(Float64, arg("lo","-3.0")); hi = parse(Float64, arg("hi","-1.0"))
-step = parse(Float64, arg("step","0.2"))
-lt = collect(lo:step:hi); NP = length(lt)
+# Either a uniform grid (--lo --hi --step) or an explicit node list (--nodes),
+# so the upper edge can be sampled finely without paying for fine nodes at the
+# bottom, where the edge only feeds a salinity floor that is zero anyway.
+lt = if haskey(ARG, "nodes")
+    sort(parse.(Float64, split(ARG["nodes"], ",")))
+else
+    collect(parse(Float64, arg("lo","-3.0")) : parse(Float64, arg("step","0.2")) :
+            parse(Float64, arg("hi","-1.0")))
+end
+NP = length(lt)
 TAG = arg("tag","col")
 
 # PARAMETER BOUNDS define admissibility. occam_core clamps m to fbounds; report them.
@@ -107,48 +120,79 @@ for k in 1:2
 end
 chirefs = [r[2][2] for r in refs]
 chiref = minimum(chirefs)
-@printf("\n  chiref multi-start: %s -> chiref = %.4f  (%s)\n",
+@printf("\n  chiref single start (m0 only): %.4f\n", chirefs[1])
+@printf("  chiref multi-start: %s -> chiref = %.4f  (%s)\n",
         join([@sprintf("%.3f", c) for c in chirefs], ", "), chiref,
         string(refs[argmin(chirefs)][1]))
 @printf("  unconstrained reference took %.1f s\n", time()-t0)
 flush(stdout)
 
 # ── the profile: both directions, cold starts, all lambda2 ────────────────
-best_chi = fill(Inf, NP); best_src = fill("", NP); best_nb = zeros(Int, NP)
-best_phi = fill(NaN, NP); map_chi_l1 = fill(NaN, NP)
-nsolves = 0
-for l2 in LAMS
-    for (dirname, order) in (("fwd", 1:NP), ("bwd", NP:-1:1))
-        warm = nothing
-        for i in order
-            C = 10^lt[i] * thick
-            starts = Any[("cold_mref", nothing), ("cold_m0", m0)]
-            warm !== nothing && push!(starts, ("warm_$dirname", warm))
-            for (sname, ms) in starts
-                st = ms === nothing ? refs[argmin(chirefs)][2][1] : ms
-                r = solve_at(C, l2, st); nsolves += 1
-                if r.conres < 1e-8 && r.chi < best_chi[i]
-                    best_chi[i] = r.chi; best_phi[i] = r.phi
-                    best_nb[i] = r.nbound
-                    best_src[i] = "$(sname)@l2=$(l2)"
+# In a function, deliberately. At top level Julia's soft scope makes `warm = r.m`
+# inside the nested loops bind a NEW local each iteration, which silently breaks
+# the warm-start chain instead of erroring. That is the whole mechanism this item
+# exists to fix, so it must not be reintroduced here.
+function run_profile(lt, LAMS, thick, mref0)
+    NP = length(lt)
+    best_chi = fill(Inf, NP); best_src = fill("", NP); best_nb = zeros(Int, NP)
+    best_phi = fill(NaN, NP); nsolves = 0
+    win_lam = fill(NaN, NP); win_start = fill("", NP); win_dir = fill("", NP)
+    for l2 in LAMS
+        for (dirname, order) in (("fwd", 1:NP), ("bwd", NP:-1:1))
+            warm = nothing
+            for i in order
+                C = 10^lt[i] * thick
+                # Cold starts do NOT depend on sweep direction, so they are run
+                # once per (node, lambda2) -- on the forward pass only. Running
+                # them again on the backward pass solved the identical problem
+                # twice, at ~7 min a solve.
+                starts = Any[]
+                if COLD && dirname == "fwd"
+                    push!(starts, ("cold_mref", mref0))
+                    COLD_M0 && push!(starts, ("cold_m0", m0))
                 end
-                sname == "warm_$dirname" && (warm = r.m)
-                ms === nothing && warm === nothing && (warm = r.m)
+                warm !== nothing && push!(starts, ("warm_" * dirname, warm))
+                isempty(starts) && push!(starts, ("warm_" * dirname * "_seed", mref0))
+                for (sname, ms) in starts
+                    r = solve_at(C, l2, ms); nsolves += 1
+                    if r.conres < 1e-8 && r.chi < best_chi[i]
+                        best_chi[i] = r.chi; best_phi[i] = r.phi
+                        best_nb[i]  = r.nbound
+                        best_src[i] = sname * "@l2=" * string(l2)
+                        win_lam[i] = l2
+                        win_start[i] = startswith(sname, "warm_") ? "warm" : sname
+                        win_dir[i] = startswith(sname, "warm_") ? dirname : "cold"
+                    end
+                    startswith(sname, "warm_") && (warm = r.m)
+                end
+                warm === nothing && (warm = solve_at(C, l2, mref0).m)
+                @printf("\r      l2=%-6g %s node %d/%d  C=%.4f S  best chi2 %.3f  (%d solves, %.1f min)        ",
+                        l2, dirname, findfirst(==(i), collect(order)), NP,
+                        10^lt[i]*thick, best_chi[i], nsolves, (time()-t0)/60)
+                flush(stdout)
             end
+            @printf("    lambda2 %-6g %s: %d solves cumulative\n", l2, dirname, nsolves)
+            flush(stdout)
         end
     end
-    @printf("  lambda2 %-6g done, %d solves, %.1f min elapsed\n", l2, nsolves, (time()-t0)/60)
-    flush(stdout)
+    (best_chi, best_src, best_nb, best_phi, nsolves, win_lam, win_start, win_dir)
 end
 
-# chi2 at the MAP for lambda2 = 1, for comparison
-if 1.0 in LAMS
-    warm = refs[argmin(chirefs)][2][1]
+"chi2 at the MAP for one lambda2, warm-started forward -- for comparison only."
+function run_map(lt, l2, thick, mref0)
+    NP = length(lt); out = fill(NaN, NP); warm = mref0
     for i in 1:NP
-        r = solve_at(10^lt[i]*thick, 1.0, warm); nsolves += 1
-        map_chi_l1[i] = r.chi; warm = r.m
+        r = solve_at(10^lt[i]*thick, l2, warm); out[i] = r.chi; warm = r.m
     end
+    out
 end
+
+mref0 = refs[argmin(chirefs)][2][1]
+best_chi, best_src, best_nb, best_phi, nsolves, win_lam, win_start, win_dir =
+    run_profile(lt, LAMS, thick, mref0)
+map_chi_l1 = (1.0 in LAMS) ? run_map(lt, 1.0, thick, mref0) : fill(NaN, length(lt))
+@printf("  profile done: %d solves, %.1f min elapsed\n", nsolves, (time()-t0)/60)
+flush(stdout)
 
 # ── report ────────────────────────────────────────────────────────────────
 mkpath(joinpath(HERE,"results"))
@@ -158,7 +202,9 @@ jldsave(joinpath(HERE,"results","profile_$(TAG).jld2");
     min_phi = best_phi, map_chi2_lambda1 = map_chi_l1,
     chiref = chiref, chirefs = chirefs, ndata = ndata, lams = LAMS,
     window = (top = wtop, base = wbot), fbounds = collect(OccamCore.FBOUNDS),
-    nsolves = nsolves, stage0 = arg("stage0",""))
+    nsolves = nsolves, stage0 = arg("stage0",""),
+    win_lambda2 = win_lam, win_start = win_start, win_direction = win_dir,
+    chiref_single_start = chirefs[1])
 
 tabs = ndata + 3.84; trel = chiref + 3.84
 @printf("\n%-5s %10s %10s %10s %7s %-24s\n","i","C (S)","min chi2","MAP l2=1","nbound","winning start")
@@ -166,6 +212,21 @@ for i in 1:NP
     @printf("%-5d %10.4f %10.3f %10.3f %7d %-24s\n", i, 10^lt[i]*thick, best_chi[i],
             map_chi_l1[i], best_nb[i], best_src[i])
 end
+# smoothness: a node whose min chi2 exceeds a quadratic through its neighbours
+# by more than SMOOTH_TOL is flagged. A stalled refit shows up here and nowhere
+# in the solver flags.
+const SMOOTH_TOL = 2.0
+rough = falses(NP)
+for i in 2:NP-1
+    pred = best_chi[i-1] + (best_chi[i+1] - best_chi[i-1]) *
+           (lt[i]-lt[i-1]) / (lt[i+1]-lt[i-1])
+    best_chi[i] > pred + SMOOTH_TOL && (rough[i] = true)
+end
+@printf("\nnon-smooth nodes (min chi2 more than %.1f above a linear interpolation of neighbours): %s\n",
+        SMOOTH_TOL, any(rough) ? string(findall(rough)) : "none")
+println("winning combination counts:")
+for k in unique(best_src); @printf("  %-26s %d nodes\n", k, count(==(k), best_src)); end
+
 # consistency check
 mn = minimum(best_chi)
 @printf("\nCONSISTENCY: chiref %.4f  <=  min over nodes %.4f  (+1e-6) : %s\n",

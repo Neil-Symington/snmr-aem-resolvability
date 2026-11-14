@@ -2,3 +2,72 @@ profile_minchi2  tag=probe  stage0=stage0_synth_3P.jld2
   N = 42 data ; window 7.50-23.50 m (support 16.0000 m, 9 of 65 cells)
   grid: log10 sigma_eff -1.80 to -1.40 step 0.20 -> 3 nodes ; lambda2 = [1.0]
   parameter bounds, log10 sigma per cell: (-3.0, 1.0)  -> sigma 1.0e-03 to 1.0e+01 S/m
+
+  chiref multi-start: 25.374, 25.374, 39.468 -> chiref = 25.3744  (m0)
+  unconstrained reference took 180.8 s
+    lambda2 1      fwd: 8 solves cumulative
+
+[807657] signal 15: Terminated
+in expression starting at /home/symo/Documents/GA/AEM_SMR_Resolvability_Quickrun/release/gate_check/profile_minchi2.jl:160
+unknown function (ip: 0x79254e498e2f) at /lib/x86_64-linux-gnu/libc.so.6
+pthread_cond_wait at /lib/x86_64-linux-gnu/libc.so.6 (unknown line)
+uv_cond_wait at /workspace/srcdir/libuv/src/unix/thread.c:822
+ijl_task_get_next at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/scheduler.c:523
+poptask at ./task.jl:1216
+wait at ./task.jl:1228
+#wait#398 at ./condition.jl:141
+wait at ./condition.jl:136 [inlined]
+_trywait at ./asyncevent.jl:185
+profile_printing_listener at ./Base.jl:332
+#start_profile_listener##0 at ./Base.jl:352
+jfptr_YY.start_profile_listenerYY.YY.0_16003.1 at /home/symo/.julia/juliaup/julia-1.12.6+0.x64.linux.gnu/lib/julia/sys.so (unknown line)
+jl_apply at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/julia.h:2391 [inlined]
+start_task at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/task.c:1252
+unknown function (ip: (nil)) at (unknown file)
+get_checked_fieldindex at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/builtins.c:1003 [inlined]
+jl_f_getfield at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/builtins.c:1043
+getproperty at ./Base_compiler.jl:54 [inlined]
+_reindexlinear at ./subarray.jl:348 [inlined]
+setindex! at ./subarray.jl:398 [inlined]
+stacks! at /home/symo/.julia/packages/HiQGA/5B7LR/src/AEM_VMD_HMD.jl:391
+getAEM1DKernelsH! at /home/symo/.julia/packages/HiQGA/5B7LR/src/AEM_VMD_HMD.jl:490
+getfieldFD! at /home/symo/.julia/packages/HiQGA/5B7LR/src/AEM_VMD_HMD.jl:531
+getfieldTD! at /home/symo/.julia/packages/HiQGA/5B7LR/src/AEM_VMD_HMD.jl:590
+getfield! at /home/symo/.julia/packages/HiQGA/5B7LR/src/SkyTEM1DInversion.jl:430
+#getresidual#2 at /home/symo/.julia/packages/HiQGA/5B7LR/src/SkyTEM1DInversion.jl:112
+getresidual at /home/symo/.julia/packages/HiQGA/5B7LR/src/SkyTEM1DInversion.jl:109 [inlined]
+#chi2#1 at /home/symo/Documents/GA/AEM_SMR_Resolvability_Quickrun/release/src/occam_core.jl:62
+chi2 at /home/symo/Documents/GA/AEM_SMR_Resolvability_Quickrun/release/src/occam_core.jl:62 [inlined]
+#occam#2 at /home/symo/Documents/GA/AEM_SMR_Resolvability_Quickrun/release/src/occam_core.jl:201
+occam at /home/symo/Documents/GA/AEM_SMR_Resolvability_Quickrun/release/src/occam_core.jl:101
+unknown function (ip: 0x7924eb2e97bb) at (unknown file)
+solve_at at /home/symo/Documents/GA/AEM_SMR_Resolvability_Quickrun/release/gate_check/profile_minchi2.jl:92
+unknown function (ip: 0x7924eb2d2612) at (unknown file)
+run_profile at /home/symo/Documents/GA/AEM_SMR_Resolvability_Quickrun/release/gate_check/profile_minchi2.jl:133
+unknown function (ip: 0x7924eb2d1e8b) at (unknown file)
+jl_apply at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/julia.h:2391 [inlined]
+do_call at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/interpreter.c:123
+eval_value at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/interpreter.c:243
+eval_stmt_value at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/interpreter.c:194 [inlined]
+eval_body at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/interpreter.c:707
+jl_interpret_toplevel_thunk at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/interpreter.c:898
+jl_toplevel_eval_flex at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/toplevel.c:1035
+jl_toplevel_eval_flex at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/toplevel.c:975
+ijl_toplevel_eval at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/toplevel.c:1047
+ijl_toplevel_eval_in at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/toplevel.c:1092
+eval at ./boot.jl:489
+include_string at ./loading.jl:2874
+_include at ./loading.jl:2934
+include at ./Base.jl:306
+exec_options at ./client.jl:317
+_start at ./client.jl:550
+jfptr__start_63319.1 at /home/symo/.julia/juliaup/julia-1.12.6+0.x64.linux.gnu/lib/julia/sys.so (unknown line)
+jl_apply at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/julia.h:2391 [inlined]
+true_main at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/jlapi.c:971
+jl_repl_entrypoint at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/src/jlapi.c:1139
+main at /cache/build/builder-amdci5-4/julialang/julia-release-1-dot-12/cli/loader_exe.c:58
+unknown function (ip: 0x79254e42a1c9) at /lib/x86_64-linux-gnu/libc.so.6
+__libc_start_main at /lib/x86_64-linux-gnu/libc.so.6 (unknown line)
+unknown function (ip: 0x4010b8) at /workspace/srcdir/glibc-2.17/csu/../sysdeps/x86_64/start.S
+unknown function (ip: (nil)) at (unknown file)
+Allocations: 37853517062 (Pool: 37853516039; Big: 1023); GC: 15069
