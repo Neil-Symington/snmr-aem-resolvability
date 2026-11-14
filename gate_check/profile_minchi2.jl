@@ -201,7 +201,7 @@ jldsave(joinpath(HERE,"results","profile_$(TAG).jld2");
     min_chi2 = best_chi, min_chi2_source = best_src, min_chi2_nbound = best_nb,
     min_phi = best_phi, map_chi2_lambda1 = map_chi_l1,
     chiref = chiref, chirefs = chirefs, ndata = ndata, lams = LAMS,
-    window = (top = wtop, base = wbot), fbounds = collect(OccamCore.FBOUNDS),
+    window = (top = wtop, base = wbot), mbounds = collect(getbounds()),
     nsolves = nsolves, stage0 = arg("stage0",""),
     win_lambda2 = win_lam, win_start = win_start, win_direction = win_dir,
     chiref_single_start = chirefs[1])
