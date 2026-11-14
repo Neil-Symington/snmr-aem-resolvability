@@ -74,6 +74,29 @@ The per-cell clamp is what limits how low the window conductance can be forced,
 so extending the search below 1e-3 S/m (M1.1 item 2) is a `setbounds!` call and
 must be recorded per run, not assumed from the config.
 
+## Reference misfit (chiref)
+
+**chiref = min(unconstrained multi-start, min over constrained nodes).** Both
+numbers and their gap are reported per column. The old definition — the
+unconstrained solve alone — is not reliable.
+
+Measured on release 2P (truth `33bf02a46442711e`, window 17.5-33.5 m): the
+unconstrained multi-start gave **28.4587** from three starts agreeing to three
+decimals, while a constrained node reached **27.1749** at C = 2.8452 S. A
+constraint cannot improve a fit, so the unconstrained solve is not the minimum,
+and multi-starting it does not cure that. Same pathology as
+`ek_realdata/REPORT_v1_firstfive.md:559-563`.
+
+The consistency assertion stays as a **reported diagnostic with its gap, not a
+hard failure**, and the lower of the two values is used — which is what the field
+tables already quoted in practice.
+
+This bears directly on the acceptance rule, which remains under review: **a
+trustworthy chiref is what makes the relative rule usable at all.** Until chiref
+can be relied on, `chi2 <= chiref + 3.84` is a threshold on a number that may be
+too high, giving a band that is too wide — a looser bound, so conservative, but
+wrong.
+
 ## Gate threshold — UNDER REVIEW
 
 The accepted band is `chi2 <= N + 3.84` (`stage4_gate_v2.jl:260`,

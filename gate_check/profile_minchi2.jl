@@ -119,10 +119,11 @@ for k in 1:2
     push!(refs, (Symbol("rand$k"), occam(aem, ms, m0, R, ndata; mode = :minimise)))
 end
 chirefs = [r[2][2] for r in refs]
-chiref = minimum(chirefs)
+chiref_unc = minimum(chirefs)       # unconstrained multi-start
+chiref = chiref_unc                 # provisional; revised after the profile
 @printf("\n  chiref single start (m0 only): %.4f\n", chirefs[1])
-@printf("  chiref multi-start: %s -> chiref = %.4f  (%s)\n",
-        join([@sprintf("%.3f", c) for c in chirefs], ", "), chiref,
+@printf("  chiref multi-start (unconstrained): %s -> %.4f  (%s)\n",
+        join([@sprintf("%.3f", c) for c in chirefs], ", "), chiref_unc,
         string(refs[argmin(chirefs)][1]))
 @printf("  unconstrained reference took %.1f s\n", time()-t0)
 flush(stdout)
@@ -137,6 +138,10 @@ function run_profile(lt, LAMS, thick, mref0)
     best_chi = fill(Inf, NP); best_src = fill("", NP); best_nb = zeros(Int, NP)
     best_phi = fill(NaN, NP); nsolves = 0
     win_lam = fill(NaN, NP); win_start = fill("", NP); win_dir = fill("", NP)
+    # The winning MODEL at each node, not just its chi2. Without it there is no
+    # way to ask what the rest of the profile had to become for the data to
+    # accept a given window conductance.
+    best_m = [Float64[] for _ in 1:NP]
     for l2 in LAMS
         for (dirname, order) in (("fwd", 1:NP), ("bwd", NP:-1:1))
             warm = nothing
@@ -159,6 +164,7 @@ function run_profile(lt, LAMS, thick, mref0)
                         best_chi[i] = r.chi; best_phi[i] = r.phi
                         best_nb[i]  = r.nbound
                         best_src[i] = sname * "@l2=" * string(l2)
+                        best_m[i] = copy(r.m)
                         win_lam[i] = l2
                         win_start[i] = startswith(sname, "warm_") ? "warm" : sname
                         win_dir[i] = startswith(sname, "warm_") ? dirname : "cold"
@@ -175,7 +181,7 @@ function run_profile(lt, LAMS, thick, mref0)
             flush(stdout)
         end
     end
-    (best_chi, best_src, best_nb, best_phi, nsolves, win_lam, win_start, win_dir)
+    (best_chi, best_src, best_nb, best_phi, nsolves, win_lam, win_start, win_dir, best_m)
 end
 
 "chi2 at the MAP for one lambda2, warm-started forward -- for comparison only."
@@ -188,11 +194,28 @@ function run_map(lt, l2, thick, mref0)
 end
 
 mref0 = refs[argmin(chirefs)][2][1]
-best_chi, best_src, best_nb, best_phi, nsolves, win_lam, win_start, win_dir =
+best_chi, best_src, best_nb, best_phi, nsolves, win_lam, win_start, win_dir, best_m =
     run_profile(lt, LAMS, thick, mref0)
 map_chi_l1 = (1.0 in LAMS) ? run_map(lt, 1.0, thick, mref0) : fill(NaN, length(lt))
 @printf("  profile done: %d solves, %.1f min elapsed\n", nsolves, (time()-t0)/60)
 flush(stdout)
+
+# ── the reference misfit ───────────────────────────────────────────────────
+# chiref = min(unconstrained multi-start, min over constrained nodes).
+# A constraint cannot improve a fit, so a constrained node below the
+# unconstrained solve means the unconstrained solve is not the minimum. That is
+# reported as a diagnostic with its gap, not treated as a hard failure, and the
+# lower of the two is used -- which is what the field tables quoted in practice.
+mn = minimum(best_chi)
+chiref = min(chiref_unc, mn)
+gap = chiref_unc - mn
+@printf("\nREFERENCE MISFIT\n")
+@printf("  unconstrained multi-start : %.4f\n", chiref_unc)
+@printf("  min over constrained nodes: %.4f  (at C = %.4f S)\n", mn, 10^lt[argmin(best_chi)]*thick)
+@printf("  gap (unconstrained - constrained): %+.4f %s\n", gap,
+        gap > 1e-6 ? "<- the unconstrained solve is NOT the minimum" : "")
+@printf("  chiref used = %.4f\n", chiref)
+gap > 1e-6 && @printf("  DIAGNOSTIC: the unconstrained solve missed the minimum by %.4f.\n", gap)
 
 # ── report ────────────────────────────────────────────────────────────────
 mkpath(joinpath(HERE,"results"))
@@ -200,13 +223,16 @@ jldsave(joinpath(HERE,"results","profile_$(TAG).jld2");
     lt = lt, thick = thick, conductance = 10 .^ lt .* thick,
     min_chi2 = best_chi, min_chi2_source = best_src, min_chi2_nbound = best_nb,
     min_phi = best_phi, map_chi2_lambda1 = map_chi_l1,
-    chiref = chiref, chirefs = chirefs, ndata = ndata, lams = LAMS,
+    chiref = chiref, chiref_unconstrained = chiref_unc,
+    chiref_gap = gap, chirefs = chirefs, ndata = ndata, lams = LAMS,
     window = (top = wtop, base = wbot), mbounds = collect(getbounds()),
     nsolves = nsolves, stage0 = arg("stage0",""),
     win_lambda2 = win_lam, win_start = win_start, win_direction = win_dir,
+    models = [isempty(m) ? fill(NaN, n) : m for m in best_m],
+    zall = collect(Float64, zall), mref_model = mref0,
     chiref_single_start = chirefs[1])
 
-tabs = ndata + 3.84; trel = chiref + 3.84
+tabs = ndata + 3.84
 @printf("\n%-5s %10s %10s %10s %7s %-24s\n","i","C (S)","min chi2","MAP l2=1","nbound","winning start")
 for i in 1:NP
     @printf("%-5d %10.4f %10.3f %10.3f %7d %-24s\n", i, 10^lt[i]*thick, best_chi[i],
@@ -227,12 +253,8 @@ end
 println("winning combination counts:")
 for k in unique(best_src); @printf("  %-26s %d nodes\n", k, count(==(k), best_src)); end
 
-# consistency check
-mn = minimum(best_chi)
-@printf("\nCONSISTENCY: chiref %.4f  <=  min over nodes %.4f  (+1e-6) : %s\n",
-        chiref, mn, chiref <= mn + 1e-6 ? "PASS" : "**FAIL**")
-chiref <= mn + 1e-6 || @warn "chiref exceeds the constrained minimum: the unconstrained solve is not the minimum"
 
+trel = chiref + 3.84
 band(thr) = (ok = best_chi .<= thr; any(ok) ?
     (10^lt[findfirst(ok)]*thick, 10^lt[findlast(ok)]*thick) : (NaN, NaN))
 ba = band(tabs); br = band(trel)
