@@ -69,6 +69,8 @@ function solve_at(C, l2, ms)
     (chi=chi, phi=nf.phi, nbound=nf.nbound, conres=nf.conres, m=m)
 end
 
+SEED = parse(Int, arg("seed","20261114")); Random.seed!(SEED)
+
 # ── the unconstrained reference model ──────────────────────────────────────
 # profile_minchi2.jl stores chiref but not the MODEL, and cold_mref needs the
 # model. Recomputing it multi-start costs about three minutes and also re-checks
@@ -108,11 +110,17 @@ edge_abs = edgenodes(tabs); edge_rel = edgenodes(trel)
 flagged  = unique(vcat([[i-1,i,i+1] for i in findall(rough)]...))
 flagged  = filter(k -> 1 <= k <= NP, flagged)
 
-SEED = parse(Int, arg("seed","20261114")); Random.seed!(SEED)
 interior = setdiff(2:NP-1, union(edge_abs, edge_rel, flagged))
 audit = length(interior) >= 3 ? sort(randperm(length(interior))[1:3] .|> i -> interior[i]) : interior
 
-targets = sort(unique(vcat(edge_abs, edge_rel, flagged, audit)))
+# --nodes overrides the edge selection with an explicit list, so the expensive
+# cold refits can be aimed at the nodes that actually decide an edge rather than
+# at every bracket the rules produce. The audit sample is always added.
+targets = if haskey(ARG, "nodes")
+    sort(unique(vcat(parse.(Int, split(ARG["nodes"], ",")), audit)))
+else
+    sort(unique(vcat(edge_abs, edge_rel, flagged, audit)))
+end
 @printf("cold_refit  tag=%s  seed=%d  profile=%s\n", TAG, SEED, basename(arg("profile","")))
 @printf("  N=%d  chiref=%.4f  absolute thr=%.2f  relative thr=%.2f\n", ndata, chiref, tabs, trel)
 @printf("  bounds %s ; lambda2 %s ; %d nodes in the profile\n", string(getbounds()), string(LAMS), NP)
