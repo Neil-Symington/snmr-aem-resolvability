@@ -23,6 +23,21 @@ would give, not what a cold one would. A test that only checks the final chi2
 will pass with the chain broken, because a cold start reaches a similar answer;
 it is the *cost* and the *path* that differ.
 
+## Long runs go through tools/safe_launch.sh
+
+A rule in these notes was not enough: I wrote "every stateful loop in a
+function", fixed one script, and then broke the same rule in the next one. Four
+soft-scope failures in M1, one of them silent.
+
+`tools/safe_launch.sh <smoke-log> <real-log> <smoke-cmd> <real-cmd>` runs a
+one-node smoke of the exact script to completion including its save, then
+**refuses** to start the long run if the smoke exited non-zero or if its log
+contains a Julia warning, the words "soft scope", or an error. Julia prints
+"Assignment to `x` in soft scope is ambiguous" and carries on, so the warning is
+the only signal there is; the launcher treats it as an error.
+
+Use it for every run longer than about ten minutes, M4 included.
+
 ## Solve cost is dominated by start quality
 
 Measured in M1.1: a warm solve from the adjacent node is about 45 s; a cold

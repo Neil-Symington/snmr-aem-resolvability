@@ -133,21 +133,34 @@ end
 flush(stdout)
 
 # ── the refits ─────────────────────────────────────────────────────────────
-coldchi = fill(NaN, NP); coldsrc = fill("", NP); coldnb = zeros(Int, NP)
-t0 = time(); done = 0
-for i in targets
-    best = Inf; src = ""; nb = 0
-    for l2 in LAMS, (sname, st) in (("cold_mref", mref0), ("cold_m0", m0))
-        r = solve_at(10^lt[i]*thick, l2, st); done += 1
-        if r.conres < 1e-8 && r.chi < best
-            best = r.chi; src = sname*"@l2="*string(l2); nb = r.nbound
+# In a function. docs/M2_NOTES.md records the rule -- every loop carrying state
+# across iterations lives in a function -- because at top level Julia's soft
+# scope binds `done += 1` to a new local and the loop dies or, worse, silently
+# loses the count. I wrote that rule and then broke it here.
+function run_refits(targets, LAMS, lt, thick, mref0, m0, warmchi)
+    NP = length(lt)
+    coldchi = fill(NaN, NP); coldsrc = fill("", NP); coldnb = zeros(Int, NP)
+    t0 = time(); done = 0
+    for i in targets
+        best = Inf; src = ""; nb = 0
+        for l2 in LAMS, (sname, st) in (("cold_mref", mref0), ("cold_m0", m0))
+            r = solve_at(10^lt[i]*thick, l2, st); done += 1
+            if r.conres < 1e-8 && r.chi < best
+                best = r.chi; src = sname*"@l2="*string(l2); nb = r.nbound
+            end
+            @printf("\r      node %2d  %-10s l2=%-6g  chi2 %9.3f  (%d/%d solves, %.1f min)        ",
+                    i, sname, l2, r.chi, done, length(targets)*length(LAMS)*2, (time()-t0)/60)
+            flush(stdout)
         end
+        coldchi[i] = best; coldsrc[i] = src; coldnb[i] = nb
+        @printf("\r  node %2d  C=%9.4f S  warm %9.3f  cold %9.3f  delta %+8.3f  %-22s\n",
+                i, 10^lt[i]*thick, warmchi[i], best, best-warmchi[i], src)
+        flush(stdout)
     end
-    coldchi[i] = best; coldsrc[i] = src; coldnb[i] = nb
-    @printf("  node %2d  C=%9.4f S  warm %9.3f  cold %9.3f  delta %+8.3f  %-20s (%d solves, %.1f min)\n",
-            i, 10^lt[i]*thick, warmchi[i], best, best-warmchi[i], src, done, (time()-t0)/60)
-    flush(stdout)
+    (coldchi, coldsrc, coldnb, done, time()-t0)
 end
+
+coldchi, coldsrc, coldnb, done, secs = run_refits(targets, LAMS, lt, thick, mref0, m0, warmchi)
 
 # ── escalation ─────────────────────────────────────────────────────────────
 auditdelta = [warmchi[i] - coldchi[i] for i in audit if isfinite(coldchi[i])]
@@ -174,4 +187,4 @@ jldsave(joinpath(HERE,"results","coldrefit_$(TAG).jld2");
     merged_chi2=merged, cold_source=coldsrc, cold_nbound=coldnb, rough=rough,
     targets=targets, audit=audit, audit_delta=auditdelta, seed=SEED,
     escalate=(worst>1.0), chiref=chiref, ndata=ndata, mbounds=collect(getbounds()))
-@printf("\n%d solves, %.1f min\n", done, (time()-t0)/60)
+@printf("\n%d solves, %.1f min\n", done, secs/60)
