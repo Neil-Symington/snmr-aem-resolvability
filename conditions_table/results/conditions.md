@@ -139,11 +139,22 @@ alone separates nothing on this column.
 **3. On 2P, which single measurement rules out the most? Neither rules out
 anything.** The induction log narrows the required clay term about ninefold
 (0.4424 to 0.0471 S/m) and the gamma log pins it to 0.0032–0.0128 S/m, but all
-three classes survive both, and survive the two together. The reason is in the
-two priors: porosity U(0.25, 0.40) and exponent U(1.5, 1.9) alone move
-theta^m by a factor of **5.6**, which is wider than the whole fresh-to-saline
-range. Until porosity and the exponent are pinned, no conductivity measurement
-can decide salinity on this column.
+three classes survive both, and survive the two together.
+
+**CORRECTED 15 Nov 2026.** This paragraph first said "porosity U(0.25, 0.40)
+and exponent U(1.5, 1.9) alone move theta^m by a factor of 5.6". That was wrong
+twice over. theta and m **alone** give a factor of **3.52** (theta^m from
+0.07179 at (0.25, 1.9) to 0.25298 at (0.40, 1.5)). The larger figure was the
+*combined* span of theta, m, the induction log's sigma_bulk +/-10% and the clay
+term's factor-of-two window, and recomputed properly that combination is
+**6.01**, not 5.6 — the original also used 0.0773 for 0.25^1.9 where the value
+is 0.07179. Decomposed: theta^m 3.52 x sigma_bulk 1.22 x clay-subtraction
+residue 1.40 = 6.01.
+
+The conclusion is unchanged and if anything stronger: the surviving span across
+all four inputs is a factor of six, wider than the whole fresh-to-saline range,
+so until porosity and the exponent are pinned no conductivity measurement can
+decide salinity on this column.
 
 **4. Is fresh ruled out anywhere? No** — fresh is supported on all four
 columns, as it must be, since nothing stops the clay term going to zero and
