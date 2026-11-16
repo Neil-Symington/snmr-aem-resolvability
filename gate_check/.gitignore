@@ -1,2 +1,10 @@
 logs_*.txt
+launch_*.log
 results/*.png
+# The result artefacts are tracked despite the root *.jld2 rule. They total
+# under half a megabyte and each one is hours of constrained solves -- the
+# converged edges, the profiles, the stored winning models, the sensitivity
+# depth. The root rule exists for data/ and outputs/, which are large and are
+# rebuilt by the pipeline. These are not rebuildable in any useful sense.
+!results/*.jld2
+results/*smoke*.jld2
