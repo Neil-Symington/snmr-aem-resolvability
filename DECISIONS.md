@@ -80,6 +80,57 @@ Caveat from the whole-profile report: models at the top of the band carry ten
 parameters pinned at their clamps, so the upper edge is partly a statement about
 the bounds. See `gate_check/results/whole_profile_3P.md`.
 
+## Gate bounds: two variants (approved 16 Nov)
+
+**Broad physical limits for a sedimentary system; no lithology assumed; SNMR
+supplies a floor inside the saturated interval.**
+
+| variant | log10 sigma bounds | sigma | role |
+|---|---|---|---|
+| WIDE | (-4, 1) | 1e-4 to 10 S/m | kept for comparison |
+| **SEDIMENTARY** | (-3, 0.30103) | **0.001 to 2 S/m** | **drives the verdict** |
+
+Applied to every cell alike. In the SEDIMENTARY variant only, the floor inside
+the SNMR-defined window is the larger of 0.001 S/m and
+
+    sigma_w(freshest plausible water) * theta_low ^ m_max
+
+with theta_low the lowest p05 of window water content across the ensembles.
+
+**At the provisional 50 mg/L the SNMR floor does not bind on either column.**
+sigma_w = 0.00781 S/m gives a floor of 0.000627 on 3P (theta_low 0.265) and
+0.000440 on 2P (theta_low 0.2199), both below the sedimentary 0.001. The
+mechanism is built and inert at this value. It would begin to bind above
+**80 mg/L on 3P and 114 mg/L on 2P**.
+
+**Unit-mean check, all four columns: PASS.** All 26 unit means lie inside
+0.001-2 S/m, the extremes being 2P/2S unweathered Palaeozoic at 0.00656 S/m and
+3P/3S Blanchetown Clay at 0.944 S/m.
+
+**Per-unit ranges**: config hook built, left off. For users with a driller's
+log; not used in the paper's runs.
+
+### Cells below the sensitivity depth: EXCLUDED FROM COUNTS, not fixed
+
+Asked to choose between fixing them to the reference model and excluding them
+from pinned counts, I chose **excluding them**, for four reasons.
+
+1. Fixing cells removes degrees of freedom the data do not constrain, which
+   lowers chi2 artificially and can only **narrow** the band -- the direction
+   that risks excluding the truth.
+2. Below the sensitivity depth the reference model is itself arbitrary, so
+   fixing to it asserts a value the data cannot support, and it still enters the
+   forward response however weakly.
+3. Excluding is purely a **reporting** change. It achieves what was asked --
+   not penalising a node for pinning where there is no sensitivity -- without
+   touching the solve.
+4. It is auditable: counts above and below the sensitivity depth are reported
+   separately, so a reader can recombine them.
+
+The sensitivity depth is computed from the noise-weighted Jacobian, as the
+column norm of W*J per cell normalised by its maximum, with the depth taken
+where that falls below a stated fraction.
+
 ## Gate band definition
 
 **The band is min chi2 subject to the forced window conductance and the stated
