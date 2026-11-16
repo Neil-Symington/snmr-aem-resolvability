@@ -1,0 +1,24 @@
+pinned_report  tag=3P  window 7.50-23.50 m  bounds [-4.0, 1.0]
+absolute threshold 45.84 ; relative 28.93 (chiref 25.0891)
+
+C (S)       min chi2  pinned     rule unit conductance / truth                    
+0.0090        26.297       5     both cover 2.59x  WINDOW 1.78x  below 0.89x  base 1.80x  base 492.56x
+0.2845        26.088       0     both cover 0.45x  WINDOW 0.82x  below 0.86x  base 1.28x  base 1.89x
+0.3192        26.239       4     both cover 0.29x  WINDOW 1.46x  below 0.90x  base 1.68x  base 169.13x
+0.3582        28.341       7     both cover 0.01x  WINDOW 0.66x  below 0.90x  base 1.19x  base 0.70x
+0.3634        28.722       9     both cover 0.01x  WINDOW 0.64x  below 0.91x  base 1.18x  base 0.75x
+0.3687        29.048       9      abs cover 0.01x  WINDOW 0.61x  below 0.91x  base 1.17x  base 0.79x
+0.3794        29.941       9      abs cover 0.01x  WINDOW 0.56x  below 0.93x  base 1.15x  base 0.63x
+0.3905        31.440       9      abs cover 0.01x  WINDOW 0.51x  below 0.94x  base 1.12x  base 0.78x
+0.4019        32.450       9      abs cover 0.01x  WINDOW 0.45x  below 0.95x  base 1.08x  base 0.83x
+0.4257        37.730      10      abs cover 0.01x  WINDOW 0.47x  below 0.97x  base 1.08x  base 12.14x
+0.4509        42.766      14      abs cover 0.01x  WINDOW 0.50x  below 1.03x  base 0.65x  base 33.07x
+
+largest forced C with NO cell on a bound: 0.2845 S  (chi2 26.088, rule both)
+  against the absolute edge of the full band, that is the part of the band
+  that owes nothing to where the clamps were set.
+
+  ceiling at that C: widest 1585, central 769, tightest 450 mg/L
+  with the SNMR limit theta>=0.265: widest 1419 mg/L
+
+largest C accepted under the RELATIVE rule: 0.3634 S (chi2 28.722, 9 pinned)
