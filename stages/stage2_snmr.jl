@@ -90,6 +90,10 @@ const RUN  = joinpath(OUT, "smr_runs"); mkpath(RUN)
 # outside the repository and was never shipped, so Stage 2 -- and therefore
 # every stage after it -- could not start from a clone at all.
 include(joinpath(ROOT, "src", "prerun_config.jl")); const CFG = PrerunConfig
+# make_aem_opt, needed to re-assemble Stage 1 draws when pooling several
+# folders. GADI_SRC is what aem_setup.jl expects; Stage 1 sets the same.
+const GADI_SRC = joinpath(ROOT, "src")
+include(joinpath(ROOT, "src", "aem_setup.jl"))
 
 const FB_LINEAR = [0.001 0.45]
 const FB_LOG    = [log10(0.001) log10(0.45)]
@@ -187,6 +191,42 @@ draws. `hash` is stable within a Julia version and not across them; install.jl
 pins Julia 1.12, and a version change surfaces as a mismatch, which errors with
 instructions rather than silently reusing the file.
 """
+"""
+Per-cell median of the post-burn-in T=1 draws POOLED across several Stage 1
+folders.
+
+aem_posterior.jld2 keeps only 30 subsampled draws, so the full set has to be
+re-assembled from each folder's chain files. Pooling ONE folder reproduces that
+folder's sigma50 exactly, because Stage 1 computes sigma50 as the same quantile
+over the same draws with the same burn-in fraction -- which is the test.
+
+burninfrac is 0.5 to match tools/aem_HYP.jl's own assembleTat1 call literally;
+CFG.BURNINFRAC is the same value, but matching the call is what guarantees the
+reproduction is exact.
+"""
+function pooled_sigma(folders)
+    mats = Matrix{Float64}[]; zall = nothing; perfolder = Int[]
+    for d in folders
+        isdir(d) || error("pool folder not found: $d")
+        S = load(joinpath(d, "aem_setup.jld2"))
+        znall = S["znall_aem"]
+        zall === nothing && (zall = collect(Float64, S["zall_aem"]))
+        opt = make_aem_opt(znall, "hypsynth_aem_"; nmax = get(S, "nmax_k", 40))
+        opt.xall[:] .= znall
+        old = pwd(); cd(d)
+        F = try
+            transD_GP.assembleTat1(opt, :fstar; temperaturenum = 1, burninfrac = 0.5)
+        finally
+            cd(old)
+        end
+        m = 10 .^ (-hcat([f[:] for f in F]...))      # S/m per AEM cell
+        push!(mats, m); push!(perfolder, size(m, 2))
+        @printf("    pooled %-28s %d T=1 draws\n", basename(d), size(m, 2))
+    end
+    σ = hcat(mats...)
+    ([quantile(view(σ, i, :), 0.50) for i in axes(σ, 1)], zall, size(σ, 2), perfolder)
+end
+
 inputsig(cond, islog, V, σ̂, σref, zA, zsmr, R, ϕ, Be, qgrid, kernelfile, draws) =
     hash((cond, TIER, TAG, LABEL, islog, NSAMP, NENS, NCHAIN,
           cond == "C4" ? NDRAWS : 0, basename(kernelfile),
@@ -232,8 +272,25 @@ function main()
     zsmr = D["zsmr"]; R = D["R"]; Be = D["Be"]; ϕ = deg2rad(D["inc_deg"])
     V  = TIER == "poor" ? D["poor_V"] : D["typical_V"]
     σ̂  = TIER == "poor" ? D["poor_σ̂"] : D["typical_σ̂"]
-    zA = A["zall_aem"]; keep = findall(z -> z > 0, zA); zA = zA[keep]
-    σref = haskey(A, "σ50") ? A["σ50"][keep] : A["σ_occam"][keep]
+    # --pool takes a comma-separated list of Stage 1 folders; the kernel is then
+    # the median of the POOLED post-burn-in T=1 draws. Without it, behaviour is
+    # exactly as before: the single folder's own sigma50.
+    POOL = haskey(ARG, "pool") ?
+           [isabspath(x) ? x : joinpath(OUT, x) for x in split(ARG["pool"], ",")] :
+           String[]
+    local zA, σref
+    global POOLED_N = -1
+    if isempty(POOL)
+        zA = A["zall_aem"]; keep = findall(z -> z > 0, zA); zA = zA[keep]
+        σref = haskey(A, "σ50") ? A["σ50"][keep] : A["σ_occam"][keep]
+    else
+        @printf("  POOLING %d Stage 1 folders for the kernel\n", length(POOL))
+        σp, zp, ntot, perf = pooled_sigma(POOL)
+        keep = findall(z -> z > 0, zp); zA = zp[keep]; σref = σp[keep]
+        global POOLED_N = ntot
+        @printf("  pooled %d draws across %d folders (%s)\n",
+                ntot, length(POOL), join(perf, "+"))
+    end
     @printf("SMR kernel built from %s  (σ %.4f–%.4f S/m)\n",
             basename(dirname(kernelfile)) == "outputs" || isempty(basename(dirname(kernelfile))) ?
             basename(kernelfile) : joinpath(basename(dirname(kernelfile)), basename(kernelfile)),
@@ -310,6 +367,8 @@ function main()
             jldsave(f; ens = ens, cond = cond, tier = TIER, islog = islog,
                     kernel = basename(kernelfile),
                     nsamples = NSAMP, zsmr = zsmr, input_sig = sig,
+                    pooled_folders = isempty(POOL) ? [kernelfile] : POOL,
+                    pooled_ndraws = isempty(POOL) ? -1 : POOLED_N,
                     seed_base = SEED_BASE,
                     seeds_ensemble = [SEED_BASE + e for e in 1:NENS])
         elseif cond == "C4" && TAG == "2"
