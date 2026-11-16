@@ -62,7 +62,9 @@ than 0.02 dex and chi2 changing less than 0.5). 48 solves.
 
 Both lower edges are OPEN: the bound limit at sigma 1e-4, not closed by data.
 
-Clay-free salinity ceiling at those edges, mg/L TDS:
+Clay-free salinity ceiling at those edges, mg/L TDS. **The SEDIMENTARY figures
+below are at the accepted bracket node, not a converged edge** -- bisection on
+that variant is running; the WIDE figures are converged.
 
 | edge | widest | central | tightest |
 |---|---|---|---|
@@ -79,6 +81,38 @@ exponent box. That survives the edge moving out from the old 0.3447 S to
 Caveat from the whole-profile report: models at the top of the band carry ten
 parameters pinned at their clamps, so the upper edge is partly a statement about
 the bounds. See `gate_check/results/whole_profile_3P.md`.
+
+## Which variant and which rule drive the verdict (17 Nov)
+
+**SEDIMENTARY (0.001-2 S/m) drives the verdict. WIDE (1e-4 to 10 S/m) is
+reported for comparison.** Both bands, ceilings and pinned counts appear side by
+side; the data-only result is never dropped.
+
+**The ABSOLUTE rule (chi2 <= N + 3.84) drives the verdict. The relative rule
+(chi2 <= chiref + 3.84) is reported alongside.**
+
+Reason, measured rather than assumed: on 2P the relative threshold rests on a
+single bound-pinned node. The constrained minimum is 25.3414 **at C = 0.0051 S,
+the lowest node on the grid, whose model has 8 cells on bounds**, and it sits
+3.1172 below the unconstrained solve's 28.4587. So the relative threshold on
+that column is anchored to the least trustworthy model in the sweep. On 3P both
+rules give the same class result, so nothing is lost by preferring the absolute
+one.
+
+**The lower edge under SEDIMENTARY is set by the floor, not by the data.** A
+floor of 0.001 S/m over a 16 m window cannot produce a window conductance below
+**0.016 S**, so nodes below that return no admissible solve at all. It is
+reported as "set by the floor, minimum reachable conductance 0.016 S", never as
+a data limit and never as open.
+
+### 2P, in plain words
+
+**chi2 varies by about 0.5 across window conductances from 0.005 to 3 S.**
+Measured: 25.34, 25.42, 25.53, 25.83, 25.65, 25.44, 25.53 at C = 0.0051, 0.0160,
+0.0506, 0.1600, 0.5060, 1.6000 and 3.1924 S. The band on test two is not wide
+because the edges are uncertain; it is wide because the likelihood is flat over
+nearly three orders of magnitude. That is the finding, and it is a statement
+about what the AEM data can resolve in a conductive column, not about the gate.
 
 ## Gate bounds: two variants (approved 16 Nov)
 
