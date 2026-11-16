@@ -106,9 +106,26 @@ Ceiling at that unpinned node:
 | C = 0.2845 S, prior theta >= 0.25 | **1585** | 769 | 450 |
 | C = 0.2845 S, SNMR theta >= 0.265 | **1419** | — | — |
 
-So requiring no cell at a clamp — with no geological limits at all — already
-brings the widest-corner ceiling from **2560 to 1585 mg/L**, well clear of both
-the 3,000 and the 1,500 mg/L lines.
+**CORRECTED.** This first said 1585 mg/L is "well clear of both the 3,000 and
+the 1,500 mg/L lines". It is not: **1585 is ABOVE the 1,500 line.** Only the
+SNMR-limited figure, 1419 mg/L, falls below it. So requiring no cell at a clamp
+brings the widest-corner ceiling from 2560 to 1585 mg/L, which clears 3,000 but
+not 1,500; with the SNMR porosity limit it clears both.
+
+**And "no cell on a bound" is NOT adopted as a criterion, nor is 1585 quoted as
+a result.** Pinning has two causes this count cannot separate:
+
+- **necessary** — the forced window conductance can only be fitted by an extreme
+  neighbour, as with the cover at the floor at every node above 0.3582 S;
+- **incidental** — cells the data do not constrain drift to a bound under weak
+  smoothing, as with the 88–200 m base at 492x and 169x truth at nodes whose fit
+  is otherwise ordinary (chi2 26.3 and 26.2).
+
+A node with four pinned cells in the deep base, where the AEM has no
+sensitivity, is not comparable to one whose cover is pinned because nothing else
+fits. M1.2 resolves this properly: with stated ranges in force, the edge is where
+**no admissible model fits**, which is a statement about the data and the stated
+geology rather than about clamp bookkeeping.
 
 **One caveat on that number.** "Largest C with no pinned cell" is limited by the
 grid: the next node up is 0.3192 S, which has 4 pinned cells, and nothing was

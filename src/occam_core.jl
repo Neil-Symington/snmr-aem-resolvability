@@ -19,7 +19,9 @@ using Statistics, Printf, LinearAlgebra, SparseArrays
 using HiQGA.transD_GP
 const SK = transD_GP.SkyTEM1DInversion
 
-export chi2, makeR1, occam, occam_multi, setbounds!, getbounds
+export chi2, makeR1, occam, occam_multi, setbounds!, getbounds,
+       setcellbounds!, clearcellbounds!, getcellbounds, cellbounds_active,
+       clampm!, boundkind
 
 # The solver's clamp on log10 sigma. Held in Refs rather than as consts so the
 # open-edge check can lower the floor without editing the file: the question
@@ -27,8 +29,67 @@ export chi2, makeR1, occam, occam_multi, setbounds!, getbounds
 # by moving sigma_min. setbounds!(-4.0, 1.0) gives sigma_min = 1e-4 S/m.
 const LO_REF = Ref(-3.0)
 const HI_REF = Ref(1.0)
+# PER-CELL bounds, for M1.2's stated plausibility limits. Empty means "use the
+# scalars", so nothing changes unless limits are set. When non-empty these must
+# be the same length as the model, and they are intersected with the scalars so
+# a stated limit can only ever be TIGHTER than the global bound, never looser.
+const LOV_REF = Ref(Float64[])
+const HIV_REF = Ref(Float64[])
 setbounds!(lo, hi) = (LO_REF[] = lo; HI_REF[] = hi; nothing)
 getbounds() = (LO_REF[], HI_REF[])
+"""
+Set per-cell bounds. `lo` and `hi` are vectors over model cells; they are
+intersected with the global scalars. `clearcellbounds!()` restores scalar-only
+behaviour. A cell at a per-cell bound that is TIGHTER than the global one is "at
+a stated limit"; a cell at the global bound is "at a global bound", and
+`boundkind` tells them apart.
+"""
+function setcellbounds!(lo::AbstractVector, hi::AbstractVector)
+    length(lo) == length(hi) || throw(ArgumentError("per-cell bounds must match in length"))
+    all(lo .<= hi) || throw(ArgumentError("per-cell lo must not exceed hi"))
+    LOV_REF[] = max.(collect(Float64, lo), LO_REF[])
+    HIV_REF[] = min.(collect(Float64, hi), HI_REF[])
+    all(LOV_REF[] .<= HIV_REF[]) ||
+        throw(ArgumentError("a stated limit lies outside the global bounds"))
+    nothing
+end
+clearcellbounds!() = (LOV_REF[] = Float64[]; HIV_REF[] = Float64[]; nothing)
+getcellbounds() = (LOV_REF[], HIV_REF[])
+cellbounds_active() = !isempty(LOV_REF[])
+
+"Clamp honouring per-cell bounds when they are set, the scalars otherwise."
+function clampm!(m)
+    if isempty(LOV_REF[])
+        clamp!(m, LO_REF[], HI_REF[])      # Base.clamp!, not this function
+    else
+        lo = LOV_REF[]; hi = HIV_REF[]
+        length(m) == length(lo) ||
+            throw(DimensionMismatch("model has $(length(m)) cells, per-cell bounds have $(length(lo))"))
+        @inbounds for i in eachindex(m); m[i] = clamp(m[i], lo[i], hi[i]); end
+    end
+    m
+end
+
+"""
+How each cell is bounded: 0 free, 1 at a GLOBAL bound, 2 at a STATED limit that
+is tighter than the global one. Reported separately because they mean different
+things -- a cell at a global clamp is the solver running out of room, a cell at a
+stated limit is the geology the user asserted doing the work.
+"""
+function boundkind(m; tol = 1e-9)
+    k = zeros(Int, length(m))
+    lov, hiv = LOV_REF[], HIV_REF[]
+    @inbounds for i in eachindex(m)
+        lo = isempty(lov) ? LO_REF[] : lov[i]
+        hi = isempty(hiv) ? HI_REF[] : hiv[i]
+        atlo = m[i] <= lo + tol; athi = m[i] >= hi - tol
+        (atlo || athi) || continue
+        glo = atlo && lo <= LO_REF[] + tol
+        ghi = athi && hi >= HI_REF[] - tol
+        k[i] = (glo || ghi) ? 1 : 2
+    end
+    k
+end
 const Λ2 = 10 .^ reverse(LinRange(-2.0, 7.0, 8))
 const ALPHAS = (1.0, 0.4)
 const Β2 = 0.1
@@ -130,7 +191,7 @@ function occam(aem, mstart, m0, R, ndata; fixidx=Int[], fixval=0.0, mode=:minimi
             δ = log10(fixval / gc)
             abs(δ) < 1e-13 && break
             mm[fixidx] .+= δ
-            clamp!(mm, LO_REF[], HI_REF[])
+            clampm!(mm)
         end
         mm
     end
@@ -147,13 +208,13 @@ function occam(aem, mstart, m0, R, ndata; fixidx=Int[], fixval=0.0, mode=:minimi
     # put the start on the constraint surface
     m = copy(mstart)
     if condmode
-        clamp!(m, LO_REF[], HI_REF[]); projcond!(m)
+        clampm!(m); projcond!(m)
     elseif meanmode
         m[fixidx] .+= fixval - mean(m[fixidx])        # put the start on the constraint
     elseif !isempty(fixidx)
         m[fixidx] .= fixval
     end
-    clamp!(m, LO_REF[], HI_REF[])
+    clampm!(m)
     condmode && projcond!(m)
     RtR = Matrix(R'R); target = float(ndata)
     if mode === :map
@@ -229,13 +290,13 @@ function occam(aem, mstart, m0, R, ndata; fixidx=Int[], fixval=0.0, mode=:minimi
                     for _ in 1:NLS_TRIES          # backtracking line search
                         mn = copy(m); mn[free] .+= t .* Δf
                         if condmode
-                            clamp!(mn, LO_REF[], HI_REF[]); projcond!(mn)
+                            clampm!(mn); projcond!(mn)
                         elseif meanmode
                             mn[fixidx] .+= fixval - mean(mn[fixidx])
-                            clamp!(mn, LO_REF[], HI_REF[])
+                            clampm!(mn)
                         else
                             isempty(fixidx) || (mn[fixidx] .= fixval)
-                            clamp!(mn, LO_REF[], HI_REF[])
+                            clampm!(mn)
                         end
                         χn = chi2(aem, mn); Φn = χn + pen(mn); nfev += 1
                         if Φn < Φcur - max(PHI_RTOL*abs(Φcur), 1e-12)
@@ -266,12 +327,23 @@ function occam(aem, mstart, m0, R, ndata; fixidx=Int[], fixval=0.0, mode=:minimi
             H = JtW*JtW' .+ l2fix.*RtR
             H[diagind(H)] .+= l2fix*Β2eff
             if info
-                nlo = count(x -> x <= LO_REF[] + 1e-9, m)
-                nhi = count(x -> x >= HI_REF[] - 1e-9, m)
+                # nlo/nhi keep their original meaning -- cells at the LOW and HIGH
+                # bound -- so nbound = nlo + nhi is unchanged and every existing
+                # consumer (the gate's `good` flag) behaves as before. The
+                # global/stated split is reported ALONGSIDE, not instead.
+                lov, hiv = LOV_REF[], HIV_REF[]
+                nlo = isempty(lov) ? count(x -> x <= LO_REF[] + 1e-9, m) :
+                                     count(i -> m[i] <= lov[i] + 1e-9, eachindex(m))
+                nhi = isempty(hiv) ? count(x -> x >= HI_REF[] - 1e-9, m) :
+                                     count(i -> m[i] >= hiv[i] - 1e-9, eachindex(m))
+                bk  = boundkind(m)
+                n_global = count(==(1), bk)   # at a GLOBAL bound: the solver ran out of room
+                n_stated = count(==(2), bk)   # at a STATED limit: the asserted geology binding
                 cres = condmode ? abs(gcond(m) - fixval)/fixval :
                        meanmode ? abs(dot(c, m) - fixval) : 0.0
                 nfo = (pen = pen(m), phi = χcur + pen(m), gnorm = gnorm,
                        nbound = nlo + nhi, nlo = nlo, nhi = nhi,
+                       n_global = n_global, n_stated = n_stated, boundkind = bk,
                        conres = cres, nacc = nacc, njac = nj, nfev = nfev,
                        mu = μ, exhausted = exhausted, converged = converged,
                        budget = budget, nsteps = nsteps, capped = (nj >= nsteps),
@@ -326,7 +398,7 @@ function occam(aem, mstart, m0, R, ndata; fixidx=Int[], fixval=0.0, mode=:minimi
                 elseif !isempty(fixidx)
                     mn[fixidx] .= fixval
                 end
-                clamp!(mn, LO_REF[], HI_REF[])
+                clampm!(mn)
                 χn = chi2(aem, mn); push!(cands, (obj(χn, mn), l², mn, χn))
             end
         end
