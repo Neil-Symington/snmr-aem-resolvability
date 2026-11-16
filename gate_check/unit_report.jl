@@ -22,7 +22,9 @@ haskey(PR,"models") || error("""
   this profile artefact stores no models.
   Re-run profile_minchi2.jl at or after the commit that added `models`.""")
 M = PR["models"]; lt = PR["lt"]; thick = PR["thick"]; zall = PR["zall"]
-ndata = PR["ndata"]; chi = PR["min_chi2"]; mb = PR["mbounds"]
+ndata = PR["ndata"]; mb = PR["mbounds"]
+# profile_minchi2.jl calls it min_chi2; edge_bisect.jl calls it chi2.
+chi = haskey(PR, "min_chi2") ? PR["min_chi2"] : PR["chi2"]
 wtop = parse(Float64, arg("top","17.5")); wbot = parse(Float64, arg("base","33.5"))
 TAG = arg("tag","col"); tabs = ndata + 3.84
 
@@ -54,7 +56,9 @@ end
 acc = findall(c -> isfinite(c) && c <= tabs, chi)
 @printf("\n%d of %d nodes accepted\n", length(acc), length(lt))
 for i in acc
-    m = M[i]; any(isnan, m) && continue
+    m = M[i]
+    any(isnan, m) && continue
+    all(x -> x == -2.0, m) && continue      # m0 fallback, not a solved model
     σ = 10 .^ m
     nb_lo = count(x -> x <= mb[1] + 1e-9, m); nb_hi = count(x -> x >= mb[2] - 1e-9, m)
     @printf("\n--- node %d: window C = %.4f S, min chi2 = %.3f ; cells on bounds: %d low, %d high\n",

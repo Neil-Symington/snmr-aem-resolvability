@@ -1,0 +1,100 @@
+unit_report  tag=3P  window 7.50-23.50 m  bounds log10 sigma [-4.0, 1.0]
+accepted = min chi2 <= N + 3.84 = 45.84
+
+TRUTH, over the true unit boundaries:
+  role           top-base mean sigma  conductance
+  cover/cap           0-6    0.00912       0.0547
+  WINDOW             6-40    0.02689       0.9142
+  below window      40-58    0.94246      16.9643
+  base              58-88    0.12446       3.7338
+  base             88-200    0.00773       0.8654
+
+17 of 22 nodes accepted
+
+--- node 2: window C = 0.0090 S, min chi2 = 26.297 ; cells on bounds: 0 low, 5 high
+  role           top-base mean sigma  conductance  min sigma  max sigma  on bnd
+  cover/cap           0-6    0.02359       0.1416    0.00495    0.03177       0
+  WINDOW             6-40    0.04796       1.6308    0.00022    1.08116       0
+  below window      40-58    0.83443      15.0198    0.05417    1.93072       0
+  base              58-88    0.22383       6.7148    0.00705    1.31578       0
+  base             88-200    3.80585     426.2557    0.00675   10.00000       5
+
+--- node 8: window C = 0.2845 S, min chi2 = 26.088 ; cells on bounds: 0 low, 0 high
+  role           top-base mean sigma  conductance  min sigma  max sigma  on bnd
+  cover/cap           0-6    0.00415       0.0249    0.00127    0.01650       0
+  WINDOW             6-40    0.02205       0.7498    0.00056    0.39774       0
+  below window      40-58    0.81388      14.6498    0.10730    1.86612       0
+  base              58-88    0.15929       4.7786    0.03274    0.36129       0
+  base             88-200    0.01463       1.6381    0.00532    0.05633       0
+
+--- node 9: window C = 0.3192 S, min chi2 = 26.239 ; cells on bounds: 0 low, 4 high
+  role           top-base mean sigma  conductance  min sigma  max sigma  on bnd
+  cover/cap           0-6    0.00267       0.0160    0.00093    0.00975       0
+  WINDOW             6-40    0.03925       1.3346    0.00041    0.94626       0
+  below window      40-58    0.84722      15.2499    0.08970    2.73634       0
+  base              58-88    0.20870       6.2609    0.03552    0.51111       0
+  base             88-200    1.30679     146.3604    0.01879   10.00000       1
+
+--- node 10: window C = 0.3582 S, min chi2 = 28.341 ; cells on bounds: 7 low, 0 high
+  role           top-base mean sigma  conductance  min sigma  max sigma  on bnd
+  cover/cap           0-6    0.00010       0.0006    0.00010    0.00013       4
+  WINDOW             6-40    0.01773       0.6029    0.00010    0.23513       3
+  below window      40-58    0.85249      15.3449    0.01521    2.12094       0
+  base              58-88    0.14867       4.4601    0.00838    0.91655       0
+  base             88-200    0.00543       0.6079    0.00095    0.03949       0
+
+--- node 11: window C = 0.3634 S, min chi2 = 28.722 ; cells on bounds: 9 low, 0 high
+  role           top-base mean sigma  conductance  min sigma  max sigma  on bnd
+  cover/cap           0-6    0.00010       0.0006    0.00010    0.00010       5
+  WINDOW             6-40    0.01726       0.5868    0.00010    0.21480       5
+  below window      40-58    0.85535      15.3962    0.01399    2.17210       0
+  base              58-88    0.14747       4.4240    0.00967    0.90244       0
+  base             88-200    0.00576       0.6450    0.00108    0.04069       0
+
+--- node 12: window C = 0.3687 S, min chi2 = 29.048 ; cells on bounds: 9 low, 0 high
+  role           top-base mean sigma  conductance  min sigma  max sigma  on bnd
+  cover/cap           0-6    0.00010       0.0006    0.00010    0.00010       5
+  WINDOW             6-40    0.01651       0.5612    0.00010    0.18450       5
+  below window      40-58    0.85877      15.4579    0.01257    2.24282       0
+  base              58-88    0.14606       4.3818    0.00851    0.87049       0
+  base             88-200    0.00607       0.6795    0.00112    0.04337       0
+
+--- node 13: window C = 0.3794 S, min chi2 = 29.941 ; cells on bounds: 9 low, 0 high
+  role           top-base mean sigma  conductance  min sigma  max sigma  on bnd
+  cover/cap           0-6    0.00010       0.0006    0.00010    0.00010       5
+  WINDOW             6-40    0.01494       0.5078    0.00010    0.12179       5
+  below window      40-58    0.87382      15.7287    0.01338    2.47350       0
+  base              58-88    0.14286       4.2859    0.00900    0.77487       0
+  base             88-200    0.00490       0.5484    0.00108    0.02995       0
+
+--- node 14: window C = 0.3905 S, min chi2 = 31.440 ; cells on bounds: 9 low, 0 high
+  role           top-base mean sigma  conductance  min sigma  max sigma  on bnd
+  cover/cap           0-6    0.00010       0.0006    0.00010    0.00010       5
+  WINDOW             6-40    0.01374       0.4670    0.00010    0.10016       5
+  below window      40-58    0.88207      15.8772    0.01241    2.61679       0
+  base              58-88    0.13991       4.1974    0.00802    0.70018       0
+  base             88-200    0.00603       0.6757    0.00136    0.04261       0
+
+--- node 15: window C = 0.4019 S, min chi2 = 32.450 ; cells on bounds: 9 low, 0 high
+  role           top-base mean sigma  conductance  min sigma  max sigma  on bnd
+  cover/cap           0-6    0.00010       0.0006    0.00010    0.00010       5
+  WINDOW             6-40    0.01207       0.4104    0.00010    0.10777       5
+  below window      40-58    0.89156      16.0480    0.00576    2.78228       0
+  base              58-88    0.13448       4.0343    0.00643    0.44694       0
+  base             88-200    0.00642       0.7192    0.00140    0.07086       0
+
+--- node 16: window C = 0.4257 S, min chi2 = 37.730 ; cells on bounds: 10 low, 0 high
+  role           top-base mean sigma  conductance  min sigma  max sigma  on bnd
+  cover/cap           0-6    0.00010       0.0006    0.00010    0.00010       5
+  WINDOW             6-40    0.01265       0.4302    0.00010    0.12652       6
+  below window      40-58    0.91874      16.5374    0.00246    2.86871       0
+  base              58-88    0.13457       4.0370    0.00785    0.52414       0
+  base             88-200    0.09380      10.5057    0.00194    1.04770       0
+
+--- node 17: window C = 0.4509 S, min chi2 = 42.766 ; cells on bounds: 10 low, 4 high
+  role           top-base mean sigma  conductance  min sigma  max sigma  on bnd
+  cover/cap           0-6    0.00010       0.0006    0.00010    0.00010       5
+  WINDOW             6-40    0.01346       0.4575    0.00010    0.14680       6
+  below window      40-58    0.97261      17.5069    0.00440    3.27835       0
+  base              58-88    0.08151       2.4453    0.00491    0.53416       0
+  base             88-200    0.25553      28.6195    0.00780    2.02915       0

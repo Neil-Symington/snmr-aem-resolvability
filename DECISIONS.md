@@ -48,6 +48,38 @@ true window conductance lies inside it: test one 0.2063 S in 0.0296–0.3447 S,
 test two 0.6856 S in 0.0319–7.079 S. (Those gate ranges are themselves under
 revision in M1.1; see `gate_check/results/edge_profile.md`.)
 
+## 3P gate edges, converged (M1.1)
+
+Located by warm-started bisection, `gate_check/edge_bisect.jl`, both edges
+meeting the convergence test on two successive refinements (edge moving less
+than 0.02 dex and chi2 changing less than 0.5). 48 solves.
+
+| rule | threshold | edge | state |
+|---|---|---|---|
+| absolute, N + 3.84 | 45.840 | **0.4594 S** | converged (final move 0.0008 dex) |
+| relative, chiref + 3.84 | 28.929 | **0.3667 S** | converged (final move 0.0002 dex) |
+| old single-pass gate | 45.840 | 0.3447 S | reported as OPEN, was solver reach |
+
+Both lower edges are OPEN: the bound limit at sigma 1e-4, not closed by data.
+
+Clay-free salinity ceiling at those edges, mg/L TDS:
+
+| edge | widest | central | tightest |
+|---|---|---|---|
+| absolute 0.4594 S, prior theta >= 0.25 | **2560** | 1242 | 726 |
+| absolute 0.4594 S, SNMR theta >= 0.265 | 2291 | 1195 | 726 |
+| relative 0.3667 S, prior theta >= 0.25 | 2043 | 991 | 580 |
+| relative 0.3667 S, SNMR theta >= 0.265 | 1829 | 954 | 580 |
+
+**The widest-corner ceiling is below 3,000 mg/L under both rules**, so test one
+rules out the saline class at the most permissive corner of the porosity and
+exponent box. That survives the edge moving out from the old 0.3447 S to
+0.4594 S, which raised the widest-corner ceiling from 1921 to 2560 mg/L.
+
+Caveat from the whole-profile report: models at the top of the band carry ten
+parameters pinned at their clamps, so the upper edge is partly a statement about
+the bounds. See `gate_check/results/whole_profile_3P.md`.
+
 ## Gate band definition
 
 **The band is min chi2 subject to the forced window conductance and the stated
