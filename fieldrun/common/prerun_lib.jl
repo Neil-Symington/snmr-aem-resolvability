@@ -15,7 +15,8 @@ using Statistics, Printf
 
 export norminvcdf, iat, ess_basic, rank_normalise, split_rhat, rhat_and_ess,
        stationary_trend, doi_from_width, kl_against_uniform, detection_flag,
-       interval_mean_max, set_run_filenames!, nodes_at_T1, assert_one_chain_at_T1
+       interval_mean_max, set_run_filenames!, nodes_at_T1, assert_one_chain_at_T1,
+       assert_chains_at_T1, t1_rows_by_chain, tempering_stats
 
 # ── Inverse normal CDF ──────────────────────────────────────────────────────
 const _A = (-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
@@ -325,13 +326,82 @@ RUNBOOK §1.5: exactly one chain holds T=1 per iteration, so the T=1 row count
 must be nrows/nchains. The chain *ids* rotating through that slot is tempering
 working correctly; the row count is the invariant to assert.
 """
-function assert_one_chain_at_T1(costs_filename, nchains; tol = 0.02)
+assert_one_chain_at_T1(costs_filename, nchains; tol = 0.02) =
+    assert_chains_at_T1(costs_filename, nchains, 1; tol = tol)
+
+"""
+The same invariant for a ladder with `nchainsatone` chains at T=1: HiQGA swaps
+temperatures, never adds them, so T=1 rows are nchainsatone/nchains of all rows.
+"""
+function assert_chains_at_T1(costs_filename, nchains, nchainsatone; tol = 0.02)
     h = nodes_at_T1(costs_filename; burninfrac = 0.0)
     h.nrows == 0 && return (ok = false, ratio = NaN, why = "no costs rows")
     ratio = h.nT1 / h.nrows
-    ok = abs(ratio - 1 / nchains) <= tol
+    want = nchainsatone / nchains
+    ok = abs(ratio - want) <= tol
     (ok = ok, ratio = ratio,
-     why = ok ? "" : "T=1 rows are $(round(ratio, digits=4)) of all rows, expected $(round(1/nchains, digits=4))")
+     why = ok ? "" : "T=1 rows are $(round(ratio, digits=4)) of all rows, expected $(round(want, digits=4))")
+end
+
+"""
+Which saved rows each chain id spent at T=1 after burn-in, from a multi-chain
+costs file (columns as nodes_at_T1). HiQGA swaps TEMPERATURES between chains;
+a chain's model state stays with its id. So chain i's rows at T=1 are draws
+from the T=1 posterior made by that chain, and the per-id split is what lets
+two T=1 streams be compared. Burn-in is applied per chain by row position,
+exactly as transD_GP.assembleTat1 does (start = round(n * burninfrac)).
+
+Returns, per chain id: `mask` over that chain's own rows (in file order, the
+same order `history(...; chain_idx = i)` returns), and the T trace.
+"""
+function t1_rows_by_chain(costs_filename; burninfrac = 0.5, Tcol = 10)
+    rows = [split(l) for l in readlines(costs_filename) if !isempty(strip(l))]
+    cid  = [parse(Int, r[1]) for r in rows]
+    T    = [parse(Float64, r[Tcol]) for r in rows]
+    out = []
+    for i in 1:maximum(cid)
+        Ti = T[cid .== i]
+        n = length(Ti)
+        start = round(Int, n * burninfrac); start == 0 && (start = 1)
+        m = isapprox.(Ti, 1.0; atol = 1e-12)
+        m[1:start-1] .= false
+        push!(out, (chain = i, mask = m, T = Ti))
+    end
+    out
+end
+
+"""
+Is the ladder cycling? From the per-chain T traces (saved every save_freq
+iterations, so swaps between saves are not seen and the swap rate is a lower
+bound):
+
+  swap_rate    fraction of saved steps on which a chain's temperature changed
+  round_trips  per chain, completed T=1 -> Tmax -> T=1 cycles. A chain that
+               never reaches Tmax and comes back is not carrying states across
+               the hot end, which is the only thing the heated chains are for.
+  frac_at_T1   per chain, share of saved steps spent at T=1; with healthy
+               tempering each id's share is near nchainsatone/nchains.
+"""
+function tempering_stats(Ttraces::Vector{<:AbstractVector})
+    Tmax = maximum(maximum.(Ttraces))
+    rt = Int[]; sw = 0; nstep = 0; f1 = Float64[]
+    for Ti in Ttraces
+        nstep += length(Ti) - 1
+        sw += count(k -> Ti[k] != Ti[k-1], 2:length(Ti))
+        push!(f1, mean(isapprox.(Ti, 1.0; atol = 1e-12)))
+        trips = 0; state = :none           # :none -> seen T1 -> seen Tmax -> T1 again
+        for t in Ti
+            if isapprox(t, 1.0; atol = 1e-12)
+                state == :hot && (trips += 1)
+                state = :cold
+            elseif isapprox(t, Tmax; rtol = 1e-9) && state == :cold
+                state = :hot
+            end
+        end
+        push!(rt, trips)
+    end
+    (swap_rate = nstep == 0 ? NaN : sw / nstep, round_trips = rt,
+     frac_at_T1 = f1, Tmax = Tmax)
 end
 
 end # module

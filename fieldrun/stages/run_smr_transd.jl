@@ -51,8 +51,9 @@ include(joinpath(@__DIR__, "..", "common", "stage_prelude.jl"))
 # went on to skip every site for missing inputs. Ask for the processes the
 # control file specifies and assert, as run_aem_transd.jl does -- a chain
 # count that silently disagrees with [mcmc] is not a run worth saving.
-addprocs(NCHAINS_CFG - (nworkers() == 1 ? 0 : nworkers()))
-@assert nworkers() == NCHAINS_CFG "need $(NCHAINS_CFG) workers, got $(nworkers())"
+# The SNMR ladder can differ from the AEM one ([mcmc] nchains_snmr).
+addprocs(NCHAINS_SNMR - (nworkers() == 1 ? 0 : nworkers()))
+@assert nworkers() == NCHAINS_SNMR "need $(NCHAINS_SNMR) workers, got $(nworkers())"
 
 # THE WORKERS NEED THE CONFIG TOO, and this is where the port bit back.
 # `@everywhere` runs on every process, and COMMON is defined by the prelude on
@@ -168,9 +169,30 @@ function apply_gates(zbnd, ens)
         res[k] = length(ch) >= 2 ? rhat_and_ess(ch; priorwidth = pwk) :
                  (rhat = NaN, ess_bulk = NaN, ess_tail = NaN, determined = false)
     end
+    # ACROSS ensembles: each ensemble has its own AEM kernel draw, so this R-hat
+    # mixes sampler mixing with kernel spread. Kept, reported as kernel spread.
     rh = filter(isfinite, [v.rhat for v in values(res)])
     eb = filter(isfinite, [v.ess_bulk for v in values(res)])
     et = filter(isfinite, [v.ess_tail for v in values(res)])
+    # WITHIN each ensemble: its T=1 streams by chain id share one kernel, so
+    # their agreement is mixing alone (see t1_streams for the PT caveat).
+    # R-hat is the worst over ensembles and scalars; ESS adds across ensembles,
+    # each contributing its worst scalar.
+    mix_rh = Float64[]; mix_ess = 0.0; nmix = 0
+    for e in ens
+        S = [x for x in e.streams if size(x.fstar, 2) >= 8]
+        length(S) >= 2 || continue
+        vs = [rhat_and_ess([collect(Float64, view(x.fstar, idx, :)) for x in S]; priorwidth = pw)
+              for idx in gi]
+        push!(vs, rhat_and_ess([vec(sum(x.fstar[1:i100, :] .* dz[1:i100], dims = 1)) for x in S]))
+        L = [x.logs for x in S if length(x.logs) >= 8]
+        length(L) >= 2 && push!(vs, rhat_and_ess(L))
+        r = filter(isfinite, [v.rhat for v in vs]); q = filter(isfinite, [v.ess_bulk for v in vs])
+        isempty(r) || push!(mix_rh, maximum(r))
+        isempty(q) || (mix_ess += minimum(q))
+        nmix += 1
+    end
+    trips = [minimum(e.tempering.round_trips) for e in ens]
     st = [stationary_trend(e.U; nsig = CFG.TREND_SIGMA) for e in ens if !isempty(e.U)]
     pooled = hcat([e.fstar for e in ens if size(e.fstar, 2) > 0]...)
     shmax = NaN
@@ -178,10 +200,26 @@ function apply_gates(zbnd, ens)
         h = size(pooled, 2) ÷ 2
         shmax = maximum(abs(median(pooled[i, 1:h]) - median(pooled[i, h+1:2h])) for i in gi)
     end
+    rk = isempty(rh) ? NaN : maximum(rh)
+    rm = isempty(mix_rh) ? NaN : maximum(mix_rh)
+    stat_ok = isempty(st) ? false : all(s -> s.stationary, st)
+    # THE GATE. Within-kernel mixing when there are T=1 streams to compare
+    # (every ensemble, >= 2 streams of >= 8 draws), plus every chain completing
+    # at least one T=1 -> Tmax -> T=1 round trip. Otherwise the old
+    # across-ensemble test, which is only right when ensembles share a kernel.
+    basis = nmix == length(ens) ? "within-kernel" : "across-ensemble"
+    pass = basis == "within-kernel" ?
+        (rm <= CFG.GATE_RHAT && mix_ess >= CFG.GATE_MIN_ESS && stat_ok && minimum(trips) >= 1) :
+        (rk <= CFG.GATE_RHAT && (isempty(eb) ? NaN : minimum(eb)) >= CFG.GATE_MIN_ESS && stat_ok)
     (per_scalar = res, scalars = scal,
      ndetermined = count(v -> get(v, :determined, false), values(res)),
-     rhat_max = isempty(rh) ? NaN : maximum(rh),
-     ess_bulk_min = isempty(eb) ? NaN : minimum(eb),
+     rhat_max = basis == "within-kernel" ? rm : rk,
+     rhat_mixing_max = rm, ess_mixing = nmix == 0 ? NaN : mix_ess,
+     rhat_kernel_max = rk, gate_basis = basis, gates_pass = pass,
+     min_round_trips = trips,
+     swap_rate = [e.tempering.swap_rate for e in ens],
+     frac_at_T1 = [e.tempering.frac_at_T1 for e in ens],
+     ess_bulk_min = basis == "within-kernel" ? mix_ess : (isempty(eb) ? NaN : minimum(eb)),
      ess_tail_min = isempty(et) ? NaN : minimum(et),
      stationary = isempty(st) ? false : all(s -> s.stationary, st),
      misfit_t = isempty(st) ? NaN : maximum(abs(s.t) for s in st),
@@ -201,6 +239,46 @@ function summarise(b, pooled)
      doi = doi, doi_05 = doiA, doi_07 = doiB)
 end
 
+"""
+The T=1 draws of ONE ensemble split by chain id, plus the ladder's health.
+
+`transD_GP.assembleTat1` pools every T=1 row across chains and drops which
+chain made it; that pool is still what the posterior is built from. The split
+is for the mixing test only: with [mcmc] nchainsatone_snmr >= 2 there are two
+or more T=1 streams on the SAME kernel draw, so their agreement measures
+sampler mixing alone, free of the AEM-kernel spread that the across-ensemble
+comparison carries. With one chain at T=1 the ids still rotate through the
+T=1 slot, so the split works there too, on shorter, sequential streams.
+
+CAVEAT, RUNBOOK §5: chains of one PT ladder are not independent -- swaps feed
+every T=1 stream from the same heated chains. Agreement between them is
+weaker evidence than agreement between independent ladders, which is why the
+round-trip count is reported beside it: a ladder whose chains complete
+T=1 -> Tmax -> T=1 cycles is moving states through the hot end rather than
+handing one stuck state back and forth.
+"""
+function t1_streams(opt, optn)
+    rows = t1_rows_by_chain(opt.costs_filename; burninfrac = CFG.BURNINFRAC)
+    nrows = t1_rows_by_chain(optn.costs_filename; burninfrac = CFG.BURNINFRAC, Tcol = 4)
+    vals = readdlm(optn.vals_filename, ' ', String)
+    vcid = parse.(Int, vals[:, 1]); vlogs = parse.(Float64, vals[:, end])
+    st = map(rows) do r
+        # The models file holds a chain's model ONLY while it is at T=1 (as
+        # transD_GP.assembleTat1 indexes it), so the burn-in mask is taken over
+        # that chain's T=1 rows, not over all its rows.
+        F = transD_GP.history(opt; stat = :fstar, chain_idx = r.chain)
+        at1 = isapprox.(r.T, 1.0; atol = 1e-12)
+        @assert length(F) == count(at1) "chain $(r.chain): $(length(F)) stored models, $(count(at1)) T=1 rows"
+        keep = r.mask[at1]
+        fs = any(keep) ? hcat([f[:] for f in F[keep]]...) : zeros(length(opt.xall), 0)
+        ln = vlogs[vcid .== r.chain]
+        nm = nrows[r.chain].mask
+        (chain = r.chain, fstar = fs,
+         logs = length(ln) == length(nm) ? ln[nm] : Float64[])
+    end
+    st, tempering_stats([r.T for r in rows])
+end
+
 function run_ensemble(b, sounding_id, e, pids)
     prefix = "$(sounding_id)$(LABEL)_e$(e)_"
     clear_tag(pwd(), prefix)
@@ -212,10 +290,10 @@ function run_ensemble(b, sounding_id, e, pids)
     S = hier(b)
     opt, optn = make_opts(prefix, b.zbnd)
     t = @elapsed transD_GP.main(opt, optn, S, pids;
-                                nsamples = NSAMPLES, nchainsatone = 1,
-                                Tmax = CFG.TMAX)
+                                nsamples = NSAMPLES, nchainsatone = NCHAINSATONE,
+                                Tmax = TMAX)
     set_run_filenames!(opt, optn)
-    inv = assert_one_chain_at_T1(opt.costs_filename, length(pids))
+    inv = assert_chains_at_T1(opt.costs_filename, length(pids), NCHAINSATONE)
     opt.xall[:] .= b.zbnd
     F = transD_GP.assembleTat1(opt, :fstar; temperaturenum = 1,
                                burninfrac = CFG.BURNINFRAC)
@@ -229,10 +307,12 @@ function run_ensemble(b, sounding_id, e, pids)
     end
     logs = size(nu, 1) == 0 ? Float64[] : vec(nu[:, end])
     h = nodes_at_T1(opt.costs_filename; burninfrac = CFG.BURNINFRAC)
-    @printf("      ensemble %d: %d draws, %.1f s, T=1 %s\n",
-            e, size(fstar, 2), t, inv.ok ? "ok" : inv.why)
+    st, tp = t1_streams(opt, optn)
+    @printf("      ensemble %d: %d draws, %.1f s, T=1 %s; T=1 draws by chain %s; swaps %.2f, round trips %s\n",
+            e, size(fstar, 2), t, inv.ok ? "ok" : inv.why,
+            join([size(x.fstar, 2) for x in st], "/"), tp.swap_rate, join(tp.round_trips, "/"))
     (prefix = prefix, seed = sd, secs = t, fstar = fstar, logs = logs,
-     nodes = h.nodes, U = h.U, t1_ok = inv.ok)
+     nodes = h.nodes, U = h.U, t1_ok = inv.ok, streams = st, tempering = tp)
 end
 
 function run_site(field_id, filename, pids)
@@ -268,10 +348,11 @@ function run_site(field_id, filename, pids)
 
     G = apply_gates(b.zbnd, ens)
     S = summarise(b, G.pooled)
-    @printf("    pooled %d draws; rhat_max %.3f, ess_bulk_min %.0f, gates %s\n",
-            S.ndraws, G.rhat_max, G.ess_bulk_min,
-            (G.rhat_max <= CFG.GATE_RHAT && G.ess_bulk_min >= CFG.GATE_MIN_ESS &&
-             G.stationary) ? "PASS" : "FAIL")
+    @printf("    pooled %d draws; mixing (within kernel) rhat_max %.3f, ESS %.0f; kernel spread (across ensembles) rhat %.3f\n",
+            S.ndraws, G.rhat_mixing_max, G.ess_mixing, G.rhat_kernel_max)
+    @printf("    ladder: %d chains (%d at T=1), Tmax %.3g; min round trips per ensemble %s; stationary %s; gates %s (%s)\n",
+            NCHAINS, NCHAINSATONE, TMAX, join(G.min_round_trips, "/"), G.stationary,
+            G.gates_pass ? "PASS" : "FAIL", G.gate_basis)
     s_draws = vcat([e.logs for e in ens if !isempty(e.logs)]...)
     @printf("    noise scale s: p05 %.2f p50 %.2f p95 %.2f  (x sigma-hat)\n",
             quantile(exp.(s_draws), .05), quantile(exp.(s_draws), .5),
@@ -292,8 +373,11 @@ function run_site(field_id, filename, pids)
         rhat_max = G.rhat_max, ess_bulk_min = G.ess_bulk_min,
         ess_tail_min = G.ess_tail_min, stationary = G.stationary,
         splithalf_max = G.splithalf_max,
-        gates_pass = (G.rhat_max <= CFG.GATE_RHAT &&
-                      G.ess_bulk_min >= CFG.GATE_MIN_ESS && G.stationary),
+        gates_pass = G.gates_pass, gate_basis = G.gate_basis,
+        rhat_mixing_max = G.rhat_mixing_max, ess_mixing = G.ess_mixing,
+        rhat_kernel_max = G.rhat_kernel_max, min_round_trips = G.min_round_trips,
+        swap_rate = G.swap_rate, frac_at_T1 = G.frac_at_T1,
+        nchainsatone = NCHAINSATONE, tmax = TMAX,
         cond_source = b.cond_source, n_kernel_draws = b.n_kernel_draws,
         nsamples = NSAMPLES, nensembles = NENS, nchains = NCHAINS, s_tau = S_TAU,
         flat_sigmahat = FLAT, supplied_conductivity = SUPPLIED,
@@ -326,8 +410,8 @@ function main()
     end
     isempty(sites) && (sites = collect(keys(sel)))
     pids = workers()   # exactly NCHAINS, asserted at load
-    @printf("trans-D SNMR: %d sites, %d ensembles x %d chains, %d samples, s tau %.1f\n",
-            length(sites), NENS, length(pids), NSAMPLES, S_TAU)
+    @printf("trans-D SNMR: %d sites, %d ensembles x %d chains (%d at T=1, Tmax %.3g), %d samples, s tau %.1f\n",
+            length(sites), NENS, length(pids), NCHAINSATONE, TMAX, NSAMPLES, S_TAU)
     failed = String[]
     for s in sites
         try

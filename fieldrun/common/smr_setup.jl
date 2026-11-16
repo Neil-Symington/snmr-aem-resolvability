@@ -33,7 +33,16 @@ const NSAMPLES = NSAMPLES_SNMR  # [mcmc] nsamples_snmr, or --nsamples
 # mode it is 4, as every run so far has used, so no full-mode result moves.
 const NENS     = haskey(ARG, "ensembles") ? parse(Int, ARG["ensembles"]) :
                  Int(FCFG["kernel"]["n_draws"])
-const NCHAINS  = NCHAINS_CFG    # from [mcmc], not prerun_config.jl
+# THE SNMR LADDER: [mcmc] nchains_snmr / nchainsatone_snmr / tmax_snmr, each
+# falling back to the shared nchains / 1 / tmax (stage_prelude.jl). TMAX was
+# CFG.TMAX, the 2.5 hardcoded in src/prerun_config.jl -- [mcmc] tmax was
+# printed by the prelude and never reached this stage. A test holds the two
+# equal, so the shared value was only ever right by agreement; the ladder is
+# now read from the control file.
+const NCHAINS      = NCHAINS_SNMR
+const NCHAINSATONE = NCHAINSATONE_SNMR
+const TMAX         = TMAX_SNMR
+@assert 1 <= NCHAINSATONE < NCHAINS "SNMR ladder needs 1 <= nchainsatone ($NCHAINSATONE) < nchains ($NCHAINS)"
 # THE [noise] SECTION WAS DECORATIVE. fieldconfig.jl validated all five keys
 # and the stage then used none of them: s_prior_tau, s_sdev, s_bounds_log10 and
 # sigma_hat_branch came from hardcoded constants here or from prerun_config.jl,

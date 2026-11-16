@@ -66,10 +66,21 @@ const NSAMPLES_SNMR = haskey(ARGN, "nsamples") ? parse(Int, ARGN["nsamples"]) :
                       Int(MC["nsamples_snmr"])
 const NCHAINS_CFG  = haskey(ARGN, "nchains")  ? parse(Int, ARGN["nchains"])  : Int(MC["nchains"])
 const TMAX_CFG     = Float64(get(MC, "tmax", 2.5))
+# THE SNMR LADDER, separately from the AEM one. [mcmc] nchains/tmax set both
+# stages; the SNMR stage can now take its own ladder, with more than one chain
+# at T=1 so mixing can be tested WITHIN a kernel draw (two T=1 chains on the
+# same kernel) rather than only ACROSS kernel draws, which mixes sampler mixing
+# with AEM-kernel spread. Absent, each falls back to the shared value, so a
+# control file without them runs exactly as before. --nchains still overrides
+# both stages, for a one-off.
+const NCHAINS_SNMR      = haskey(ARGN, "nchains") ? NCHAINS_CFG :
+                          Int(get(MC, "nchains_snmr", MC["nchains"]))
+const NCHAINSATONE_SNMR = Int(get(MC, "nchainsatone_snmr", 1))
+const TMAX_SNMR         = Float64(get(MC, "tmax_snmr", TMAX_CFG))
 
-@printf("[%s] %d/%d samples (aem/snmr), %d chains, Tmax %.3g  (mode %s)\n",
+@printf("[%s] %d/%d samples (aem/snmr), %d chains, Tmax %.3g; SNMR ladder %d chains (%d at T=1), Tmax %.3g  (mode %s)\n",
         basename(CFGPATH), NSAMPLES_AEM, NSAMPLES_SNMR, NCHAINS_CFG, TMAX_CFG,
-        FCFG["run"]["mode"])
+        NCHAINS_SNMR, NCHAINSATONE_SNMR, TMAX_SNMR, FCFG["run"]["mode"])
 
 # The sites this run covers, honouring --site.
 const RUN_SITES = isempty(ONLY) ? FCFG["run"]["sites"] :
