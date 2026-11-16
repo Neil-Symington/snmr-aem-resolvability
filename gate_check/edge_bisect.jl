@@ -76,59 +76,18 @@ function best_at(C, from)
 end
 
 # ── the solved set: log10 sigma -> (chi2, model, nbound) ──────────────────
-"Nearest already-solved node to x, by distance in dex."
-nearest(S, x) = argmin(k -> abs(k - x), collect(keys(S)))
+# The bisection itself lives in gate_check/edgefinder.jl with the solver
+# injected, so it is unit-tested against a mock in test/test_edgefinder.jl
+# without any AEM code. Two bugs found on 17 Nov are fixed there: a bracket
+# invalidated by its own re-solve, and a chi2 convergence test that compared
+# different nodes to each other.
+include(joinpath(HERE, "edgefinder.jl")); using .EdgeFinder
+const EF = EdgeFinder
 
-"""
-Bisect one edge. `lo` is an accepted node, `hi` a rejected one, both already in
-`S`. Halves the interval, each new point warm-started from the NEAREST solved
-node, and after each insertion re-solves the two bracketing nodes warm from the
-new point -- that re-solve is what actually lowers chi2 near the edge.
-
-Returns the refinement history and a converged flag. Never claims an edge it did
-not settle.
-"""
-function bisect_edge!(S, lo, hi, thr; maxref = MAXREF, dex_tol = 0.02, chi_tol = 0.5)
-    hist = NamedTuple[]
-    nsolves = 0; raised = String[]
-    prev_edge = NaN; prev_chi = NaN; ok_streak = 0
-    a, b = lo, hi
-    for it in 1:maxref
-        mid = (a + b) / 2
-        src = nearest(S, mid)
-        r = best_at(10^mid * thick, S[src].m); nsolves += r.nsolves
-        if !haskey(S, mid) || r.chi < S[mid].chi
-            S[mid] = (chi = r.chi, m = r.m, nbound = r.nbound)
-        end
-        # re-solve the bracketing nodes from the new, closer point
-        for q in (a, b)
-            rq = best_at(10^q * thick, S[mid].m); nsolves += rq.nsolves
-            if rq.chi < S[q].chi - 1e-9
-                S[q] = (chi = rq.chi, m = rq.m, nbound = rq.nbound)
-            elseif rq.chi > S[q].chi + chi_tol
-                push!(raised, @sprintf("node %.4f dex: %.3f -> %.3f at step %.4f",
-                                       q, S[q].chi, rq.chi, abs(b-a)))
-            end
-        end
-        # new bracket
-        a, b = S[mid].chi <= thr ? (mid, b) : (a, mid)
-        # linear interpolation of the crossing inside the bracket
-        ca, cb = S[a].chi, S[b].chi
-        edge = (cb > ca) ? a + (thr - ca) * (b - a) / (cb - ca) : (a + b) / 2
-        dmove = isnan(prev_edge) ? NaN : abs(edge - prev_edge)
-        dchi  = isnan(prev_chi)  ? NaN : abs(ca - prev_chi)
-        push!(hist, (step = abs(b - a), edge = edge, chi_lo = ca, chi_hi = cb,
-                     move = dmove, dchi = dchi, nsolves = nsolves))
-        if !isnan(dmove) && dmove < dex_tol && dchi < chi_tol
-            ok_streak += 1
-        else
-            ok_streak = 0
-        end
-        prev_edge = edge; prev_chi = ca
-        ok_streak >= 2 && return (edge = edge, converged = true, hist = hist,
-                                  nsolves = nsolves, raised = raised)
-    end
-    (edge = prev_edge, converged = false, hist = hist, nsolves = nsolves, raised = raised)
+"Solver for the edge finder: best over the lambda2 set at one C, warm-started."
+function edge_solve(x, from)
+    r = best_at(10^x * thick, from)
+    (chi = r.chi, m = r.m, nbound = r.nbound, lam = r.lam)
 end
 
 "Refinement audit: insert a midpoint in three random interior intervals and
@@ -198,8 +157,7 @@ function drive_edges!(S, RULES, thick, ndata)
             outer = ename == "upper" ? minimum(out) : maximum(out)
             @printf("  %s edge bracketed by %.4f (chi2 %.3f) and %.4f (chi2 %.3f)\n",
                     ename, inner, S[inner].chi, outer, S[outer].chi)
-            r = bisect_edge!(S, ename == "upper" ? inner : outer,
-                                ename == "upper" ? outer : inner, thr)
+            r = EF.bisect_edge(S, edge_solve, thr; maxref = MAXREF)
             total += r.nsolves
             @printf("    %-9s %-10s %-10s %-10s %-9s %s\n",
                     "step dex","edge dex","chi2 lo","chi2 hi","move","dchi")
@@ -209,14 +167,15 @@ function drive_edges!(S, RULES, thick, ndata)
                         isnan(h.move) ? "-" : @sprintf("%.4f", h.move),
                         isnan(h.dchi) ? "-" : @sprintf("%.3f", h.dchi))
             end
-            @printf("    -> C = %.4f S  %s  (%d solves)\n", 10^r.edge*thick,
-                    r.converged ? "CONVERGED" : "**NOT CONVERGED**", r.nsolves)
+            @printf("    -> C = %s  %s  state %s  (%d solves)\n",
+                    isnan(r.edge) ? "(none)" : @sprintf("%.4f S", 10^r.edge*thick),
+                    r.converged ? "CONVERGED" : "**NOT CONVERGED**", r.state, r.nsolves)
             if !isempty(r.raised)
                 println("    REFINEMENT RAISED chi2 (should be impossible):")
                 for m in r.raised; println("      ", m); end
             end
-            results["$(rname)_$(ename)"] = (edge = 10^r.edge*thick, converged = r.converged,
-                                            state = r.converged ? "located" : "not converged",
+            results["$(rname)_$(ename)"] = (edge = isnan(r.edge) ? NaN : 10^r.edge*thick,
+                                            converged = r.converged, state = r.state,
                                             raised = r.raised)
         end
         println()
