@@ -1,4 +1,4 @@
-name = "confined_aquifer_saline"
+name = "confined_aquifer_brackish"
 description = """
 Fresh sand aquifer confined between a clay cap and a clay aquitard, with a
 brackish sand aquifer beneath. Riverine Plain (Murray Basin) analogue.
@@ -89,7 +89,7 @@ clay_mineral = "kaolinite"   # highland-derived quartz sand and gravel
 phi = 0.30
 S = 1.0
 clay = 0.08
-sigma_w = 0.30          # SALINE CONTROL, ~1,920 mg/L (was 0.08, ~520 mg/L)
+sigma_w = 0.4375        # BRACKISH CONTROL, ~2,800 mg/L (was 0.08, ~520 mg/L; 0.30 until 17 Nov)
 
 [[unit]]
 top = 34.0

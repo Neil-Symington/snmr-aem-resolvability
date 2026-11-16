@@ -57,7 +57,7 @@
 #     config names.
 #   - jitter = "logit", which the generator did not support until now.
 
-name = "paper_3P_saline"
+name = "paper_3P_brackish"
 description = """
 Unconfined fresh sand aquifer over a clay aquitard, with a saline silty unit
 beneath. Murray Basin western-margin analogue (Loxton-Parilla Sands over
@@ -132,7 +132,7 @@ name = "Loxton–Parilla Sands — AQUIFER"
 sigma_clay      = 0.15    # PAPER: the stored sigma_s in this unit
 phi = 0.32
 clay = 0.05
-sigma_w = 0.30          # SALINE CONTROL, ~1,920 mg/L (was 0.03)
+sigma_w = 0.4375        # BRACKISH CONTROL, ~2,800 mg/L (was 0.03; 0.30 until 17 Nov)
 
 [[unit]]
 top = 40.0
