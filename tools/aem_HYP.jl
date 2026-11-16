@@ -13,7 +13,7 @@
 # trans-D run cannot overwrite the earlier one or the Occam result:
 #   TAG=2 -> truth_murray2.jld2, data/aem2/
 #
-#   julia --project=. synthetics/aem_HYP.jl [nsamples] [tag]
+#   julia --project=. tools/aem_HYP.jl [nsamples] [tag] [nchains] [label] [seed]
 
 using Distributed, JLD2, Statistics, Random, Printf
 
@@ -34,7 +34,11 @@ const TMAX     = haskey(ENV, "SCT_TMAX")   ? parse(Float64, ENV["SCT_TMAX"]) : 2
 const NMAX_K   = haskey(ENV, "SCT_NMAX")   ? parse(Int,     ENV["SCT_NMAX"]) : 40
 const NCHAIN1  = haskey(ENV, "SCT_NCHAINSATONE") ? parse(Int, ENV["SCT_NCHAINSATONE"]) : 1
 const NDRAWS   = 30
-const SEED     = 20261012
+# SEED is now per ensemble, from the 5th positional argument or AEM_SEED, so a
+# run can be repeated. Default is the historical value, so an unset seed
+# reproduces the production call exactly.
+const SEED     = length(ARGS) >= 5 ? parse(Int, ARGS[5]) :
+                 haskey(ENV, "AEM_SEED") ? parse(Int, ENV["AEM_SEED"]) : 20261012
 # The AEM noise realisation is pinned to HiQGA's makenoisydata! default, 123,
 # NOT to SEED. Until build_skytem_operator passed rseed through, the caller's
 # seed was silently ignored and every run drew the 123 realisation -- which is
@@ -82,6 +86,8 @@ function main()
         σlow = aem.σlow, σhigh = aem.σhigh,
         nsamples = NSAMPLES, nchains = NCHAINS, Tmax = TMAX,
         nmax_k = NMAX_K, nchainsatone = NCHAIN1,
+        seed_ensemble = SEED, seed_workers = [SEED + p for p in workers()],
+        label = LABEL,
         noise_scale = 1.0, rseed_noise = NOISE_RSEED)
 
     opt = make_aem_opt(grid.znall, "hypsynth_aem_"; nmax = NMAX_K)

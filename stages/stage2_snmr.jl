@@ -63,6 +63,9 @@ const LABEL  = get(ARG, "label", "")
 const CONDS  = split(get(ARG, "conds", "C1,C2"), ",")
 const NSAMP  = parse(Int, get(ARG, "nsamples", "100001"))
 const NENS   = 4
+# Per-ensemble seed base, from SMR_SEED or the historical default. Ensemble e
+# uses SEED_BASE + e, and each of its workers SEED_BASE + e + worker id.
+const SEED_BASE = haskey(ENV, "SMR_SEED") ? parse(Int, ENV["SMR_SEED"]) : 20261101
 const NCHAIN = 4          # PT chains per ensemble
 # §2 saves 30 AEM draws; C4 uses the first NDRAWS of them. Cut to 10 on
 # 2026-10-12 at the user's direction to halve the wall clock. This is the outer
@@ -120,7 +123,16 @@ function run_ensemble(tag, e, V, σ̂, F, islog, zbnd, pids)
     local samples, secs
     try
         clear_tag(pwd(), prefix)
-        Random.seed!(hash((tag, e)) % 10^8)
+        # Seed PER ENSEMBLE from config or the command line, and seed every
+        # worker from seed + its id. Previously this was hash((tag, e)), which
+        # was deterministic but not settable, so a run could not be repeated
+        # with a stated seed. SEED_BASE + e keeps ensembles independent.
+        let sd = SEED_BASE + e
+            Random.seed!(sd)
+            @sync for p in workers()
+                @async remotecall_fetch(() -> (Random.seed!(sd + myid()); nothing), p)
+            end
+        end
         S = SMRPInversion.newSMRSoundingHierarchical(V, zeros(length(V)), F;
                 σ̂_V0 = σ̂, s_prior_center = CFG.S_PRIOR_CENTER,
                 s_prior_logwidth = CFG.S_PRIOR_TAU, s_init = CFG.S_INIT,
@@ -297,7 +309,9 @@ function main()
             ens, _ = run_condition("$(cond)_$(TIER)$(TAG)", V, σ̂, F50, islog, zsmr, pids)
             jldsave(f; ens = ens, cond = cond, tier = TIER, islog = islog,
                     kernel = basename(kernelfile),
-                    nsamples = NSAMP, zsmr = zsmr, input_sig = sig)
+                    nsamples = NSAMP, zsmr = zsmr, input_sig = sig,
+                    seed_base = SEED_BASE,
+                    seeds_ensemble = [SEED_BASE + e for e in 1:NENS])
         elseif cond == "C4" && TAG == "2"
             @warn "C4 needs AEM posterior draws; the Occam run has none. Skipping."
             continue
