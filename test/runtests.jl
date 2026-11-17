@@ -72,7 +72,11 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
             ("Stage 0 roundtrip", "test_stage0_roundtrip.jl", String[]),
             ("gate solver",       "test_gate_solver.jl",      ["data/truth_murray3.jld2"]),
             ("conductance constraint", "test_cond_constraint.jl", ["data/truth_murray3.jld2"]),
-            ("Stage 3 integral",  "test_stage3_integral.jl",  String[]))
+            ("Stage 3 integral",  "test_stage3_integral.jl",  String[]),
+            # Added 18 Nov: stage2_snmr.jl could not load for a day and nothing
+            # in this suite would have noticed, because the pooling test
+            # exercises pooled_sigma without loading the stage.
+            ("stage scripts load", "test_stage_loads.jl",      String[]))
         f = joinpath(@__DIR__, script)
         missing_inputs = [n for n in needs if !isfile(joinpath(ROOT, n))]
         if !isfile(f)

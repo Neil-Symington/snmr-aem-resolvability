@@ -1,6 +1,38 @@
 # smr_data.jl -- forward-model the SNMR data Stage 2 inverts.
 #
-#   julia --project=. tools/smr_data.jl transd --tag <TAG> [--label <L>]
+#   julia --project=. tools/smr_data.jl --tag <TAG>
+#
+# FIXED 18 Nov 2026. THE GENERATING KERNEL IS BUILT ON THE TRUE CONDUCTIVITY.
+#
+# Until today this script took the true water content from the truth file -- which
+# was right -- and then built the generating kernel on an AEM INVERSION's sigma(z),
+# either the Occam profile or a Stage 1 trans-D p50 selected by --label. The
+# measurements Stage 2 inverts were therefore forward-modelled through an
+# inversion result. Measured against the true sigma_bulk at the same depths, the
+# conductivity used departed by a median 55% (3P), 54% (2P), 45% (3S) and 52%
+# (2S), with maxima of 400 to 550%, and was bit-identical to aem_occam<TAG>.jld2.
+# The SMR kernel is conductivity-sensitive, so this was not cosmetic, and it hit
+# hardest on 2P, the column whose aquifer is a resistor enclosed by conductors.
+#
+# Now: sigma for the generating kernel is T["sigma_bulk"] taken onto the KERNEL
+# DEPTH GRID -- the same 65-layer log-growing grid src/aem_setup.jl defines and
+# Stage 0 generates the AEM data on -- by the same piecewise_interp Stage 0 uses.
+# The grid comes from the grid DEFINITION, not from any inversion output, and
+# NOTHING FROM STAGE 1 ENTERS DATA GENERATION. Both datasets therefore see the
+# same discretised ground.
+#
+# The truth's own 0.25 m grid was tried first and is not usable: SNMRForward's
+# field computation overflows with 800 thin layers and returns amplitudes around
+# 1e63 nV instead of tens of nV. Some discretisation is forced, so it is the same
+# one the AEM data already carry.
+# The data no longer depend on --label or on occam/transd, so there is ONE data
+# file per column; both switches are now hard errors rather than being quietly
+# accepted. The generating conductivity is stored as sigma_gen and asserted
+# against the truth on write.
+#
+# The file name keeps its "T" suffix, which Stage 2 expects (it is invoked with
+# --tag <TAG>T). The suffix no longer denotes a kernel source -- there is only
+# one -- and is retained solely so Stage 2 needs no change.
 #
 # THIS SCRIPT WAS MISSING FROM THE RELEASE. Stage 2 loads
 # data/smr_data_murray<TAG>.jld2 and nothing shipped wrote it, so an
@@ -38,6 +70,10 @@ const HERE = @__DIR__
 const ROOT = normpath(joinpath(HERE, ".."))   # tools/ -> repository root
 const OUT  = joinpath(ROOT, "data")
 include(joinpath(ROOT, "src", "prerun_config.jl")); const CFG = PrerunConfig
+# For build_aem_grid and piecewise_interp: the kernel depth grid and the mapping
+# onto it, from the one place that defines them. Loads cleanly beside
+# SNMRForward; verified 18 Nov.
+include(joinpath(ROOT, "src", "aem_setup.jl"))
 
 # EFTF q-set, as synthetics/common.jl defines it.
 const QGRID = collect(10.0 .^ range(log10(0.1), log10(15.0), length = 24))
@@ -45,20 +81,29 @@ const QGRID = collect(10.0 .^ range(log10(0.1), log10(15.0), length = 24))
 # Effective noise from the EK pre-run's recovered s population, √s·σ̂ in nV.
 # --aem transd uses the trans-D p50 instead of the Occam profile, and writes
 # smr_data_murray2T.jld2 so the two never collide.
-const USE_TRANSD = "transd" in ARGS
+# Both switches chose which INVERSION generated the data. They are gone, and
+# passing either is an error: an old invocation must fail loudly, not silently
+# produce a file that looks the same and means something else.
+"transd" in ARGS && error("""
+    `transd` is no longer accepted. The generating kernel is built on the TRUE
+    conductivity, so there is no occam/transd choice to make and one data file
+    per column. Run: julia --project=. tools/smr_data.jl --tag <TAG>""")
+findfirst(==("--label"), ARGS) === nothing || error("""
+    `--label` is no longer accepted. It selected which Stage 1 ensemble's p50
+    GENERATED the data, which was the fault fixed on 18 Nov. Nothing from Stage 1
+    enters data generation now. Run: julia --project=. tools/smr_data.jl --tag <TAG>""")
 # aem_HYP.jl's 4th argument writes data/aem<TAG><LABEL>/, so a labelled Stage 1
 # run must be named here too or this looks in the wrong directory -- the same
 # trap aem_draws.jl had.
-const LABEL = let i = findfirst(==("--label"), ARGS)
-    i === nothing ? "" : ARGS[i+1]
-end
+
 # TAG selects the truth column: 2 = two-aquifer Murray, 3 = unconfined resistive.
 # The suffix on the SMR data file is <TAG> for an Occam kernel and <TAG>T for a
 # trans-D one, so the two kernels never collide for the same column.
 const TAG = let i = findfirst(==("--tag"), ARGS)
     i === nothing ? "2" : ARGS[i+1]
 end
-const SUF = USE_TRANSD ? TAG*"T" : TAG
+# Retained so Stage 2, which is invoked with --tag <TAG>T, finds the file.
+const SUF = TAG*"T"
 const TIERS = Dict("typical" => 4.63e-9, "poor" => 11.73e-9)
 const SHAPE_RISE = 2.5     # σ̂ rises this much across the moments (EK-measured)
 const SHAPE_CV   = 0.60    # and has this CV overall (EK-measured)
@@ -120,32 +165,31 @@ end
 
 function main()
     T = load(joinpath(OUT, "truth_murray$(TAG).jld2"))
-    af = USE_TRANSD ? joinpath(OUT, "aem$(TAG)$(LABEL)", "aem_posterior.jld2") :
-                      joinpath(OUT, TAG == "2" ? "aem_occam.jld2" : "aem_occam$(TAG).jld2")
-    isfile(af) || error("missing $af")
-    A = load(af)
 
     zsmr  = T["zsmr"]
     w     = T["θ_smrgrid"]                    # truth θ_SMR on the SMR grid
     Be, ϕ = T["BE_T"], deg2rad(T["INC_DEG"])
     R     = T["LOOP_SIDE"] / 2                # MRSForward_square takes the HALF-side
 
-    # Conductivity model for the kernel: the AEM p50, on the AEM grid's own
-    # layering. Interpolating it onto the coarse SMR grid first would throw away
-    # resolution the kernel can use.
-    # Occam gives ONE sigma(z), no posterior. The kernel is built from it and
-    # every sigma-dependent predicate conditions on it as a point estimate.
-    zA = A["zall_aem"]
-    keep = findall(z -> z > 0, zA)
-    σ50  = (USE_TRANSD ? A["σ50"] : A["σ_occam"])[keep]; zA = zA[keep]
-    tA   = diff(zA)
+    # Conductivity model for the generating kernel: the TRUE sigma_bulk, on the
+    # truth's own grid. No interpolation, so no discretisation is introduced and
+    # the kernel sees the ground the water content came from. Nothing from any
+    # inversion, and nothing from Stage 1, enters here.
+    #
+    # ConductivityModel takes n conductivities and n-1 thicknesses, the last
+    # layer being the half-space, which is why t_gen is a diff.
+    zgen = collect(Float64, build_aem_grid().zall)
+    σgen = piecewise_interp(zgen, collect(Float64, T["z"]), collect(Float64, T["σ_bulk"]))
+    tgen = diff(zgen)
+    length(σgen) == length(tgen) + 1 ||
+        error("sigma_gen has $(length(σgen)) layers against $(length(tgen)) thicknesses")
 
-    @printf("kernel from AEM %s: %d layers, σ %.4f–%.4f S/m\n",
-            USE_TRANSD ? "TRANS-D p50" : "OCCAM", length(σ50), extrema(σ50)...)
+    @printf("kernel from the TRUE sigma_bulk on the kernel grid: %d layers, σ %.4f–%.4f S/m, median %.4f\n",
+            length(σgen), extrema(σgen)..., median(σgen))
     @printf("AGRF Be = %.0f nT, inc = %.1f°, loop %.1f m square, %d moments\n",
             Be*1e9, T["INC_DEG"], T["LOOP_SIDE"], length(QGRID))
 
-    ct = SNMRForward.ConductivityModel(σ50, tA)
+    ct = SNMRForward.ConductivityModel(σgen, tgen)
     F  = SNMRForward.MRSForward_square(R, zsmr, QGRID, ϕ, 0.0, Be, ct)
     # SNMRForward.forward does trapezoidal integration over depth with F.dz and
     # the volume element already folded into the stored kernel — it is NOT a
@@ -166,10 +210,31 @@ function main()
         data[tier] = (V0_noisy = Vobs, σ̂ = σ̂, snr = snr)
     end
 
+    # ASSERT BEFORE THE WRITE that what generated the data is the truth and
+    # nothing else. This is the check whose absence let an inversion's sigma
+    # generate the measurements for months.
+    σcheck = piecewise_interp(zgen, collect(Float64, T["z"]), collect(Float64, T["σ_bulk"]))
+    σgen == σcheck || error("""
+        sigma_gen is not the truth's sigma_bulk on the kernel grid.
+        max |difference| = $(maximum(abs.(σgen .- σcheck))) S/m over $(length(σgen)) layers.
+        The generating kernel must be built on the truth. Refusing to write.""")
+    # and that it is nowhere near any inversion's sigma, which is the failure mode
+    aeminv = joinpath(OUT, "aem_occam$(TAG).jld2")
+    if isfile(aeminv)
+        so = load(aeminv, "σ_occam")
+        length(so) >= length(σgen) && maximum(abs.(σgen .- so[1:length(σgen)])) < 1e-12 &&
+            error("sigma_gen is bit-identical to $aeminv -- that is the 18 Nov fault. Refusing to write.")
+    end
+    @printf("assert: sigma_gen is the truth's sigma_bulk on the kernel grid over %d layers, exactly\n",
+            length(σgen))
+    @printf("        and is not the Occam inversion's sigma\n")
+
     jldsave(joinpath(OUT, "smr_data_murray$(SUF).jld2");
         zsmr = zsmr, w_true = w, qgrid = QGRID, V0_clean = V0,
         kernel = Matrix(F.kernel), kernel_dz = collect(F.dz),
-        σ_kernel = σ50, z_kernel = zA, t_kernel = tA,
+        sigma_gen = σgen, z_gen = zgen, t_gen = tgen,
+        generating_sigma_source = "truth sigma_bulk, truth grid, no interpolation",
+        σ_kernel = σgen, z_kernel = zgen, t_kernel = tgen,
         Be = Be, inc_deg = T["INC_DEG"], loop_side = T["LOOP_SIDE"], R = R,
         typical_V = data["typical"].V0_noisy, typical_σ̂ = data["typical"].σ̂,
         poor_V    = data["poor"].V0_noisy,    poor_σ̂    = data["poor"].σ̂,

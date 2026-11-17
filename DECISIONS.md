@@ -508,6 +508,59 @@ the aquitard stays 11.3x (3S) and 6.7x (2S) more conductive than the aquifer. Th
 Calivil is a resistor enclosed by conductors, "the hard case" -- and that geometry
 is unchanged by the water edit.
 
+## FIXED 18 Nov: the SNMR generating kernel is built on the true conductivity
+
+`tools/smr_data.jl` took the true water content from the truth file, which was
+right, and then built the **generating** kernel on an AEM inversion's sigma(z) --
+the Occam profile, or a Stage 1 trans-D p50 selected by `--label`. The
+measurements Stage 2 inverts were forward-modelled through an inversion result.
+Full report in `SNMR_DATA_FAULT_20261118.md`.
+
+**Measured departure of the conductivity used from the true `σ_bulk`** at the
+same depths: median **55% (3P), 54% (2P), 45% (3S), 52% (2S)**, maxima 400-550%,
+and bit-identical to `aem_occam<TAG>.jld2` in every case. The 13 Nov production
+run on 2P was built this way.
+
+**The fix.** `sigma` for the generating kernel is the truth's `σ_bulk` taken onto
+the kernel depth grid -- the same 65-layer log-growing grid `src/aem_setup.jl`
+defines and Stage 0 generates the AEM data on -- by the same `piecewise_interp`
+Stage 0 uses, so both datasets see the same discretised ground. **Nothing from
+Stage 1 enters data generation.** `transd` and `--label` are now hard errors
+rather than quietly accepted, so there is one data file per column. The file
+keeps its `T` suffix, which Stage 2 expects; the suffix no longer denotes a
+kernel source.
+
+The truth's own 0.25 m grid was tried first and is **not usable**: SNMRForward's
+field computation overflows with 800 thin layers and returns amplitudes around
+1e63 nV. Some discretisation is forced, so it is the one the AEM data already
+carry.
+
+**Stored and asserted.** The file carries `sigma_gen`, `z_gen`, `t_gen` and
+`generating_sigma_source`. Before the write, two assertions: that `sigma_gen`
+equals the truth on the kernel grid exactly, and that it is **not** bit-identical
+to the Occam inversion -- the specific failure mode. Verified on all four
+columns: `max |sigma_gen - truth| = 0.00e+00 S/m`.
+
+**Seeds unchanged at 20261012** for both `seed` and `noiseseed`. One realisation
+across the four columns is intended.
+
+**How much the data moved.** Median amplitude shifted only 0.5-5%, but in units
+of the measurement noise the change is **up to 24 sigma (3P), 52 (2P), 71 (3S)
+and 46 (2S)**. Small in percent, enormous against the noise, which is what an
+inversion sees. **The 13 Nov SNMR results are superseded**, on provenance and on
+the numbers. To be stated in `RUN_REPORT.md`.
+
+Superseded files moved, not deleted, to `data/superseded_20261118/`: the six
+`smr_data_murray*.jld2` and the five Stage 2 outputs built on them
+(`cond_C2_occam{2P,2S,3P,3S}.jld2`, `cond_C2_typicalFIXT.jld2`).
+
+**Test gap closed.** `test/test_stage_loads.jl` evaluates every stage script
+with its trailing `main()` stripped, which is the step the docstring regression
+failed -- `Meta.parseall` and `Meta.lower` both pass it. The check is verified
+against the real regression's shape rather than assumed, and the stages are
+given a real config so their own argument validation is not mistaken for a load
+failure. Wired into `test/runtests.jl`; the suite is 99 of 99.
+
 ## RULED 17 Nov: admissibility is the constraint and convergence, not bound occupancy
 
 Neil's ruling, given three times; the first two did not reach me. The blocker
