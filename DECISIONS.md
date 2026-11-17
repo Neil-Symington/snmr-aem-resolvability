@@ -22,10 +22,22 @@ column gives a package truth of 7.99 S over 4–34 m; the release column gives
 retired one is 1.1–1.5x more conductive in nearly every unit at similar clay
 fractions. A later reader must not read the difference as a regression.
 
-**Saline versions of both are built from the same configs**, changing only the
-target aquifer's pore-water conductivity to 0.30 S/m (about 1,920 mg/L at
+**Brackish versions of both are built from the same configs**, changing only
+the target aquifer's pore-water conductivity to 0.4375 S/m (about 2,800 mg/L at
 `mg_per_sm = 6400`), from 0.08 on test two and 0.03 on test one. Configs
-`confined_aquifer_saline.toml` and `paper_3P_saline.toml`.
+`confined_aquifer_brackish.toml` and `paper_3P_brackish.toml`. These columns
+are called "brackish", not "saline", in reports, tables and figures.
+
+**Second pair of columns set to about 2,800 mg/L, the upper end of the brackish
+class, by Neil, 17 Nov. Previously about 1,920 mg/L.** The configs were
+`confined_aquifer_saline.toml` and `paper_3P_saline.toml` at 0.30 S/m until
+then; they were renamed because no code reads them by name. Stage code is
+identical to tag `m4-inversions-20261117`.
+
+**Truth files are identified by content digest from 17 Nov**, not by
+`hash(read(path))`: two machines building the same column write different
+bytes. `tools/m4_digest.jl` gives the SHA-256 of the raw Float64 values of z,
+σ_bulk, θ_SMR, θ_total, clay and φ, and the window and package conductances.
 
 ## Sampler
 
