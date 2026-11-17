@@ -508,120 +508,65 @@ the aquitard stays 11.3x (3S) and 6.7x (2S) more conductive than the aquifer. Th
 Calivil is a resistor enclosed by conductors, "the hard case" -- and that geometry
 is unchanged by the water edit.
 
-## Queued work, agreed 17 Nov. None of it started.
+## Scope, corrected by Neil 17 Nov evening: the paper's results by Friday
 
-All of it waits on **the gate being frozen and the Stage 4 wrapper passing**.
+**Stop adding features.** This week, in order:
 
-### Terminology, fixed for the manuscript
+1. **Gate freeze** and the **Stage 4 wrapper with its acceptance test**.
+2. **Stages 3-6 on the four columns** when the inversions land.
+3. **Conversion of the admissible range to the ceiling and classes.**
+4. **Three figures and one table**, including the static gate-models figure.
+5. **RUN_REPORT.md.**
 
-"**passing interval**" for the merged `p_pass >= report_level` regions
+**Deferred until after the paper, not started:** selectable window rules
+(`select`), interval labels and the `dir/<name>/<label>/` layout,
+`report_level`/`secondary_level` from config, depth-dependent limits, the JSON
+data file, the ten-draw coverage test, and everything in `PARKED.md`. The
+specifications for these are in the git history of this file (commit `9c2a5a2`)
+so nothing has to be re-derived when they are picked up.
+
+**The no-overwrite guard: mostly already present, and the rest is dropped.**
+`run_stages.sh` already refuses to overwrite: it records provenance per output,
+skips a stage only on an **exact** provenance match, announces a STALE output
+built under other settings, and takes `--force` and `--reuse-stale`. That covers
+the truth, Stage 1 and Stage 2 outputs. `run_site.jl`, which orchestrates Stages
+0 and 3-6, has no such guard — it runs each step unconditionally. Adding one
+there is about five minutes, but it is **not being added**: the thing it protects
+against is a second interval silently overwriting the first, and interval labels
+are deferred, so this week there are no second intervals and nothing is at risk.
+Meanwhile this week is nothing but legitimate re-runs of Stages 3-6, every one of
+which the guard would block until `--force` were passed. It goes back on the list
+with the labels it belongs to.
+
+**Static figure and JSON data file: deferred, and the reason recorded.** The
+figure's left panel needs the smoothest model that still passes at each node.
+That model is **not stored** — only the min-chi2 model is kept per node, and it is
+systematically the least smooth, all four release stores having run
+`lams = [0.01, 0.1]` with the recorded winners at 0.01 and 0.1. Recovering it
+needs new solves: per accepted node, warm-start from the stored model and walk
+lambda2 down from 10, keeping the largest that meets the conductance constraint
+and the threshold. 50 accepted nodes across both columns and both variants, about
+1.5 h at two solves a node, 2.5 h worst case, single-core. **The static
+gate-models figure is item 4 of this week's list, so this cost has to be paid or
+the panel has to change** — flagged for decision when item 4 starts.
+
+### Terminology, fixed for the manuscript, in force now
+
+"**passing interval**" for the merged `p_pass >= 0.5` regions
 (`intervals_primary` in the Stage 3 output); "**the window carried forward**" for
-`fixed_window`. **No "zone", no "representative window per zone"** — Stage 3 has
-no zone concept and never had one. `depth_min` is the shallowest window **top**
-and `depth_max` the deepest window **base**, so with `L_max = 16` a 40 m base
-limit allows tops no deeper than 24 m.
+`fixed_window`. No "zone", no "representative window per zone" — Stage 3 has no
+zone concept. `depth_min` is the shallowest window **top** and `depth_max` the
+deepest window **base**, so with `L_max = 16` a 40 m base limit allows tops no
+deeper than 24 m.
 
-### Item 1, half a day at most. Report and stop if it runs over.
+### Confirmed from the code, and still true
 
-`[hypothesis.interval].select`, applied across the whole sweep as now, **not per
-interval**:
-
-| value | rule |
-|---|---|
-| `robust_water` | current rule, unchanged, **the default** |
-| `mean_theta` | highest 5th-percentile MEAN water content over the window (not W), then shortest, then shallowest |
-| `shallowest` | shallowest passing window, then shortest |
-| `deepest` | deepest passing window, then shortest |
-
-Plus `[hypothesis].report_level` (default 0.5) and `.secondary_level`
-(default 0.02) read from config — both are literals today at
-`stage3_hypothesis.jl:323` and `:356`. A test for each rule on a small synthetic
-sweep. The chosen rule recorded in the output. **The production run uses the
-default, so its windows do not change.**
-
-### Item 1b, the second-interval convention. Same half-day item; if the two together run over, do THIS one first and report.
-
-- `[hypothesis.interval].label`, default `"main"`. Stage 3-6 outputs go under
-  `[output].dir/<name>/<label>/`. **Stage 0-2 outputs stay where they are and are
-  shared.**
-- **Refuse to overwrite existing Stage 3-6 outputs unless `--force`.** Fail
-  loudly, naming the path. Applies to every run, not only second intervals.
-- Record `label`, `depth_min`, `depth_max` and the select rule in each output and
-  in the manifest.
-- The site report lists every label found for that site.
-
-**Confirmed from the code:** restricting `depth_min`/`depth_max` and re-running
-Stages 3-6 needs no re-run of Stages 0-2. Stage 3 reads only the Stage 2 ensemble
-plus config; Stage 4 reads `stage0_*` + `stage3_*` and takes the window from
-`S3["fixed_window"]`; Stage 4 post reads `stage4_*`, `stage3_*`, `stage0_*` and
-the ensemble path carried in the Stage 0 artefact; Stage 5 reads `stage3_*`,
-`stage4post_*` and `[data].stage1_draws` (keys `sigma` and `zall_aem` only);
-Stage 6 reads `stage3_*`, `stage4post_*`, `stage5_*`. Stage 1's posterior and
-Stage 2's ensemble carry no window. **Without the label convention the second run
-silently overwrites the first**, every Stage 3-6 filename being keyed on
-`cfg["name"]` alone — which is what the convention is for.
-
-**Stage 5's `stage1_draws` read is to be left in place** until Stage 5 is
-rewritten as the conditions step, at which point it goes.
-
-### Item 2, outputs. No new solves. After the wrapper passes.
-
-**A static figure per column, from the pipeline.** Left: conductivity on a log
-axis against depth for the model at every accepted node, coloured by forced window
-conductance, window shaded, stated limits dashed, truth in black on synthetic
-columns only. Right: min chi2 against window conductance, threshold line, accepted
-band marked, edges marked. General unit names, no other annotation.
-
-**A JSON data file per column** to the schema Neil supplied, SI throughout
-(conductivity S/m, depth m), for the interactive page. `ensemble` and `truth`
-optional; truth omitted for field sites. Same file for the WIDE variant if cheap.
-
-**THE SMOOTHEST PASSING MODEL IS NOT STORED.** See the next section.
-
-## The smoothest passing model is not stored, and what it costs
-
-Asked for by the figure brief (`sigma_smooth` per node). What the stores hold per
-node is the **min-chi2** model only — `models[i]`, the winner over every start,
-both sweep directions and the whole lambda2 set. Smoothness is set by lambda2, and
-the winner is systematically the *least* smooth: on 2P the recorded
-`win_lambda2` values are 0.01 and 0.1, the small end. All four release stores were
-run with `lams = [0.01, 0.1]`, so **0.1 is the largest lambda2 ever tried** and no
-smoother solve exists anywhere to be dug out. The information existed at run time
-and was discarded; only one model per node was kept.
-
-So producing the left panel as specified **needs new solves**, which the brief
-rules out. The cheap way to get them, for a decision:
-
-Per accepted node, warm-start from the stored min-chi2 model and walk lambda2 down
-from 10 through 1, 0.1, 0.01, stopping at the **largest** lambda2 whose solve both
-meets the conductance constraint (`conres < 1e-8`) and stays under the threshold.
-Typically one to three solves a node, at roughly 45 s a warm solve.
-
-| column, variant | nodes | accepted |
-|---|---|---|
-| 3P WIDE | 22 | 17 |
-| 3P SEDIMENTARY | 21 | 17 |
-| 2P WIDE | 10 | 9 |
-| 2P SEDIMENTARY | 9 | 7 |
-
-50 accepted nodes in total: about **1.5 h** at two solves a node, **2.5 h** worst
-case at four, single-core, so it runs alongside other work. It adds
-`sigma_smooth` and the lambda2 that produced it, per node, and changes nothing
-else in the schema. If a node has no passing lambda2, it falls back to the
-min-chi2 model and is labelled as such in the JSON.
-
-### Three other gaps in the JSON schema, to settle before it is built
-
-- **`limits` as depth intervals.** Every release store carries a single global
-  `mbounds` pair, not per-cell stated limits. The per-cell machinery exists
-  (`setcellbounds!`, `boundkind` returning free / global / stated in
-  `src/occam_core.jl`) but no stored run used it, so `limits` would today be one
-  interval spanning all 65 cells. Per-depth limits need a run that actually sets
-  them.
-- **`edges.*.state`.** The stores record `"located"` or `"open"` with a
-  `converged` flag, not `data | limit | search`. The mapping has to be stated.
-- **`classes`.** "Classes in config" is still outstanding M1 work, so
-  `classes.salinity` and `classes.water` have no source yet.
+Restricting `depth_min`/`depth_max` and re-running Stages 3-6 needs no re-run of
+Stages 0-2: Stage 1's posterior and Stage 2's ensemble carry no window. Every
+Stage 3-6 filename is keyed on `cfg["name"]` alone, so a second interval run
+overwrites the first in place — which is why the label convention exists and why
+second intervals wait for it. Stage 5's `[data].stage1_draws` read stays until
+Stage 5 is rewritten as the conditions step.
 
 ## Status of earlier work
 
