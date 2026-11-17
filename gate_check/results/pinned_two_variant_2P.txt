@@ -1,0 +1,63 @@
+pinned_two_variant  tag=2P  window 17.50-33.50 m
+sensitivity split, from sensdepth_2P.jld2:
+  frac 0.010 ->  207.9 m, cell 56,  9 of 65 cells excluded as deep
+  frac 0.020 ->   53.2 m, cell 25, 40 of 65 cells excluded as deep
+  frac 0.050 ->   50.2 m, cell 24, 41 of 65 cells excluded as deep
+
+================ frac = 0.010, split 207.9 m ================
+
+  2P   bounds [-4.0, 1.0] -> 1.0e-04 to 1.0e+01 S/m   (profile_2P_models.jld2)
+  absolute threshold 45.84 ; split at 207.9 m (cell 56), frac 0.010
+  C (S)        min chi2   pinned  shallow     deep  shallow cells (depth range, m)
+  0.0051         25.341        8        3        5  14(22-25) 15(25-27) 16(27-29)
+  0.0160         25.423        5        0        5  none
+  0.0506         25.531        6        2        4  55(193-200) 56(200-208)
+  0.1600         25.830        0        0        0  none
+  0.5060         25.645        0        0        0  none
+  1.6000         25.436        0        0        0  none
+  3.1924         25.529        0        0        0  none
+  5.0596         27.732        0        0        0  none
+  6.3697         32.673        5        5        0  51(166-172) 52(172-179) 53(179-186) 54(186-193) 55(193-200)
+  largest accepted C with no SHALLOW cell on a bound: 5.0596 S (chi2 27.732)
+
+  2P   bounds [-3.0, 0.30103] -> 1.0e-03 to 2.0e+00 S/m   (profile_2P_sed.jld2)
+  absolute threshold 45.84 ; split at 207.9 m (cell 56), frac 0.010
+  C (S)        min chi2   pinned  shallow     deep  shallow cells (depth range, m)
+  0.0506         25.961       17       10        7  22(42-44) 30(66-70) 31(70-73) 32(73-77) 33(77-81) 34(81-85) 35(85-89) 36(89-93) 37(93-97) 38(97-102)
+  0.1600         26.264        0        0        0  none
+  0.5060         25.886       15        9        6  22(42-44) 31(70-73) 32(73-77) 33(77-81) 34(81-85) 35(85-89) 36(89-93) 37(93-97) 38(97-102)
+  1.6000         25.857        0        0        0  none
+  3.1924         25.907        0        0        0  none
+  5.0596         28.540        0        0        0  none
+  6.3697         36.577       18       10        8  9(12-14) 10(14-16) 20(36-39) 21(39-42) 22(42-44) 23(44-47) 27(56-59) 34(81-85) 35(85-89) 36(89-93)
+  largest accepted C with no SHALLOW cell on a bound: 5.0596 S (chi2 28.540)
+
+================ frac = 0.020, split 53.2 m ================
+
+  2P   bounds [-4.0, 1.0] -> 1.0e-04 to 1.0e+01 S/m   (profile_2P_models.jld2)
+  absolute threshold 45.84 ; split at 53.2 m (cell 25), frac 0.020
+  C (S)        min chi2   pinned  shallow     deep  shallow cells (depth range, m)
+  0.0051         25.341        8        3        5  14(22-25) 15(25-27) 16(27-29)
+  0.0160         25.423        5        0        5  none
+  0.0506         25.531        6        0        6  none
+  0.1600         25.830        0        0        0  none
+  0.5060         25.645        0        0        0  none
+  1.6000         25.436        0        0        0  none
+  3.1924         25.529        0        0        0  none
+  5.0596         27.732        0        0        0  none
+  6.3697         32.673        5        0        5  none
+  largest accepted C with no SHALLOW cell on a bound: 6.3697 S (chi2 32.673)
+
+  2P   bounds [-3.0, 0.30103] -> 1.0e-03 to 2.0e+00 S/m   (profile_2P_sed.jld2)
+  absolute threshold 45.84 ; split at 53.2 m (cell 25), frac 0.020
+  C (S)        min chi2   pinned  shallow     deep  shallow cells (depth range, m)
+  0.0506         25.961       17        1       16  22(42-44)
+  0.1600         26.264        0        0        0  none
+  0.5060         25.886       15        1       14  22(42-44)
+  1.6000         25.857        0        0        0  none
+  3.1924         25.907        0        0        0  none
+  5.0596         28.540        0        0        0  none
+  6.3697         36.577       18        6       12  9(12-14) 10(14-16) 20(36-39) 21(39-42) 22(42-44) 23(44-47)
+  largest accepted C with no SHALLOW cell on a bound: 5.0596 S (chi2 28.540)
+
+wrote gate_check/results/pinned_two_variant_2P.jld2

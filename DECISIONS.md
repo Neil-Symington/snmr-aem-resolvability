@@ -374,6 +374,50 @@ evidence above.
 *smaller* lambda2 set — the difference is which neighbour the warm chain arrived
 from. Quote the lowest solve ever obtained at a node. No verdict changes.
 
+## Pinned cells by depth, both variants, 17 Nov
+
+`gate_check/results/PINNED_TWO_VARIANT.md`. From stored models only. Absolute
+rule. Deep counts reported separately, never folded in.
+
+| column | variant | absolute band | largest clamp-free C | truth |
+|---|---|---|---|---|
+| 3P | WIDE | …–0.4509 S | 0.3192 S | 0.2063 S, below |
+| 3P | SEDIMENTARY | 0.0506–0.4320 S | **0.1795 S** | 0.2063 S, **above** |
+| 2P | WIDE | 0.0051–6.3697 S | 6.3697 S, all of it | 0.6856 S, below |
+| 2P | SEDIMENTARY | 0.0506–~6.7 S | 5.0596 S | 0.6856 S, below |
+
+"Clamp-free C" is the largest accepted forced conductance with no **shallow** cell
+on a bound. **One case of four puts the truth above its clamp-free limit: 3P under
+SEDIMENTARY, 0.2063 S against 0.1795 S.** Near the truth the pinning is one cell
+(47–50 m) at 0.2014 S and three (27–31 m and 47–50 m) at 0.2260 S. The truth is
+well inside the band itself and inside the relative rule; only the
+no-cell-on-a-bound subset stops short. **That is direct evidence for not adopting
+"no cell on a bound" as a criterion, and against the release path that still
+does.**
+
+**Where the pinning happens.** On 3P it is never inside the forced window. It sits
+at 0–9 m above the window and 22–36 m plus 47–53 m below it — the compensation the
+forced conductance demands, reaching the floor. At 3P's converged edge of 0.4320 S,
+13 of 65 cells are on a bound and all 13 are shallow, which is why that edge is
+reported as an edge under stated limits, not a data-only bound.
+
+**Defect found in the sensitivity depth, not fixed.** `sensitivity_depth.jl` takes
+the deepest cell reaching `frac` of the maximum sensitivity. Both columns carry a
+secondary bump near 180–240 m (0.0093 on 3P, 0.0119 on 2P). At the default
+`frac = 0.01` the bump clears the threshold on 2P and not on 3P, so 2P's split
+depth reads 207.9 m with 9 cells excluded against 3P's 84.6 m with 31 — the wrong
+way round, since 2P's conductive clay cap must reduce the depth of investigation,
+not quadruple it. A 200 m feature at 1% of the peak is numerical.
+
+It moves 2P's counts a long way: at C = 0.0506 S the same 17 cells on a bound
+split 10 shallow / 7 deep at frac 0.01 and 1 shallow / 16 deep at frac 0.02. On 3P
+the two fracs give identical tables. **The report therefore quotes frac = 0.02 and
+prints frac = 0.01 in full alongside**; the definition was not changed, `frac`
+being a documented parameter. A robust definition (an envelope, or a crossing on
+the decaying limb) is wanted before the sensitivity depth carries anything
+load-bearing. It does not affect any verdict here: only 2P's WIDE clamp-free limit
+moves (6.3697 vs 5.0596 S), and its truth at 0.6856 S is far inside either.
+
 ## BLOCKER ON THE FREEZE: the release gate still uses "no cell on a bound"
 
 Found 17 Nov while adding the conductance assertion. **Not changed — this is a
