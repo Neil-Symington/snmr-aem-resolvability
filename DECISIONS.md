@@ -508,6 +508,39 @@ the aquitard stays 11.3x (3S) and 6.7x (2S) more conductive than the aquifer. Th
 Calivil is a resistor enclosed by conductors, "the hard case" -- and that geometry
 is unchanged by the water edit.
 
+## RULED 17 Nov: admissibility is the constraint and convergence, not bound occupancy
+
+Neil's ruling, given three times; the first two did not reach me. The blocker
+recorded above is resolved:
+
+    good[i] = nf.conres < 1e-8 && nf.settled
+
+**`nbound` is reported per node and never used for admissibility. A cell on a
+stated bound is admissible; the bounds are inclusive.** The release path's
+`nbound == 0` term goes, in `stages/stage4_gate_v2.jl` at both the sweep
+(line 198) and the bisection (line 266), and with it the coarse pass's use of
+`findall(good)` to bracket the fine grid stops excluding nodes that merely touch
+a limit.
+
+Consequences already measured, now the intended behaviour rather than a defect:
+3P's absolute band is 0.0506-0.4320 S rather than 0.1426-0.1795 S, and the truth
+at 0.2063 S is inside it; 2P's upper edge stays at the bracketed 6.37-7.15 S
+rather than falling back to 5.0596 S.
+
+Also ruled at the same time:
+
+- **Stage 4 in the release path becomes a thin wrapper over the validated gate
+  modules. The old search is retired, not left selectable.**
+- **Acceptance test through the release entry point:** 3P absolute edge 0.4320 S
+  and relative edge 0.3605 S to tolerance, truth inside; 2P the bracketed band,
+  truth inside. **Freeze when it passes.**
+- **The variant is renamed SEDIMENTARY -> STATED.** The limits are the user's,
+  set in Stage 0; this study uses 0.001-2 S/m. Every earlier record of
+  "SEDIMENTARY" means STATED.
+- **The smoothest passing model per node is to be computed**, about 1.5 h in the
+  background, both fresh columns; the static figure uses it.
+- **The no-overwrite guard in `run_site.jl` is dropped.**
+
 ## Columns 3 and 4 are done, 18 Nov 05:42
 
 All eight Stage 1 ensembles complete and verified: 8 of 8 directories with all
