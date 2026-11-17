@@ -47,6 +47,14 @@ end
 # after rebuilding Stage 1, or after changing the tier or the sample count,
 # quietly kept the old posterior and every downstream number derived from it.
 const FORCE = haskey(ARG, "force")
+# --truekernel inverts the SAME data with the inversion kernel built on the TRUE
+# conductivity, which tools/smr_data.jl stores in the data file as sigma_gen.
+# It is the CONTROL: the data are generated on the truth, so with --truekernel
+# the generating and inversion kernels coincide and whatever the inversion then
+# loses is noise and non-uniqueness, not kernel error. Comparing it against the
+# --pool run separates the two. Required from 18 Nov; nothing downstream reads
+# the control, and it writes its own output name so it cannot be mistaken for one.
+const TRUEKERNEL = haskey(ARG, "truekernel")
 const TIER   = get(ARG, "tier", "typical")
 # --tag 2 switches to the two-aquifer column and its Occam-derived SMR data,
 # and writes cond_<C>_<tier>2.jld2 so the two experiments never collide.
@@ -234,7 +242,7 @@ pins Julia 1.12, and a version change surfaces as a mismatch, which errors with
 instructions rather than silently reusing the file.
 """
 inputsig(cond, islog, V, σ̂, σref, zA, zsmr, R, ϕ, Be, qgrid, kernelfile, draws) =
-    hash((cond, TIER, TAG, LABEL, islog, NSAMP, NENS, NCHAIN,
+    hash((cond, TIER, TAG, LABEL, islog, NSAMP, NENS, NCHAIN, TRUEKERNEL,
           cond == "C4" ? NDRAWS : 0, basename(kernelfile),
           V, σ̂, σref, zA, zsmr, R, ϕ, Be, qgrid, draws))
 
@@ -270,7 +278,11 @@ function main()
     # four m4 ensembles failed on the absence of an unlabelled data/aem<TAG>/
     # that nothing was going to read. Caught by the launcher's smoke, 18 Nov.
     POOLED = haskey(ARG, "pool") && !isempty(ARG["pool"])
-    POOLED || isfile(kernelfile) || error("""
+    !(POOLED && TRUEKERNEL) || error(
+        "--pool and --truekernel are alternatives: one builds the inversion " *
+        "kernel from the pooled Stage 1 median, the other from the true " *
+        "conductivity. Pass one.")
+    POOLED || TRUEKERNEL || isfile(kernelfile) || error("""
     kernel source not found: $kernelfile
 
       If Stage 1 was run with a label, pass the same one:  --label <L>
@@ -280,7 +292,7 @@ function main()
       Or pass --pool <dir1>,<dir2>,... to build the kernel from the median of
       several Stage 1 folders' pooled draws, in which case this file is not read.
     """)
-    A = POOLED ? nothing : load(kernelfile)
+    A = (POOLED || TRUEKERNEL) ? nothing : load(kernelfile)
     # C4 rebuilds the kernel per AEM draw and reads A["σ_draws"] from the single
     # folder, so it cannot run pooled. Fail here rather than on `nothing`.
     !(POOLED && "C4" in CONDS) || error(
@@ -299,7 +311,15 @@ function main()
            String[]
     local zA, σref
     global POOLED_N = -1
-    if isempty(POOL)
+    if TRUEKERNEL
+        haskey(D, "sigma_gen") || error("""
+            --truekernel needs sigma_gen in $(basename(dpath)), and it is absent.
+            That file predates the 18 Nov fix (tag snmr-data-truth-20261118).
+            Regenerate it: julia --project=. tools/smr_data.jl --tag $(TTAG)""")
+        zt = collect(Float64, D["z_gen"]); st = collect(Float64, D["sigma_gen"])
+        keep = findall(z -> z > 0, zt); zA = zt[keep]; σref = st[keep]
+        @printf("  CONTROL: inversion kernel on the TRUE conductivity (sigma_gen)\n")
+    elseif isempty(POOL)
         zA = A["zall_aem"]; keep = findall(z -> z > 0, zA); zA = zA[keep]
         σref = haskey(A, "σ50") ? A["σ50"][keep] : A["σ_occam"][keep]
     else
@@ -313,7 +333,8 @@ function main()
     # Name what the kernel was ACTUALLY built from. When pooling, kernelfile is
     # never read, and printing it said the kernel came from a single folder that
     # had not been opened.
-    kernelsrc = POOLED ?
+    kernelsrc = TRUEKERNEL ? "the TRUE conductivity (sigma_gen)" :
+        POOLED ?
         @sprintf("the pooled median of %d folders (%s)", length(POOL),
                  join(basename.(POOL), ", ")) :
         (basename(dirname(kernelfile)) == "outputs" || isempty(basename(dirname(kernelfile))) ?
@@ -329,7 +350,7 @@ function main()
 
     todo = [c for (i, c) in enumerate(CONDS) if c == "C4" || mod(i - 1, NSHARD) == SHARD - 1]
     for cond in todo
-        f = joinpath(OUT, "cond_$(cond)_$(TIER)$(TAG).jld2")
+        f = joinpath(OUT, "cond_$(cond)_$(TIER)$(TAG)$(TRUEKERNEL ? "_truekernel" : "").jld2")
         cond == "C4" && (f = joinpath(OUT, "cond_C4_$(TIER)_shard$(SHARD).jld2"))
         sig = inputsig(cond, cond == "C2", V, σ̂, σref, zA, zsmr, R, ϕ, Be,
                        QGRID, kernelfile,
@@ -389,7 +410,16 @@ function main()
             @printf("── %s  prior=%s  kernel=AEM p50\n", cond, islog ? "log (corrected)" : "uniform")
             ens, _ = run_condition("$(cond)_$(TIER)$(TAG)", V, σ̂, F50, islog, zsmr, pids)
             jldsave(f; ens = ens, cond = cond, tier = TIER, islog = islog,
-                    kernel = POOLED ? kernelsrc : basename(kernelfile),
+                    kernel = (POOLED || TRUEKERNEL) ? kernelsrc : basename(kernelfile),
+                    truekernel = TRUEKERNEL,
+                    # The conductivity the INVERSION kernel was built on, and its
+                    # grid. Stored 18 Nov: without it, anything that wants to
+                    # forward a model through the same kernel afterwards has to
+                    # re-derive the pooled median by re-assembling every chain,
+                    # and the kernel error between the data (true sigma) and the
+                    # inversion (pooled median) cannot be measured at all.
+                    sigma_kernel_used = collect(Float64, σref),
+                    z_kernel_used = collect(Float64, zA),
                     nsamples = NSAMP, zsmr = zsmr, input_sig = sig,
                     pooled_folders = isempty(POOL) ? [kernelfile] : POOL,
                     pooled_ndraws = isempty(POOL) ? -1 : POOLED_N,

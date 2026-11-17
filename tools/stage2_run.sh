@@ -28,6 +28,16 @@ for a in "$@"; do
     esac
 done
 NS=100001; [ "$SMOKE" = 1 ] && NS=2001
+# --force on BOTH the smoke and the real run. Stage 2's output name is fixed by
+# cond, tier and tag, so the launcher's smoke necessarily writes the same path
+# as the real run that follows it, and the next invocation's smoke then meets
+# the previous real run's file. Stage 2's provenance guard compares an input
+# signature that includes the sample count, so it refuses both collisions --
+# correctly, and fatally for this runner, which exists to produce the run.
+#
+# The guard still protects every other caller (run_stages.sh, run_site.jl).
+# What is given up here is "already done, skip": this runner always rebuilds.
+FORCE="--force"
 
 case "$TAG" in 3P) COL=1 ;; 2P) COL=2 ;; 3S) COL=3 ;; 2S) COL=4 ;;
   *) echo "unknown tag $TAG" >&2; exit 2 ;; esac
@@ -49,10 +59,10 @@ echo "    pool: $POOL"
 t0=$(date +%s)
 if [ "$CONTROL" = 1 ]; then
     julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 \
-          --tag "${TAG}T" --truekernel --nsamples "$NS"
+          --tag "${TAG}T" --truekernel --nsamples "$NS" $FORCE
 else
     julia --project=. stages/stage2_snmr.jl --tier typical --conds C2 \
-          --tag "${TAG}T" --pool "$POOL" --nsamples "$NS"
+          --tag "${TAG}T" --pool "$POOL" --nsamples "$NS" $FORCE
 fi
 rc=$?
 echo "=== $(date '+%H:%M') Stage 2 $TAG control=$CONTROL rc=$rc elapsed_min=$(( ($(date +%s)-t0)/60 ))"
