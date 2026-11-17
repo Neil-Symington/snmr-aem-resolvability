@@ -180,18 +180,6 @@ function kernel_for(σ_aem, z_aem, zsmr, R, ϕ, Be)
 end
 
 """
-Everything upstream whose change would change this condition's posterior,
-collapsed to one UInt64 and stored in the output as `input_sig`. It is what
-lets a re-run tell "already done" apart from "done from something else",
-which this stage could not do: it skipped on the mere existence of the file.
-
-Covers the SNMR data actually used (V, sigma-hat), the kernel conductivity and
-both grids, the instrument geometry, the sampler's size, and for C4 the AEM
-draws. `hash` is stable within a Julia version and not across them; install.jl
-pins Julia 1.12, and a version change surfaces as a mismatch, which errors with
-instructions rather than silently reusing the file.
-"""
-"""
 Per-cell median of the post-burn-in T=1 draws POOLED across several Stage 1
 folders.
 
@@ -227,6 +215,24 @@ function pooled_sigma(folders)
     ([quantile(view(σ, i, :), 0.50) for i in axes(σ, 1)], zall, size(σ, 2), perfolder)
 end
 
+# Moved back next to inputsig on 18 Nov. The pooled_sigma docstring added
+# in a39a3e9 was inserted BETWEEN this docstring and the function it
+# documents, leaving one docstring documenting another. That parses but
+# fails at load with "cannot document the following expression", so Stage 2
+# could not run at all. It went unnoticed because m4_run.sh skips Stage 2
+# and the pooling test exercises pooled_sigma without loading this file.
+"""
+Everything upstream whose change would change this condition's posterior,
+collapsed to one UInt64 and stored in the output as `input_sig`. It is what
+lets a re-run tell "already done" apart from "done from something else",
+which this stage could not do: it skipped on the mere existence of the file.
+
+Covers the SNMR data actually used (V, sigma-hat), the kernel conductivity and
+both grids, the instrument geometry, the sampler's size, and for C4 the AEM
+draws. `hash` is stable within a Julia version and not across them; install.jl
+pins Julia 1.12, and a version change surfaces as a mismatch, which errors with
+instructions rather than silently reusing the file.
+"""
 inputsig(cond, islog, V, σ̂, σref, zA, zsmr, R, ϕ, Be, qgrid, kernelfile, draws) =
     hash((cond, TIER, TAG, LABEL, islog, NSAMP, NENS, NCHAIN,
           cond == "C4" ? NDRAWS : 0, basename(kernelfile),
