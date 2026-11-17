@@ -128,9 +128,10 @@ inversions have not finished, and nothing in the gate has been tuned toward it.
 
 ## Timing
 
-The smoke ran one 2,001-sample ensemble in 3 min per column. Scaling the sampling
-part to 200,001 samples puts production near 3 h per ensemble, so eight ensembles
-run serially is of order a day. The runner runs one ensemble at a time by design:
+The smoke ran one 2,001-sample ensemble in 3 min per column. Measured on the live
+production run, output volume after 15 min is about 7% of the way through, which
+puts an ensemble at 3-4 h and eight ensembles at roughly 28 h serially -- columns
+3 and 4 complete late on 18 Nov. The runner runs one ensemble at a time by design:
 four workers per ensemble on six physical cores is what leaves two cores for the
 gate work, which is running alongside.
 
