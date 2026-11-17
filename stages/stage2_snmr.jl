@@ -265,14 +265,27 @@ function main()
                  endswith(TAG, "T") ? joinpath(OUT, "aem$(TTAG)$(LABEL)", "aem_posterior.jld2") :
                  TTAG == "2" ? joinpath(OUT, "aem_occam.jld2") :
                                joinpath(OUT, "aem_occam$(TTAG).jld2")
-    isfile(kernelfile) || error("""
+    # --pool supersedes this single folder entirely, so the file need not exist.
+    # Added with --pool and missed: the check stayed unconditional, so pooling
+    # four m4 ensembles failed on the absence of an unlabelled data/aem<TAG>/
+    # that nothing was going to read. Caught by the launcher's smoke, 18 Nov.
+    POOLED = haskey(ARG, "pool") && !isempty(ARG["pool"])
+    POOLED || isfile(kernelfile) || error("""
     kernel source not found: $kernelfile
 
       If Stage 1 was run with a label, pass the same one:  --label <L>
       aem_HYP.jl's 4th argument writes data/aem<TAG><LABEL>/, and this stage
       has to look in the same place.
+
+      Or pass --pool <dir1>,<dir2>,... to build the kernel from the median of
+      several Stage 1 folders' pooled draws, in which case this file is not read.
     """)
-    A = load(kernelfile)
+    A = POOLED ? nothing : load(kernelfile)
+    # C4 rebuilds the kernel per AEM draw and reads A["σ_draws"] from the single
+    # folder, so it cannot run pooled. Fail here rather than on `nothing`.
+    !(POOLED && "C4" in CONDS) || error(
+        "--pool cannot be combined with condition C4: C4 needs the per-draw " *
+        "sigma of ONE Stage 1 folder, which pooling discards.")
     global QGRID = D["qgrid"]
 
     zsmr = D["zsmr"]; R = D["R"]; Be = D["Be"]; ϕ = deg2rad(D["inc_deg"])
@@ -281,7 +294,7 @@ function main()
     # --pool takes a comma-separated list of Stage 1 folders; the kernel is then
     # the median of the POOLED post-burn-in T=1 draws. Without it, behaviour is
     # exactly as before: the single folder's own sigma50.
-    POOL = haskey(ARG, "pool") ?
+    POOL = POOLED ?
            [isabspath(x) ? x : joinpath(OUT, x) for x in split(ARG["pool"], ",")] :
            String[]
     local zA, σref
@@ -297,10 +310,15 @@ function main()
         @printf("  pooled %d draws across %d folders (%s)\n",
                 ntot, length(POOL), join(perf, "+"))
     end
-    @printf("SMR kernel built from %s  (σ %.4f–%.4f S/m)\n",
-            basename(dirname(kernelfile)) == "outputs" || isempty(basename(dirname(kernelfile))) ?
-            basename(kernelfile) : joinpath(basename(dirname(kernelfile)), basename(kernelfile)),
-            extrema(σref)...)
+    # Name what the kernel was ACTUALLY built from. When pooling, kernelfile is
+    # never read, and printing it said the kernel came from a single folder that
+    # had not been opened.
+    kernelsrc = POOLED ?
+        @sprintf("the pooled median of %d folders (%s)", length(POOL),
+                 join(basename.(POOL), ", ")) :
+        (basename(dirname(kernelfile)) == "outputs" || isempty(basename(dirname(kernelfile))) ?
+         basename(kernelfile) : joinpath(basename(dirname(kernelfile)), basename(kernelfile)))
+    @printf("SMR kernel built from %s  (σ %.4f–%.4f S/m)\n", kernelsrc, extrema(σref)...)
 
     pids = workers()
     @printf("run_conditions — tier %s, conds %s, %d samples × %d chains × %d ensembles\n",
@@ -371,7 +389,7 @@ function main()
             @printf("── %s  prior=%s  kernel=AEM p50\n", cond, islog ? "log (corrected)" : "uniform")
             ens, _ = run_condition("$(cond)_$(TIER)$(TAG)", V, σ̂, F50, islog, zsmr, pids)
             jldsave(f; ens = ens, cond = cond, tier = TIER, islog = islog,
-                    kernel = basename(kernelfile),
+                    kernel = POOLED ? kernelsrc : basename(kernelfile),
                     nsamples = NSAMP, zsmr = zsmr, input_sig = sig,
                     pooled_folders = isempty(POOL) ? [kernelfile] : POOL,
                     pooled_ndraws = isempty(POOL) ? -1 : POOLED_N,
