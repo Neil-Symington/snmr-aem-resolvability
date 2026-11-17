@@ -94,6 +94,44 @@ Caveat from the whole-profile report: models at the top of the band carry ten
 parameters pinned at their clamps, so the upper edge is partly a statement about
 the bounds. See `gate_check/results/whole_profile_3P.md`.
 
+## Fresh and brackish pairs
+
+**The fresh and brackish columns of each pair differ only in the aquifer's pore
+water.** Nothing else in either config changes: same geometry, same porosity,
+same clay fractions, same clay conductivity, same loop and same noise.
+
+**Builder warning, noted and accepted (Neil, 17 Nov):** at 0.4375 S/m the
+aquifer is now more conductive than the aquitard beneath it. That is left as it
+is. It is a deliberately hard case for the gate -- the conductive target sits
+above a less conductive confining layer, which is the opposite of the usual
+contrast -- and changing it would weaken the control.
+
+## 3P gate, converged under both variants (17 Nov)
+
+Config `synthetics/config/paper_3P.toml`; window 7.5-23.5 m.
+
+| variant | rule | edge | state |
+|---|---|---|---|
+| WIDE | absolute | 0.4594 S | converged |
+| WIDE | relative | 0.3667 S | converged |
+| **SEDIMENTARY** | **absolute** | **0.4320 S** | **converged**, final move 0.0002 dex |
+| SEDIMENTARY | relative | 0.3605 S | converged, final move 0.0009 dex |
+
+Containment holds: 0.4320 <= 0.4594 and 0.3605 <= 0.3667. **Truth at 0.2063 S is
+inside the SEDIMENTARY band (0.0506-0.4320 S).** The lower edge is set by the
+floor, minimum reachable 0.016 S.
+
+Clay-free ceiling at the SEDIMENTARY absolute edge: **2,407 mg/L** at the widest
+porosity-exponent corner, 1,168 central, 683 tightest; **2,155 mg/L** at the
+widest corner with the SNMR porosity limit. Below 3,000 mg/L, so test one rules
+out the saline class at the most permissive corner under the variant that drives
+the verdict.
+
+**The stated limits moved the ceiling by only 6%** -- 2,560 to 2,407 mg/L -- while
+narrowing the band substantially at the bottom. The porosity and exponent ranges
+dominate the ceiling: a factor of 3.5 across their box against 6% from the
+geological bounds. **To be said plainly in the M5 report.**
+
 ## Which variant and which rule drive the verdict (17 Nov)
 
 **SEDIMENTARY (0.001-2 S/m) drives the verdict. WIDE (1e-4 to 10 S/m) is

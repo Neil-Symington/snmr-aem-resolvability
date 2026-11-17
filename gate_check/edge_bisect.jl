@@ -84,6 +84,10 @@ end
 include(joinpath(HERE, "edgefinder.jl")); using .EdgeFinder
 const EF = EdgeFinder
 
+"Nearest already-solved node to x, in dex. Used by the refinement audit; the
+edge finder has its own copy inside the module."
+nearest(S, x) = argmin(k -> abs(k - x), collect(keys(S)))
+
 "Solver for the edge finder: best over the lambda2 set at one C, warm-started."
 function edge_solve(x, from)
     r = best_at(10^x * thick, from)
