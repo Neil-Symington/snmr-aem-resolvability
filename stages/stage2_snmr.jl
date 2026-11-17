@@ -408,7 +408,14 @@ function main()
             # directory, so two tags running at once overwrote each other's
             # chains. Harmless sequentially, fatal for a batch.
             @printf("── %s  prior=%s  kernel=AEM p50\n", cond, islog ? "log (corrected)" : "uniform")
-            ens, _ = run_condition("$(cond)_$(TIER)$(TAG)", V, σ̂, F50, islog, zsmr, pids)
+            # TRUEKERNEL belongs in the chain-file prefix for exactly the reason TAG
+            # does, noted above: without it the control run wrote its points_,
+            # models_, misfits_ and values_nuisance_ files over the pooled run's, and
+            # the pooled run's nuisance history -- the only place the inferred noise
+            # factor s lives -- was lost. Found 18 Nov, when s came out identical for
+            # the pooled and control runs of the same column.
+            ens, _ = run_condition("$(cond)_$(TIER)$(TAG)$(TRUEKERNEL ? "_truekernel" : "")",
+                                   V, σ̂, F50, islog, zsmr, pids)
             jldsave(f; ens = ens, cond = cond, tier = TIER, islog = islog,
                     kernel = (POOLED || TRUEKERNEL) ? kernelsrc : basename(kernelfile),
                     truekernel = TRUEKERNEL,

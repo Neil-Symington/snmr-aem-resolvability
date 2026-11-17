@@ -161,10 +161,11 @@ function main()
     end
 
     # ---- 1, 2, 4 per ensemble ---------------------------------------------
-    prefix = "C2_typical$(TAG)T"
+    prefix = "C2_typical$(TAG)T$(SUF)"
     @printf("\n(1) INFERRED NOISE FACTOR s, and (2) chi2 PER DATUM against the TRUE noise\n")
     @printf("    %-4s %22s %28s\n", "ens", "s (factor on sigma-hat)", "chi2/N vs true noise")
     @printf("    %-4s %8s %6s %6s %10s %8s %8s\n", "", "p50", "p05", "p95", "p50", "p05", "p95")
+    chi2_p50 = Float64[]
     local Fi
     if haskey(C, "sigma_kernel_used")
         σk = collect(Float64, C["sigma_kernel_used"]); zk = collect(Float64, C["z_kernel_used"])
@@ -188,6 +189,7 @@ function main()
             end
         end
         q(v, p) = isempty(v) ? NaN : quantile(v, p)
+        push!(chi2_p50, q(chi, 0.50))
         @printf("    %-4d %8.3f %6.3f %6.3f %10.2f %8.2f %8.2f\n", e,
                 q(sf, 0.50), q(sf, 0.05), q(sf, 0.95),
                 q(chi, 0.50), q(chi, 0.05), q(chi, 0.95))
@@ -224,11 +226,26 @@ function main()
             "PASS at R-hat <= 1.05 and ESS >= 100" :
             "**FAILS** the R-hat <= 1.05 / ESS >= 100 gate")
 
-    # The spread across ensembles, which is what the gate is really about.
+    # The spread across ensembles, which is what the gate is really about. With
+    # ESS of order 10 the pooled interval understates the uncertainty, so the
+    # RANGE OF ENSEMBLE MEDIANS is reported beside it as the honest figure and
+    # is what the paper should quote.
     meds = [median(c) for c in chains]
-    @printf("      ensemble medians %s -> spread %.3fx\n",
-            join([@sprintf("%.4f", m) for m in meds], ", "),
-            maximum(meds) / minimum(meds))
+    @printf("      ensemble medians %s\n", join([@sprintf("%.4f", m) for m in meds], ", "))
+    @printf("      range of ensemble medians %.4f-%.4f v/v (%.3fx, %.1f%% of the median)\n",
+            minimum(meds), maximum(meds), maximum(meds) / minimum(meds),
+            100 * (maximum(meds) - minimum(meds)) / median(meds))
+    @printf("      pooled p05-p95           %.4f-%.4f v/v (%.1f%% of the median)\n",
+            quantile(allm, 0.05), quantile(allm, 0.95),
+            100 * (quantile(allm, 0.95) - quantile(allm, 0.05)) / quantile(allm, 0.50))
+
+    # One line a run, for the three-line-per-column table.
+    @printf("\nSUMMARY %s %s  s_p50=%s  chi2N_p50=%s  win_p50=%.4f  win_p05=%.4f  win_p95=%.4f  truth=%.4f  rhat=%.3f  essb=%.0f  medrange=%.4f-%.4f\n",
+            TAG, CONTROL ? "truekernel" : "pooled",
+            join([@sprintf("%.3f", quantile(s_factor(prefix, e), 0.50)) for e in eachindex(ens)], "/"),
+            join([@sprintf("%.2f", c) for c in chi2_p50], "/"),
+            quantile(allm, 0.50), quantile(allm, 0.05), quantile(allm, 0.95), wt,
+            r.rhat, r.ess_bulk, minimum(meds), maximum(meds))
 end
 
 main()
