@@ -29,6 +29,11 @@
 # noise and non-uniqueness, not kernel error.
 using JLD2, Statistics, Printf, DelimitedFiles
 using SNMRForward, SMRPInversion
+# The multi-chain rank-normalised split-Rhat and ESS of Vehtari et al. 2021,
+# computed ACROSS the four independent ensembles' T=1 streams. The per-chain
+# estimator this replaced was about 3x optimistic; see DECISIONS.md.
+include(joinpath(@__DIR__, "..", "convergence_test", "prerun_lib.jl"))
+using .PrerunLib: rhat_and_ess
 
 const HERE = @__DIR__
 const ROOT = normpath(joinpath(HERE, ".."))
@@ -64,21 +69,50 @@ end
 "Mean theta over the window, per draw."
 window_mean(Θ, zsmr, a, b) =
     (w = window_integral(ones(length(zsmr)), zsmr, a, b)[2];
-     [window_integral(view(Θ, :, k), zsmr, a, b)[1] / w for k in axes(Θ, 2)])
+     [window_integral(Θ[:, k], zsmr, a, b)[1] / w for k in axes(Θ, 2)])
 
 """
-s samples for one ensemble, as a FACTOR on sigma-hat. The nuisance history is
-text: sample index, nuisance index, value, with the value in ln s (the bounds
-are set in log space). The first half is dropped as burn-in, matching the
-stage's own burninfrac.
+s samples for one ensemble at T = 1, as a FACTOR on sigma-hat.
+
+THE TEMPERATURE SWAPS BETWEEN CHAINS. That is what parallel tempering does, and
+it defeats every shortcut tried here first:
+
+  - the nuisance VALUES file has three columns, CHAIN, SAMPLE, ln s -- reading
+    the first two the wrong way round kept the hot chains and dropped T = 1
+    entirely, and reported s around 2 to 4.6;
+  - "chain 1 is the T = 1 chain" is false: every one of the four chains visits
+    every one of the four temperatures (1.0, 1.357, 1.842, 2.5), and exactly a
+    quarter of all rows are at T = 1;
+  - "the T = 1 chain is the tightest in ln s" is also false, and the assertion
+    that said so fired on two of eight ensembles.
+
+The temperature is recorded per (chain, sample) in the nuisance MISFITS file,
+whose five columns are CHAIN, SAMPLE, misfit, T, accept-rate. So the values are
+joined to it on (chain, sample) and only T = 1 rows are kept. The first half of
+the retained samples is dropped as burn-in, matching the stage's burninfrac.
+
+The hot chains tolerate worse fits and so inflate s -- on 3S ensemble 1 the
+chain-1 rows give 0.83 against 1.9 to 3.1 for chains 2 to 4 -- which is exactly
+why the selection has to be right.
 """
 function s_factor(prefix, e)
-    f = joinpath(RUN, "values_nuisance_$(prefix)_e$(e)_.bin")
-    isfile(f) || return Float64[]
-    M = readdlm(f)
-    size(M, 1) == 0 && return Float64[]
-    idx = Int.(M[:, 1]); val = Float64.(M[:, end])
-    keep = idx .> maximum(idx) / 2
+    fv = joinpath(RUN, "values_nuisance_$(prefix)_e$(e)_.bin")
+    fm = joinpath(RUN, "misfits_$(prefix)_e$(e)_nuisance.bin")
+    (isfile(fv) && isfile(fm)) || return Float64[]
+    V = readdlm(fv); M = readdlm(fm)
+    (size(V, 1) == 0 || size(M, 1) == 0) && return Float64[]
+    size(M, 2) >= 4 || error("$(basename(fm)) has $(size(M,2)) columns, expected 5 " *
+                             "(chain, sample, misfit, T, accept): cannot select T = 1")
+    # (chain, sample) -> T
+    Tof = Dict{Tuple{Int,Int},Float64}()
+    for r in axes(M, 1)
+        Tof[(Int(M[r, 1]), Int(M[r, 2]))] = Float64(M[r, 4])
+    end
+    ch = Int.(V[:, 1]); sm = Int.(V[:, 2]); val = Float64.(V[:, 3])
+    at1 = [get(Tof, (ch[r], sm[r]), NaN) == 1.0 for r in eachindex(ch)]
+    any(at1) || error("no nuisance sample at T = 1 in $(basename(fv))")
+    smax = maximum(sm[at1])
+    keep = at1 .& (sm .> smax / 2)
     exp.(val[keep])
 end
 
@@ -149,7 +183,7 @@ function main()
             cols = size(Θ, 2) <= 400 ? collect(axes(Θ, 2)) :
                    round.(Int, range(1, size(Θ, 2), length = 400))
             for k in cols
-                Vp = abs.(SNMRForward.forward(Fi, view(Θ, :, k)))
+                Vp = abs.(SNMRForward.forward(Fi, Θ[:, k]))
                 push!(chi, sum(((Vp .- V) ./ σ̂) .^ 2) / N)
             end
         end
@@ -177,6 +211,24 @@ function main()
             quantile(allm, 0.05), quantile(allm, 0.50), quantile(allm, 0.95),
             quantile(allm, 0.50) / wt,
             (wt >= quantile(allm, 0.05) && wt <= quantile(allm, 0.95)) ? "YES" : "**NO**")
+
+    # Convergence OF THE WINDOW AVERAGE, across the four ensembles' T=1 streams.
+    # Rhat across the chains of one PT ensemble would be meaningless, they target
+    # p^(1/T); across independent ensembles it is the right comparison.
+    chains = [window_mean(Float64.(ens[e]), zsmr, WTOP, WBOT) for e in eachindex(ens)]
+    r = rhat_and_ess(chains)
+    @printf("\n    convergence of the window average, across %d ensembles:\n", length(chains))
+    @printf("      R-hat %.3f   ESS bulk %.0f   ESS tail %.0f   (draws per ensemble: %s)\n",
+            r.rhat, r.ess_bulk, r.ess_tail, join(length.(chains), ", "))
+    @printf("      %s\n", (isfinite(r.rhat) && r.rhat <= 1.05 && r.ess_bulk >= 100) ?
+            "PASS at R-hat <= 1.05 and ESS >= 100" :
+            "**FAILS** the R-hat <= 1.05 / ESS >= 100 gate")
+
+    # The spread across ensembles, which is what the gate is really about.
+    meds = [median(c) for c in chains]
+    @printf("      ensemble medians %s -> spread %.3fx\n",
+            join([@sprintf("%.4f", m) for m in meds], ", "),
+            maximum(meds) / minimum(meds))
 end
 
 main()
