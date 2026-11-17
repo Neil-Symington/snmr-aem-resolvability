@@ -508,6 +508,40 @@ the aquitard stays 11.3x (3S) and 6.7x (2S) more conductive than the aquifer. Th
 Calivil is a resistor enclosed by conductors, "the hard case" -- and that geometry
 is unchanged by the water edit.
 
+## Columns 3 and 4 are done, 18 Nov 05:42
+
+All eight Stage 1 ensembles complete and verified: 8 of 8 directories with all
+five expected files non-empty, 14 MB each, seeds 20261418-21 and 20261518-21 as
+specified, no errors, warnings or soft-scope messages in any of the eight logs,
+`data/m4/manifest.toml` valid TOML carrying both columns. Content digests
+`6c31fff4e0ae47c5` (3S) and `a0444dc066bfd97c` (2S); host
+`symo-OptiPlex-7080`; commit `de68df6b`; 200,001 samples, 4 chains, Tmax 2.5,
+layer limit 40, one chain at T = 1, burn-in 0.5.
+
+**Concurrency: two at a time wins, and is now the setting.** Measured on column
+3 — single runs 160 and 157 min, the pair 184 min wall clock for two, so
+**1.16x** the single-run time per ensemble against the 1.7x margin, a 1.72x
+throughput gain. Column 4 ran as two pairs, 183 and 184 min. The limit is the
+box, not the setting: 6 physical cores against 4 workers per ensemble means two
+at a time is already 8 workers on 6 cores, and a third would be 2x oversubscribed
+and into swap (10 Julia processes held ~11 GB with 0 GB free and swap already
+touched). `data/m4/CONCURRENCY_DECISION.txt` records it.
+
+**Stages 3-6 on all four columns cannot be run here yet.** 3P and 2P have no m4
+Stage 1 ensembles on this machine — they ran on the reviewer's. Either those four
+folders per column come over, or that machine runs Stage 2 and the later stages
+for its own columns.
+
+**Stage 2 on 3S and 2S has an unmet prerequisite.** `stage2_snmr.jl` with
+`--tag 3ST` wants `data/smr_data_murray3ST.jld2`; what exists is
+`smr_data_murray3S.jld2` from 13 Nov, built against that column's Occam profile.
+The stage's own error text names the producer,
+`tools/smr_data.jl transd --tag 3S --label <L>`, which takes **one** Stage 1
+label. With four pooled ensembles it is not obvious which conductivity should
+generate the SNMR data, and the SMR kernel is conductivity-sensitive, so this is
+a decision and not a filename: generate from one named ensemble, or from the
+pooled median as the kernel now is. Not guessed at.
+
 ## Scope, corrected by Neil 17 Nov evening: the paper's results by Friday
 
 **Stop adding features.** This week, in order:

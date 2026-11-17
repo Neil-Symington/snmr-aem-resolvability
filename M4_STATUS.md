@@ -1,3 +1,25 @@
 - 2026-11-17 15:07 column 3 (3S)  start
 - 2026-11-17 15:08 column 3 Stage 0 done: data/m4/3/stage0_m4_3S.jld2
 - 2026-11-17 15:08 column 3 e1 Stage 1 start, seed 20261418 -> data/aem3S_m4c3e1
+- 2026-11-17 17:48 column 3 e1 Stage 1 done in 160 min, seed 20261418
+- 2026-11-17 17:48 column 3 e2 Stage 1 start, seed 20261419 -> data/aem3S_m4c3e2
+- 2026-11-17 20:25 column 3 e2 Stage 1 done in 157 min, seed 20261419
+- 2026-11-17 20:25 column 3 e3 Stage 1 start, seed 20261420 -> data/aem3S_m4c3e3
+- 2026-11-17 20:29 column 3 (3S)  PAIR start, ensembles: 3 4
+- 2026-11-17 20:29 column 3 e3 start (concurrent), seed 20261420 -> data/aem3S_m4c3e3
+- 2026-11-17 20:29 column 3 e4 start (concurrent), seed 20261421 -> data/aem3S_m4c3e4
+- 2026-11-17 23:34 column 3  PAIR done: ensembles 3 4 in 184 min wall clock at concurrency 2
+- 2026-11-17 23:34 concurrency decision: pair, 1.16x the single-run time (baselines 160/157 min, pair 184 min)
+- 2026-11-17 23:34 column 4 (2S)  start
+- 2026-11-17 23:35 column 4 Stage 0 done: data/m4/4/stage0_m4_2S.jld2
+- 2026-11-17 23:35 column 4 (2S) Stage 0 only, as asked; ensembles not started here
+- 2026-11-17 23:35 m4_run.sh  finished: columns 4
+- 2026-11-17 23:35 column 4 (2S)  PAIR start, ensembles: 1 2
+- 2026-11-17 23:35 column 4 e1 start (concurrent), seed 20261518 -> data/aem2S_m4c4e1
+- 2026-11-17 23:35 column 4 e2 start (concurrent), seed 20261519 -> data/aem2S_m4c4e2
+- 2026-11-18 02:38 column 4  PAIR done: ensembles 1 2 in 183 min wall clock at concurrency 2
+- 2026-11-18 02:38 column 4 (2S)  PAIR start, ensembles: 3 4
+- 2026-11-18 02:38 column 4 e3 start (concurrent), seed 20261520 -> data/aem2S_m4c4e3
+- 2026-11-18 02:38 column 4 e4 start (concurrent), seed 20261521 -> data/aem2S_m4c4e4
+- 2026-11-18 05:42 column 4  PAIR done: ensembles 3 4 in 184 min wall clock at concurrency 2
+- 2026-11-18 05:42 column 4 finished at concurrency: pair
