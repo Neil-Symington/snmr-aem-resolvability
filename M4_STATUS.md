@@ -1,0 +1,3 @@
+- 2026-11-17 15:07 column 3 (3S)  start
+- 2026-11-17 15:08 column 3 Stage 0 done: data/m4/3/stage0_m4_3S.jld2
+- 2026-11-17 15:08 column 3 e1 Stage 1 start, seed 20261418 -> data/aem3S_m4c3e1

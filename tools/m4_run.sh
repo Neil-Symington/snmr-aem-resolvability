@@ -6,7 +6,13 @@
 # Columns (DECISIONS.md, 17 Nov):
 #   1 = 3P  test one, fresh      configs/synth_3P.toml
 #   2 = 2P  test two, fresh      configs/synth_2P.toml
-#   3, 4    brackish, not wired here until their truth columns are built
+#   3 = 3S  test one, brackish   configs/synth_3S.toml
+#   4 = 2S  test two, brackish   configs/synth_2S.toml
+#
+# Columns 3 and 4 wired 17 Nov on the second machine, their truth columns having
+# been built from paper_3P_brackish.toml and confined_aquifer_brackish.toml.
+# Their windows and packages are those of the fresh column of the same pair,
+# because the pair differs only in the aquifer's pore water.
 #
 # Calls the existing stage scripts with arguments and environment only; no
 # stage code is changed. Stage 1 runs four independent ensembles per column,
@@ -14,9 +20,10 @@
 # settings: 200,001 samples, 4 chains, Tmax 2.5, layer limit 40, one chain at
 # T = 1, burn-in 0.5. Seed for ensemble e of column c: 20261117 + 100c + e.
 #
-# Stage 2 is NOT run. stages/stage2_snmr.jl takes its kernel from ONE Stage 1
-# directory's aem_posterior.jld2 (data/aem<TAG><LABEL>/), so it cannot use the
-# pooled median of four ensembles without a code change.
+# Stage 2 is NOT run here. That code change has since been made: as of
+# m4-stage2-pool-20261117, stages/stage2_snmr.jl takes --pool with a list of
+# Stage 1 folders and uses the median of the POOLED post-burn-in T=1 draws.
+# Pooling one folder reproduces that folder's sigma50 exactly.
 #
 # Outputs, all new:
 #   data/m4/<c>/site_m4_<TAG>.toml        Stage 0 site config (extends synth_<TAG>)
@@ -49,8 +56,9 @@ mkdir -p "$ROOTOUT"
 status() { echo "- $(date '+%Y-%m-%d %H:%M') $*" | tee -a "$STATUS"; }
 die()    { status "FAILED: $*"; exit 1; }
 
-column_tag() { case "$1" in 1) echo 3P;; 2) echo 2P;; *) echo "";; esac; }
-column_win() { case "$1" in 1) echo "7.5 23.5 6.0 40.0";; 2) echo "17.5 33.5 4.0 34.0";; esac; }
+column_tag() { case "$1" in 1) echo 3P;; 2) echo 2P;; 3) echo 3S;; 4) echo 2S;; *) echo "";; esac; }
+column_win() { case "$1" in 1) echo "7.5 23.5 6.0 40.0";; 2) echo "17.5 33.5 4.0 34.0";;
+                                3) echo "7.5 23.5 6.0 40.0";; 4) echo "17.5 33.5 4.0 34.0";; esac; }
 
 # every file in a Stage 1 directory must exist and be non-empty
 check_stage1() {

@@ -1,0 +1,31 @@
+truecheck  tag=2P  stage0=stage0_occam_2P.jld2
+  truth truth_murray2P.jld2  hash 33bf02a46442
+  N = 42 data ; window 17.50-33.50 m (support 16.0000 m, 8 of 65 cells)
+  parameter bounds, log10 sigma per cell: (-3.0, 0.30103) -> sigma 1.0e-03 to 2.0e+00 S/m
+  truth window conductance C_true = 0.6856 S  (sigma_eff 0.04285 S/m)
+  absolute threshold N+3.84 = 45.840
+
+(a) discretised truth, piecewise_interp onto the grid nodes -- THE GENERATING MODEL, as Stage 0 built it
+    window conductance of the discretised truth: 0.7435 S (truth 0.6856 S, factor 1.084)
+    cells clipped by the parameter bounds: 0 of 65
+    chi2 = 35.449   -> BELOW (accepted) the absolute threshold
+
+(a) discretised truth, arith average in conductivity (sensitivity only)
+    window conductance of the discretised truth: 0.7680 S (truth 0.6856 S, factor 1.120)
+    cells clipped by the parameter bounds: 0 of 65
+    chi2 = 37.828   -> BELOW (accepted) the absolute threshold
+
+(a) discretised truth, geom average in conductivity (sensitivity only)
+    window conductance of the discretised truth: 0.7218 S (truth 0.6856 S, factor 1.053)
+    cells clipped by the parameter bounds: 0 of 65
+    chi2 = 35.417   -> BELOW (accepted) the absolute threshold
+
+(b) min chi2 at C_true = 0.6856 S, seeded from the GENERATING model
+    floor-limited minimum reachable conductance (all cells at 1.0e-03 S/m over 16.00 m) = 0.0160 S
+    ceiling-limited maximum = 32.0000 S
+    lambda2 = 1.0   chi2 =     27.964  nbound   0  settled true  C achieved 0.6856 S (0.00% off)  conres 0.00e+00  (31 s)
+    lambda2 = 10.0  chi2 =     29.659  nbound   0  settled true  C achieved 0.6856 S (0.00% off)  conres 3.24e-16  (22 s)
+    min chi2 at C_true = 27.964 (lambda2 1.0, 0 cells on a bound, C achieved 0.6856 S) -> BELOW the absolute threshold: C_true is ACCEPTED
+    cost of forcing the truth, over the discretised truth itself: -7.486
+
+wrote gate_check/results/truecheck_2P.jld2
