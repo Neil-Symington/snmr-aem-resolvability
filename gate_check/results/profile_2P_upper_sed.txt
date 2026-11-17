@@ -1,0 +1,39 @@
+profile_minchi2  tag=2P_upper_sed  stage0=stage0_occam_2P.jld2
+  N = 42 data ; window 17.50-33.50 m (support 16.0000 m, 8 of 65 cells)
+  grid: log10 sigma_eff -0.400 to -0.300, 3 nodes ; lambda2 = [0.01, 0.1, 1.0, 10.0] ; starts = all
+  parameter bounds, log10 sigma per cell: (-3.0, 0.30103)  -> sigma 1.0e-03 to 2.0e+00 S/m
+
+  chiref single start (m0 only): 28.4589
+  chiref multi-start (unconstrained): 28.459, 28.459, 28.459 -> 28.4587  (rand2)
+  unconstrained reference took 245.5 s
+      l2=0.01   fwd node 1/3  C=6.3697 S  best chi2 37.888  (2 solves, 19.2 min)              l2=0.01   fwd node 2/3  C=7.1469 S  best chi2 53.923  (5 solves, 35.0 min)              l2=0.01   fwd node 3/3  C=8.0190 S  best chi2 Inf  (8 solves, 50.9 min)            lambda2 0.01   fwd: 8 solves cumulative
+      l2=0.01   bwd node 1/3  C=8.0190 S  best chi2 Inf  (9 solves, 56.3 min)              l2=0.01   bwd node 2/3  C=7.1469 S  best chi2 53.923  (10 solves, 61.6 min)              l2=0.01   bwd node 3/3  C=6.3697 S  best chi2 37.888  (11 solves, 62.4 min)            lambda2 0.01   bwd: 11 solves cumulative
+      l2=0.1    fwd node 1/3  C=6.3697 S  best chi2 37.888  (13 solves, 73.6 min)              l2=0.1    fwd node 2/3  C=7.1469 S  best chi2 53.923  (16 solves, 89.5 min)              l2=0.1    fwd node 3/3  C=8.0190 S  best chi2 Inf  (19 solves, 105.5 min)            lambda2 0.1    fwd: 19 solves cumulative
+      l2=0.1    bwd node 1/3  C=8.0190 S  best chi2 Inf  (20 solves, 110.7 min)              l2=0.1    bwd node 2/3  C=7.1469 S  best chi2 53.923  (21 solves, 116.1 min)              l2=0.1    bwd node 3/3  C=6.3697 S  best chi2 37.888  (22 solves, 121.3 min)            lambda2 0.1    bwd: 22 solves cumulative
+      l2=1      fwd node 1/3  C=6.3697 S  best chi2 37.888  (24 solves, 136.6 min)              l2=1      fwd node 2/3  C=7.1469 S  best chi2 53.923  (27 solves, 152.0 min)              l2=1      fwd node 3/3  C=8.0190 S  best chi2 Inf  (30 solves, 166.0 min)            lambda2 1      fwd: 30 solves cumulative
+      l2=1      bwd node 1/3  C=8.0190 S  best chi2 Inf  (31 solves, 169.8 min)              l2=1      bwd node 2/3  C=7.1469 S  best chi2 53.923  (32 solves, 175.0 min)              l2=1      bwd node 3/3  C=6.3697 S  best chi2 37.888  (33 solves, 179.8 min)            lambda2 1      bwd: 33 solves cumulative
+      l2=10     fwd node 1/3  C=6.3697 S  best chi2 37.888  (35 solves, 181.7 min)              l2=10     fwd node 2/3  C=7.1469 S  best chi2 53.923  (38 solves, 183.8 min)              l2=10     fwd node 3/3  C=8.0190 S  best chi2 Inf  (41 solves, 191.0 min)            lambda2 10     fwd: 41 solves cumulative
+      l2=10     bwd node 1/3  C=8.0190 S  best chi2 Inf  (42 solves, 196.1 min)              l2=10     bwd node 2/3  C=7.1469 S  best chi2 53.923  (43 solves, 201.3 min)              l2=10     bwd node 3/3  C=6.3697 S  best chi2 37.888  (44 solves, 204.6 min)            lambda2 10     bwd: 44 solves cumulative
+  profile done: 44 solves, 220.0 min elapsed
+
+REFERENCE MISFIT
+  unconstrained multi-start : 28.4587
+  min over constrained nodes: 37.8879  (at C = 6.3697 S)
+  gap (unconstrained - constrained): -9.4292 
+  chiref used = 28.4587
+
+i          C (S)   min chi2   MAP l2=1  nbound winning start           
+1         6.3697     37.888     39.356      15 cold_m0@l2=0.01         
+2         7.1469     53.923     53.386      19 cold_m0@l2=0.01         
+3         8.0190        Inf    105.324       0                         
+
+non-smooth nodes (min chi2 more than 2.0 above a linear interpolation of neighbours): none
+winning combination counts:
+  cold_m0@l2=0.01            2 nodes
+                             1 nodes
+absolute band (N+3.84 = 45.84): 6.3697 - 6.3697 S
+relative band (chiref+3.84 = 32.30): NaN - NaN S
+truth window C = 0.6856 S (truth hash 33bf02a46442)
+  absolute: **OUTSIDE**   relative: empty band
+
+44 solves, 220.1 min total

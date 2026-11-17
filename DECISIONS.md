@@ -346,6 +346,34 @@ returned `settled = true` with a plausible chi2 at the wrong conductance.
 solve enters the band, which is also why `Inf` at a profile node means **no solve
 met the constraint**, not a rejection.
 
+## 2P coarse upper edge, 17 Nov
+
+`gate_check/results/EDGE_2P.md`. SEDIMENTARY, absolute rule. **The upper edge lies
+between 6.3697 S (accepted, min chi2 36.577 pooled) and 7.1469 S (rejected, 53.923)
+— bracketed to 0.0500 dex**, better than the 0.1 dex asked. With the 9-node grid,
+2P's absolute band is **0.0506–~6.7 S, a factor of 126**: its window conductance is
+effectively unconstrained by the data over two orders of magnitude, which is the
+same fact as the known flatness of its likelihood.
+
+**Relative rule, from the existing coarse nodes only:** 0.0506–5.0596 S, upper edge
+bracketed by 5.0596 accepted / 6.3697 rejected at `chiref + 3.84 = 29.70`, a width
+of 0.0999 dex.
+
+The node at 8.0190 S remains `Inf` after cold starts from `mref` and `m0` and
+lambda2 in {0.01, 0.1, 1, 10}, so the earlier `Inf` there was not a warm-start
+artefact. It does not matter: 7.1469 S below it solves cleanly and is rejected, so
+the edge is bracketed without it and no further solves were spent.
+
+**Two lines of that run's output must not be quoted:** `truth … absolute OUTSIDE`
+and `relative band NaN – NaN` are artefacts of a three-node grid beginning at
+6.3697 S, above the truth at 0.6856 S. The truth's standing is the acceptance
+evidence above.
+
+**A single profile run gives an upper bound on min chi2, not min chi2.** At
+6.3697 S this run reached 37.888 where the 9-node run reached 36.577, with a
+*smaller* lambda2 set — the difference is which neighbour the warm chain arrived
+from. Quote the lowest solve ever obtained at a node. No verdict changes.
+
 ## BLOCKER ON THE FREEZE: the release gate still uses "no cell on a bound"
 
 Found 17 Nov while adding the conductance assertion. **Not changed — this is a
