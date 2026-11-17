@@ -191,6 +191,22 @@ function main()
                                         beta2 = BETA2, withH = true, info = true)
                 nf2.phi < nf.phi && ((m, chi, H, nf) = (m2, c2, H2, nf2))
             end
+            # Independent check of the forced quantity. nf.conres is occam own
+            # |gcond(m) - fixval|/fixval, so it is already computed from the
+            # returned model; recomputing it HERE, from the caller own dzeff
+            # and fixidx, means a future change to gcond, or a dz mismatch
+            # between caller and solver, cannot pass silently. 17 Nov: a driver
+            # that checked neither reported a chi2 at a conductance 13x off the
+            # one it named, with settled = true and a plausible-looking misfit.
+            Cach = sum(10.0^m[j] * dzeff[j] for j in fixidx)
+            relc = abs(Cach - C) / C
+            (relc < 1e-8) == (nf.conres < 1e-8) || error("""
+                stage 4 gate: occam constraint residual and an independent
+                recomputation disagree at forced conductance C = $C S.
+                  occam conres  = $(nf.conres)
+                  recomputed    = $relc  (achieved $Cach S)
+                The forced quantity is not what it is reported to be. Stop.""")
+
             chis[i] = chi; phis[i] = nf.phi; nb[i] = nf.nbound; cres[i] = nf.conres
             if laplace
                 ldH[i], ldP[i] = logdets(H, Pof(l2), m)

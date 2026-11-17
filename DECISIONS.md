@@ -295,7 +295,7 @@ columns.
 **The SNMR kernel is built on the pooled AEM median** (condition C2). Neil's
 standing choice. The per-draw kernel is parked.
 
-## True-model check, 17 Nov
+## The gate's acceptance evidence: true-model check, 17 Nov
 
 `gate_check/truecheck.jl`, both release columns, SEDIMENTARY bounds, absolute
 rule (threshold 45.84 on 42 data). Full write-up in
@@ -305,8 +305,13 @@ rule (threshold 45.84 on 42 data). Full write-up in
 26.205 on 3P (C_true = 0.2063 S) and 27.964 on 2P (C_true = 0.6856 S).** Both are
 accepted. The cost of forcing the truth's conductance over the best available
 unconstrained fit is **+0.92 (3P)** and **+2.11 (2P)**, inside the 3.84 the
-relative rule allows. Both solves met the constraint to ~1e-16 with no cell on a
-bound.
+relative rule allows — so the truth is accepted under the **relative** rule as
+well as the absolute one, on both columns. Both solves met the constraint to
+~1e-16 with **no cell on a bound**, so neither is a clamp artefact.
+
+**This is the gate's acceptance evidence.** It answers "would this gate accept the
+truth?" by measurement rather than assumption: on both release columns, yes, under
+either rule, near the unconstrained optimum, with nothing pinned.
 
 **The generating model's own chi2 is 35.449 on BOTH columns, and that is a
 property of the noise realisation, not of either column.** The noise enters as
@@ -321,13 +326,15 @@ truth gives chi2 35.4 under the `piecewise_interp` mapping Stage 0 generates wit
 one, while the three agree on the window conductance to 0.1%. The spread is thirty
 times the 3.84 allowance. Any statement about the truth's misfit must name the
 mapping. This is a reason for defining the gate on forced conductance with
-minimisation over the profile, which no choice of mapping can move.
+minimisation over the profile, which no choice of mapping can move. **One sentence
+to this effect goes in the report** (M5).
 
 **On 2P the grid cannot represent C_true better than 8.4% high** (0.7435 S for a
 true 0.6856 S), because the window 17.5-33.5 m straddles the 18.0 m clay-cap
 boundary. On 3P, whose window sits inside one unit, the same mapping is 0.3% low.
 This is a floor on recovery, in the direction of over-stating conductance; it is
-small against 2P's ~3x over-estimate and does not explain it.
+small against 2P's ~3x over-estimate and does not explain it. **The 8.4% is stated
+beside the 2P results**, not in a methods aside.
 
 **Trap recorded:** `occam`'s `fixval` under `ctype = :cond` is conductance in S
 (`src/occam_core.jl:172`), not conductivity. Passing `C/thick` forced one
@@ -338,6 +345,68 @@ returned `settled = true` with a plausible chi2 at the wrong conductance.
 `profile_minchi2.jl` never had the bug: it requires `conres < 1e-8` before a
 solve enters the band, which is also why `Inf` at a profile node means **no solve
 met the constraint**, not a rejection.
+
+## BLOCKER ON THE FREEZE: the release gate still uses "no cell on a bound"
+
+Found 17 Nov while adding the conductance assertion. **Not changed — this is a
+decision, not a fix, and the band it sets is the paper's band.**
+
+`stages/stage4_gate_v2.jl:198` sets
+
+    good[i] = nf.nbound == 0 && nf.conres < 1e-8 && nf.settled
+
+and `good` is not merely reported. At line 270 the band is computed from
+`chis[.!good] .= NaN`, and in the two-pass mode the coarse sweep's
+`reach = findall(SC.good)` sets the **bracket of the fine grid**, so a node with
+any cell on a bound is labelled "unreachable" and the fine search never visits it.
+
+That contradicts the band definition recorded above — min chi2 subject to the
+forced window conductance **and the stated parameter bounds** — under which a
+solution with cells on a bound is a legitimate constrained minimum. It is also the
+criterion that was explicitly set aside ("do not adopt 'no cell on a bound' as a
+criterion"), and M1.2's whole point was to make per-cell stated limits part of the
+definition rather than a disqualification.
+
+Measured on the existing SEDIMENTARY coarse grids, absolute rule, threshold 45.84:
+
+| column | band as defined (bounds legitimate) | band with `nbound == 0` | nodes lost |
+|---|---|---|---|
+| 3P | 0.0506–0.3582 S (6 of 9 nodes) | **0.1426–0.1795 S** (2 nodes) | 4 |
+| 2P | 0.0506–6.3697 S (7 of 9 nodes) | 0.1600–5.0596 S (4 nodes) | 3 |
+
+The nodes lost on 3P are 0.0506 S (chi2 25.305, nbound 3), 0.2260 S (25.471,
+nbound 1), 0.2845 S (26.500, nbound 4) and 0.3582 S (28.930, nbound 15) — every
+one of them far below the 45.84 threshold. The criterion is not excluding bad fits;
+it is excluding good fits that happen to touch a bound.
+
+**The consequence that blocks the freeze: the truth falls outside 3P's band under
+the release path's criterion.** C_true = 0.2063 S against a `nbound == 0` band of
+0.1426–0.1795 S. Under the definition as recorded, the band is 0.0506–0.4320 S
+(converged edge) and the truth is comfortably inside, which is the acceptance
+evidence above. So the two differ on the one question the gate exists to answer,
+and 3P's band narrows from a factor of 7.1 to a factor of 1.26.
+
+The minimal change consistent with everything already recorded is
+
+    good[i] = nf.conres < 1e-8 && nf.settled
+
+with `nbound` reported per node, as the profile driver already does. That is a
+change to the release band and needs Neil's decision, so it is **not** applied.
+Freezing before it is settled would freeze a gate that rejects the truth on 3P.
+
+## All columns share one noise realisation
+
+Stage 0 reports `seed 123` on every column; `makenoisydata!` reseeds from its own
+`rseed`, so **3P, 2P, 3S and 2S all carry the same noise draw**. Two consequences,
+both standing:
+
+- The generating model's chi2 is the same constant (35.449) on every column,
+  being the sum of 42 squared draws from that one realisation. **It is not to be
+  reported per column.**
+- A paired fresh-vs-brackish comparison is helped by this: the noise is common, so
+  a 3P-to-3S difference is the water change and not a different draw. It also
+  means every result rests on one realisation, and no spread over noise draws can
+  be read from any of it.
 
 ## Columns 3 and 4, brackish pair
 
@@ -353,6 +422,12 @@ aquifer/aquitard boundary (3S: 7.5-23.5 m inside Loxton-Parilla 6.0-40.0 m;
 2S: 15.5 of 16 m inside Calivil 18.0-34.0 m), so the window conductance responds
 to the aquifer's own pore water — the quantity the brackish edit changed.
 
+**The second 2S warning is the case the paper is about.** Calivil Fm is a resistor
+enclosed by conductors (clay cap above, clay aquitard below), and airborne EM
+resolves such a unit poorly, so its salinity can be set by the regularisation
+rather than the data. The water edit does not touch that geometry. This is the
+column's purpose, not a defect in it.
+
 **The accepted builder warning concerns pore water, not bulk conductivity.** On
 unit means the pore-water inversion with depth is 0.4375 -> 0.4348 S/m (0.6%) on
 3S and 0.4173 -> 0.3202 S/m (23%) on 2S, while the bulk contrast is preserved:
@@ -360,11 +435,6 @@ the aquitard stays 11.3x (3S) and 6.7x (2S) more conductive than the aquifer. Th
 2S builder issues a **second** warning that was not part of the accepted one --
 Calivil is a resistor enclosed by conductors, "the hard case" -- and that geometry
 is unchanged by the water edit.
-
-All four columns share one noise realisation (Stage 0 reports `seed 123`;
-`makenoisydata!` reseeds from its own `rseed`). For a paired fresh-vs-brackish
-comparison this helps, the noise being common; it does mean the pair is one
-realisation and no spread over noise draws can be read from it.
 
 ## Status of earlier work
 

@@ -132,6 +132,14 @@ EOF
     echo "stage0 = \"$S0\"" >> "$MANIFEST"
     status "column $COL Stage 0 done: $S0"
 
+    # M4_STAGE0_ONLY=1 stops after Stage 0, so the ensembles can be run
+    # concurrently by tools/m4_pair.sh instead. Added 17 Nov for the
+    # concurrency experiment; the default path is unchanged.
+    if [ "${M4_STAGE0_ONLY:-0}" = 1 ]; then
+        status "column $COL ($TAG) Stage 0 only, as asked; ensembles not started here"
+        continue
+    fi
+
     # ── Stage 1, four independent ensembles, one at a time ────────────────
     for E in $(seq 1 "$NENS"); do
         SEED=$((20261117 + 100 * COL + E))
