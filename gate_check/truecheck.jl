@@ -3,7 +3,7 @@
 #   julia --project=. gate_check/truecheck.jl --stage0 <path> --truth <path> \
 #         --top 7.5 --base 23.5 --mbounds -3.0,0.30103 --tag 3P
 #
-# Two numbers, under the release (SEDIMENTARY) parameter bounds:
+# Two numbers, under the release (STATED) parameter bounds:
 #
 #   (a) chi2 of the DISCRETISED TRUTH. The truth lives on a 0.25 m grid; the
 #       inversion grid has 65 cells. The truth is averaged onto the inversion

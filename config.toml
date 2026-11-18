@@ -340,13 +340,24 @@ forced = "conductance"   # "conductance" | "mean_log_sigma" (superseded)
 
 # The grid runs from the MODEL'S LOWER TO UPPER BOUND, and admissibility
 # is enforced per node rather than by narrowing the grid.
-sigma_bounds = [1e-3, 10.0]   # S/m. The solver's clamp; the coarse grid's span.
+# STATED LIMITS (renamed from SEDIMENTARY on 18 Nov). These are the USER'S
+# limits, declared here and clamped per cell by the solver; this study uses
+# 0.001 to 2 S/m. A cell sitting ON a limit is admissible -- the limits are
+# inclusive, and bound occupancy is reported per node but never gates (ruled
+# 17 Nov). The band is therefore "min chi2 subject to the forced conductance
+# AND these limits", and an edge set by a limit is reported as such.
+sigma_bounds = [1e-3, 2.0]    # S/m. The solver's clamp; the coarse grid's span.
 # TWO-PASS GRID. A single pass bound to bound wastes most of its effort: on
 # column 3P only 12-14 of 41 nodes were admissible and 29 pinned on a bound, so
 # two thirds of an 8.8 h sweep was spent on nodes that were then correctly
 # excluded. Instead:
 #   pass 1  n_nodes_coarse nodes bound to bound, at lambda-hat, to locate the
-#           REACHABLE range from bound occupancy
+#           REACHABLE range. NOTE, 18 Nov: this used to select on BOUND
+#           OCCUPANCY, which was retired as an admissibility criterion. Pass 1
+#           now selects on constraint satisfaction and convergence only, so the
+#           reachable range is wider and pass 2 spans more of the bounds. The
+#           grid finds the shape of the curve; the edges come from the
+#           bisection in gate_check/edgefinder.jl.
 #   pass 2  n_nodes_fine nodes INSIDE that range, at each lambda2
 # The fine grid's end nodes coincide with coarse nodes already shown to be
 # interior, which is asserted after the sweep.

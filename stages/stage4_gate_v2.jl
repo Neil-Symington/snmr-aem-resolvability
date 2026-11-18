@@ -44,6 +44,11 @@ const ROOT = normpath(joinpath(HERE, ".."))
 include(joinpath(ROOT, "src", "config.jl")); using .SiteConfig
 include(joinpath(ROOT, "src", "aem_setup.jl"))
 include(joinpath(ROOT, "src", "occam_core.jl")); using .OccamCore
+# The validated edge search, unit-tested against an injected mock solver in
+# test/test_edgefinder.jl. Stage 4 wraps it rather than carrying a second
+# implementation; the one it used to carry had both of the bugs that module
+# exists to prevent.
+include(joinpath(ROOT, "gate_check", "edgefinder.jl")); using .EdgeFinder
 const SK = HiQGA.transD_GP.SkyTEM1DInversion
 
 const ARG = Dict{String,String}()
@@ -165,7 +170,10 @@ function main()
 
     # ---- the conductance grid ------------------------------------------
     sb = Float64.(g["sigma_bounds"])
-    mode = get(g, "grid_mode", "single_pass")
+    # --grid overrides the config, for the launcher's smoke only: a three-node
+    # single pass exercises every sweep, both edge searches and every save path
+    # in a couple of minutes. Production takes the config's value.
+    mode = get(ARG, "grid", get(g, "grid_mode", "single_pass"))
 
     function logdets(H, P, m)
         a = zeros(n); a[fixidx] .= log(10) .* (10 .^ m[fixidx]) .* dzeff[fixidx]
@@ -211,7 +219,16 @@ function main()
             if laplace
                 ldH[i], ldP[i] = logdets(H, Pof(l2), m)
             end
-            good[i] = nf.nbound == 0 && nf.conres < 1e-8 && nf.settled
+            # RULED 17 Nov: admissibility is the CONSTRAINT and CONVERGENCE, not
+            # bound occupancy. A cell on a stated bound is admissible; the bounds
+            # are inclusive. nbound is recorded per node and never gates.
+            #
+            # The retired `nf.nbound == 0` term was not merely reported: it NaN'd
+            # nodes out of the band and, in two-pass mode, set the bracket of the
+            # fine grid. On 3P it moved the band from 0.0506-0.4320 S to
+            # 0.1426-0.1795 S and put the truth at 0.2063 S outside it, while the
+            # nodes it dropped sat at chi2 25.3-28.9 against a threshold of 45.84.
+            good[i] = nf.conres < 1e-8 && nf.settled
             warm = copy(m)
             print("\r    $(tag)lambda2 $(round(l2,sigdigits=3)): $i/$NP good $(count(good))   "); flush(stdout)
         end
@@ -279,33 +296,71 @@ function main()
         m, chi, _H, nf = occam(aem, mref, m0, R, ndata; fixidx = fixidx, fixval = C,
                                mode = :map, ctype = :cond, dz = dzeff, lambda2 = l2,
                                beta2 = BETA2, withH = false, info = true)
-        ok = nf.nbound == 0 && nf.conres < 1e-8 && nf.settled
+        ok = nf.conres < 1e-8 && nf.settled      # see the ruling above
         (chi, ok)
     end
-    function bisect_edge(l2, from_left)
-        SWp = SW[l2]; chis = copy(SWp.chi2); chis[.!SWp.good] .= NaN
-        inside = findall(i -> isfinite(chis[i]) && chis[i] <= target, eachindex(chis))
-        isempty(inside) && return (NaN, true, 0)
-        i = from_left ? minimum(inside) : maximum(inside)
-        # already at the grid end -> open, nothing to bisect
-        (from_left && i == 1) && return (lt[1], true, 0)
-        (!from_left && i == length(lt)) && return (lt[end], true, 0)
-        a, b = from_left ? (lt[i-1], lt[i]) : (lt[i], lt[i+1])   # a outside, b inside
-        n = 0
-        while abs(b - a) > etol && n < emax
-            mid = (a + b)/2; C = 10^mid * thick
-            chi, ok = chi2_at(C, l2); n += 1
-            (ok && chi <= target) ? (b = mid) : (a = mid)
+    # THE SEARCH IS THE VALIDATED MODULE, not a second implementation.
+    #
+    # What stood here was Stage 4's own bisection, and it carried both of the
+    # bugs gate_check/edgefinder.jl was written to prevent: it moved the bracket
+    # from the midpoint's status alone and never re-established it from the
+    # solved set, and it had no chi2 convergence test at all -- it ran to a
+    # tolerance on position or to an iteration cap. EdgeFinder re-establishes
+    # the bracket every refinement, asserts it valid before computing an edge,
+    # requires a node to settle against ITSELF rather than against whichever
+    # node currently bounds the bracket, and is unit-tested against an injected
+    # mock solver in test/test_edgefinder.jl. It is now the only search; the old
+    # one is deleted rather than left selectable.
+    function edge_via_module(l2, upper::Bool, thr::Float64)
+        SWp = SW[l2]
+        # the already-solved grid, as EdgeFinder's S: abscissa -> (chi, m)
+        S = Dict{Float64,Any}()
+        for i in eachindex(lt)
+            SWp.good[i] && isfinite(SWp.chi2[i]) &&
+                (S[lt[i]] = (chi = SWp.chi2[i], m = mref))   # thr applied by EdgeFinder
         end
-        ((a + b)/2, false, n)
+        length(S) >= 2 || return (edge = NaN, converged = false, state = "no solved nodes",
+                                  nsolves = 0)
+        solvefn = (x, from) -> begin
+            chi, ok = chi2_at(10^x * thick, l2)
+            (chi = ok ? chi : Inf, m = from)
+        end
+        if upper
+            r = EdgeFinder.bisect_edge(S, solvefn, thr;
+                                       dex_tol = etol, maxref = emax)
+        else
+            # EdgeFinder locates an UPPER crossing, so the lower edge is found by
+            # reflecting the abscissa: a decreasing crossing becomes increasing.
+            Sr = Dict(-k => v for (k, v) in S)
+            solvefnr = (x, from) -> solvefn(-x, from)
+            rr = EdgeFinder.bisect_edge(Sr, solvefnr, thr;
+                                        dex_tol = etol, maxref = emax)
+            r = (edge = isfinite(rr.edge) ? -rr.edge : NaN, converged = rr.converged,
+                 state = rr.state, nsolves = rr.nsolves)
+        end
+        (edge = r.edge, converged = r.converged, state = r.state, nsolves = r.nsolves)
     end
-    @printf("\nband edges by bisection at lambda2 = %.4g (target chi2 = %.2f)\n", l2prof, target)
-    (elo, open_lo, nlo) = bisect_edge(l2prof, true)
-    (ehi, open_hi, nhi) = bisect_edge(l2prof, false)
-    @printf("  lower edge sigma_eff %.5g S/m  %s  (%d solves)\n",
-            isfinite(elo) ? 10^elo : NaN, open_lo ? "OPEN" : "closed", nlo)
-    @printf("  upper edge sigma_eff %.5g S/m  %s  (%d solves)\n",
-            isfinite(ehi) ? 10^ehi : NaN, open_hi ? "OPEN" : "closed", nhi)
+    @printf("\nband edges by bisection at lambda2 = %.4g\n", l2prof)
+    @printf("  absolute rule: chi2 <= N + %.2f = %.2f ; relative: chiref + %.2f = %.2f\n",
+            Float64(g["band"]["delta_chi2"]), target,
+            Float64(g["band"]["delta_chi2"]), chiref + Float64(g["band"]["delta_chi2"]))
+    # BOTH RULES, from the same solved grid. The absolute rule (N + delta) drives
+    # the verdict; the relative rule (chiref + delta) is reported beside it, as
+    # agreed, so the two can be compared without a second run.
+    target_rel = chiref + Float64(g["band"]["delta_chi2"])
+    rlo     = edge_via_module(l2prof, false, target)
+    rhi     = edge_via_module(l2prof, true,  target)
+    rlo_rel = edge_via_module(l2prof, false, target_rel)
+    rhi_rel = edge_via_module(l2prof, true,  target_rel)
+    elo, ehi = rlo.edge, rhi.edge
+    open_lo, open_hi = !rlo.converged, !rhi.converged
+    nlo, nhi = rlo.nsolves, rhi.nsolves
+    @printf("  lower edge sigma_eff %.5g S/m  C %.4f S  %s [%s]  (%d solves)\n",
+            isfinite(elo) ? 10^elo : NaN, isfinite(elo) ? 10^elo*thick : NaN,
+            rlo.converged ? "converged" : "NOT CONVERGED", rlo.state, nlo)
+    @printf("  upper edge sigma_eff %.5g S/m  C %.4f S  %s [%s]  (%d solves)\n",
+            isfinite(ehi) ? 10^ehi : NaN, isfinite(ehi) ? 10^ehi*thick : NaN,
+            rhi.converged ? "converged" : "NOT CONVERGED", rhi.state, nhi)
 
     # ---- assert the fine grid's end nodes are interior -----------------
     # The fine grid was bracketed by coarse nodes already shown to be
@@ -332,6 +387,16 @@ function main()
         m_prior = collect(info.m_prior), sigma_bounds = sb,
         grid_mode = mode, coarse_step_dex = coarse_step,
         edge_lo_dex = elo, edge_hi_dex = ehi, edge_lo_open = open_lo, edge_hi_open = open_hi,
+        edge_lo_C = isfinite(elo) ? 10^elo*thick : NaN,
+        edge_hi_C = isfinite(ehi) ? 10^ehi*thick : NaN,
+        edge_lo_state = rlo.state, edge_hi_state = rhi.state,
+        edge_lo_converged = rlo.converged, edge_hi_converged = rhi.converged,
+        target_absolute = target, target_relative = target_rel,
+        edge_lo_C_rel = isfinite(rlo_rel.edge) ? 10^rlo_rel.edge*thick : NaN,
+        edge_hi_C_rel = isfinite(rhi_rel.edge) ? 10^rhi_rel.edge*thick : NaN,
+        edge_lo_rel_converged = rlo_rel.converged,
+        edge_hi_rel_converged = rhi_rel.converged,
+        search = "gate_check/edgefinder.jl EdgeFinder.bisect_edge",
         edge_solves = nlo + nhi, edge_profile_lambda2 = l2prof,
         ladder_lambda_hat = ladder_lhat,
         coarse = coarse_info === nothing ? nothing :

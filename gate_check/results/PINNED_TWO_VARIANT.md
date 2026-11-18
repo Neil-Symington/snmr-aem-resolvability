@@ -3,8 +3,8 @@
 Driver `gate_check/pinned_two_variant.jl`, from stored models only, no new
 solves. Full tables in `pinned_two_variant_3P.txt` and `pinned_two_variant_2P.txt`.
 
-Stores used: 3P WIDE `edges_3P.jld2`, 3P SEDIMENTARY `edges_3P_sed2.jld2` (the
-converged gate), 2P WIDE `profile_2P_models.jld2`, 2P SEDIMENTARY
+Stores used: 3P WIDE `edges_3P.jld2`, 3P STATED `edges_3P_sed2.jld2` (the
+converged gate), 2P WIDE `profile_2P_models.jld2`, 2P STATED
 `profile_2P_sed.jld2`. Absolute rule throughout, threshold 45.84 on 42 data.
 
 ## Why by depth
@@ -22,15 +22,15 @@ counts are reported separately, never folded in, so the two can be recombined.
 | column | variant | bounds (S/m) | absolute band | largest clamp-free C | truth |
 |---|---|---|---|---|---|
 | 3P | WIDE | 1e-4 – 10 | …–0.4509 S | **0.3192 S** | 0.2063 S, below it |
-| 3P | SEDIMENTARY | 1e-3 – 2 | 0.0506–0.4320 S | **0.1795 S** | 0.2063 S, **above it** |
+| 3P | STATED | 1e-3 – 2 | 0.0506–0.4320 S | **0.1795 S** | 0.2063 S, **above it** |
 | 2P | WIDE | 1e-4 – 10 | 0.0051–6.3697 S | **6.3697 S** (all of it; 5.0596 S at frac 0.01) | 0.6856 S, below it |
-| 2P | SEDIMENTARY | 1e-3 – 2 | 0.0506–~6.7 S | **5.0596 S** | 0.6856 S, below it |
+| 2P | STATED | 1e-3 – 2 | 0.0506–~6.7 S | **5.0596 S** | 0.6856 S, below it |
 
 "Clamp-free C" is the largest accepted forced conductance with **no shallow cell
 on a bound** — the part of the band that owes nothing to where the limits were set.
 
 **One case out of four has the truth above its clamp-free limit: 3P under
-SEDIMENTARY, 0.2063 S against 0.1795 S, a 15% gap.** Near the truth the pinning is
+STATED, 0.2063 S against 0.1795 S, a 15% gap.** Near the truth the pinning is
 light: one shallow cell at 0.2014 S (cell 24, 47–50 m) and three at 0.2260 S
 (cells 16, 17 at 27–31 m and cell 24). The truth is comfortably inside the band
 itself (min chi2 at C_true = 26.205 against 45.84) and comfortably inside the
@@ -52,7 +52,7 @@ forced window (7.5–23.5 m):
 
 That is the compensation mechanism made visible. To carry more conductance in the
 window and still fit 42 gates, the model must take conductance out above and below
-it, and under SEDIMENTARY limits that compensation reaches the 0.001 S/m floor. At
+it, and under STATED limits that compensation reaches the 0.001 S/m floor. At
 3P's converged edge of 0.4320 S, 13 of 65 cells are on a bound and **all 13 are
 shallow** — the edge is set by the limits, which is why it is reported as an edge
 under stated limits rather than as a data-only bound.
@@ -83,7 +83,7 @@ quadruple it. A bump at 200 m sitting at ~1% of the peak is numerical, not
 information.
 
 The consequence for the counts is large. At 2P's node C = 0.0506 S under
-SEDIMENTARY, the same 17 cells on a bound split as:
+STATED, the same 17 cells on a bound split as:
 
 - frac 0.01 (split 207.9 m): **10 shallow**, 7 deep — including cells 30–38 at
   66–102 m, and under WIDE even cells 55–56 at 193–208 m, called "shallow";

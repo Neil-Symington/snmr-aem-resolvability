@@ -1,4 +1,4 @@
-# 2P coarse upper edge, SEDIMENTARY — 17 Nov 2026
+# 2P coarse upper edge, STATED — 17 Nov 2026
 
 Driver `gate_check/profile_minchi2.jl`, `--nodes -0.4,-0.35,-0.3 --mbounds
 -3.0,0.30103 --lam 0.01,0.1,1,10 --starts all`, window 17.5–33.5 m (support

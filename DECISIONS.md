@@ -74,7 +74,7 @@ than 0.02 dex and chi2 changing less than 0.5). 48 solves.
 
 Both lower edges are OPEN: the bound limit at sigma 1e-4, not closed by data.
 
-Clay-free salinity ceiling at those edges, mg/L TDS. **The SEDIMENTARY figures
+Clay-free salinity ceiling at those edges, mg/L TDS. **The STATED figures
 below are at the accepted bracket node, not a converged edge** -- bisection on
 that variant is running; the WIDE figures are converged.
 
@@ -114,14 +114,14 @@ Config `synthetics/config/paper_3P.toml`; window 7.5-23.5 m.
 |---|---|---|---|
 | WIDE | absolute | 0.4594 S | converged |
 | WIDE | relative | 0.3667 S | converged |
-| **SEDIMENTARY** | **absolute** | **0.4320 S** | **converged**, final move 0.0002 dex |
-| SEDIMENTARY | relative | 0.3605 S | converged, final move 0.0009 dex |
+| **STATED** | **absolute** | **0.4320 S** | **converged**, final move 0.0002 dex |
+| STATED | relative | 0.3605 S | converged, final move 0.0009 dex |
 
 Containment holds: 0.4320 <= 0.4594 and 0.3605 <= 0.3667. **Truth at 0.2063 S is
-inside the SEDIMENTARY band (0.0506-0.4320 S).** The lower edge is set by the
+inside the STATED band (0.0506-0.4320 S).** The lower edge is set by the
 floor, minimum reachable 0.016 S.
 
-Clay-free ceiling at the SEDIMENTARY absolute edge: **2,407 mg/L** at the widest
+Clay-free ceiling at the STATED absolute edge: **2,407 mg/L** at the widest
 porosity-exponent corner, 1,168 central, 683 tightest; **2,155 mg/L** at the
 widest corner with the SNMR porosity limit. Below 3,000 mg/L, so test one rules
 out the saline class at the most permissive corner under the variant that drives
@@ -134,7 +134,7 @@ geological bounds. **To be said plainly in the M5 report.**
 
 ## Which variant and which rule drive the verdict (17 Nov)
 
-**SEDIMENTARY (0.001-2 S/m) drives the verdict. WIDE (1e-4 to 10 S/m) is
+**STATED (0.001-2 S/m) drives the verdict. WIDE (1e-4 to 10 S/m) is
 reported for comparison.** Both bands, ceilings and pinned counts appear side by
 side; the data-only result is never dropped.
 
@@ -149,7 +149,7 @@ that column is anchored to the least trustworthy model in the sweep. On 3P both
 rules give the same class result, so nothing is lost by preferring the absolute
 one.
 
-**The lower edge under SEDIMENTARY is set by the floor, not by the data.** A
+**The lower edge under STATED is set by the floor, not by the data.** A
 floor of 0.001 S/m over a 16 m window cannot produce a window conductance below
 **0.016 S**, so nodes below that return no admissible solve at all. It is
 reported as "set by the floor, minimum reachable conductance 0.016 S", never as
@@ -172,9 +172,9 @@ supplies a floor inside the saturated interval.**
 | variant | log10 sigma bounds | sigma | role |
 |---|---|---|---|
 | WIDE | (-4, 1) | 1e-4 to 10 S/m | kept for comparison |
-| **SEDIMENTARY** | (-3, 0.30103) | **0.001 to 2 S/m** | **drives the verdict** |
+| **STATED** | (-3, 0.30103) | **0.001 to 2 S/m** | **drives the verdict** |
 
-Applied to every cell alike. In the SEDIMENTARY variant only, the floor inside
+Applied to every cell alike. In the STATED variant only, the floor inside
 the SNMR-defined window is the larger of 0.001 S/m and
 
     sigma_w(freshest plausible water) * theta_low ^ m_max
@@ -295,9 +295,13 @@ columns.
 **The SNMR kernel is built on the pooled AEM median** (condition C2). Neil's
 standing choice. The per-draw kernel is parked.
 
+**Naming:** the bound variant called SEDIMENTARY before 18 Nov is now called
+**STATED**. The limits are the user's, set in Stage 0; this study uses
+0.001-2 S/m. Every earlier record of "SEDIMENTARY" means STATED.
+
 ## The gate's acceptance evidence: true-model check, 17 Nov
 
-`gate_check/truecheck.jl`, both release columns, SEDIMENTARY bounds, absolute
+`gate_check/truecheck.jl`, both release columns, STATED bounds, absolute
 rule (threshold 45.84 on 42 data). Full write-up in
 `gate_check/results/TRUECHECK.md`.
 
@@ -348,7 +352,7 @@ met the constraint**, not a rejection.
 
 ## 2P coarse upper edge, 17 Nov
 
-`gate_check/results/EDGE_2P.md`. SEDIMENTARY, absolute rule. **The upper edge lies
+`gate_check/results/EDGE_2P.md`. STATED, absolute rule. **The upper edge lies
 between 6.3697 S (accepted, min chi2 36.577 pooled) and 7.1469 S (rejected, 53.923)
 — bracketed to 0.0500 dex**, better than the 0.1 dex asked. With the 9-node grid,
 2P's absolute band is **0.0506–~6.7 S, a factor of 126**: its window conductance is
@@ -382,13 +386,13 @@ rule. Deep counts reported separately, never folded in.
 | column | variant | absolute band | largest clamp-free C | truth |
 |---|---|---|---|---|
 | 3P | WIDE | …–0.4509 S | 0.3192 S | 0.2063 S, below |
-| 3P | SEDIMENTARY | 0.0506–0.4320 S | **0.1795 S** | 0.2063 S, **above** |
+| 3P | STATED | 0.0506–0.4320 S | **0.1795 S** | 0.2063 S, **above** |
 | 2P | WIDE | 0.0051–6.3697 S | 6.3697 S, all of it | 0.6856 S, below |
-| 2P | SEDIMENTARY | 0.0506–~6.7 S | 5.0596 S | 0.6856 S, below |
+| 2P | STATED | 0.0506–~6.7 S | 5.0596 S | 0.6856 S, below |
 
 "Clamp-free C" is the largest accepted forced conductance with no **shallow** cell
 on a bound. **One case of four puts the truth above its clamp-free limit: 3P under
-SEDIMENTARY, 0.2063 S against 0.1795 S.** Near the truth the pinning is one cell
+STATED, 0.2063 S against 0.1795 S.** Near the truth the pinning is one cell
 (47–50 m) at 0.2014 S and three (27–31 m and 47–50 m) at 0.2260 S. The truth is
 well inside the band itself and inside the relative rule; only the
 no-cell-on-a-bound subset stops short. **That is direct evidence for not adopting
@@ -439,7 +443,7 @@ criterion that was explicitly set aside ("do not adopt 'no cell on a bound' as a
 criterion"), and M1.2's whole point was to make per-cell stated limits part of the
 definition rather than a disqualification.
 
-Measured on the existing SEDIMENTARY coarse grids, absolute rule, threshold 45.84:
+Measured on the existing STATED coarse grids, absolute rule, threshold 45.84:
 
 | column | band as defined (bounds legitimate) | band with `nbound == 0` | nodes lost |
 |---|---|---|---|
@@ -670,9 +674,9 @@ Also ruled at the same time:
 - **Acceptance test through the release entry point:** 3P absolute edge 0.4320 S
   and relative edge 0.3605 S to tolerance, truth inside; 2P the bracketed band,
   truth inside. **Freeze when it passes.**
-- **The variant is renamed SEDIMENTARY -> STATED.** The limits are the user's,
+- **The variant is renamed STATED -> STATED.** The limits are the user's,
   set in Stage 0; this study uses 0.001-2 S/m. Every earlier record of
-  "SEDIMENTARY" means STATED.
+  "STATED" means STATED.
 - **The smoothest passing model per node is to be computed**, about 1.5 h in the
   background, both fresh columns; the static figure uses it.
 - **The no-overwrite guard in `run_site.jl` is dropped.**

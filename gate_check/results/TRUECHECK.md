@@ -1,6 +1,6 @@
 # True-model check, release columns 3P and 2P — 17 Nov 2026
 
-Script `gate_check/truecheck.jl`. Parameter bounds SEDIMENTARY
+Script `gate_check/truecheck.jl`. Parameter bounds STATED
 (0.001–2 S/m per cell). Absolute rule, threshold N + 3.84 = 45.84 on N = 42 data.
 Truth hashes `d9de86c430ab` (3P) and `33bf02a46442` (2P). Nothing here feeds back
 into the band: the band stays what `profile_minchi2.jl` computed from starts that
