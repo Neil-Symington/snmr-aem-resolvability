@@ -180,6 +180,132 @@ def fig_depth(D, tag, out):
     save(fig, out)
 
 
+# ---------------------------------------------------------------- figure (b)
+COLS = {"3P": ("#22d3ee", "o", "test one, fresh"),
+        "2P": ("#f59e0b", "s", "test two, fresh"),
+        "3S": ("#a78bfa", "^", "test one, brackish"),
+        "2S": ("#34d399", "D", "test two, brackish")}
+
+
+def fig_misfit(DS, out):
+    """Min chi2 against forced window conductance, every column on one axis.
+
+    Nodes ABOVE the axis are handled as on the page: a node whose misfit exceeds
+    the top of the range is drawn as a marker ON the top spine with an upward
+    caret, so a rejected node is visible as rejected rather than dropped. A node
+    the solver could not place on the constraint is not a rejection and is not
+    drawn at all."""
+    fig, ax = plt.subplots(figsize=(W_FULL, 80 * MM))
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor(PANEL_BG)
+
+    tabs = max(D["tabs"] for D in DS.values())
+    ymax = tabs * 1.35
+    for tag, D in DS.items():
+        col, mk, lab = COLS[tag]
+        C = np.asarray(D["gate"]["C"], float)
+        chi = np.asarray([np.nan if v is None else v for v in D["gate"]["chi2"]], float)
+        ok = np.isfinite(chi)
+        over = ok & (chi > ymax)
+        ins = ok & ~over
+        ax.plot(C[ins], chi[ins], mk + "-", color=col, ms=3.2, lw=0.9,
+                label=f"{tag} — {lab}", zorder=4)
+        if over.any():
+            ax.plot(C[over], np.full(over.sum(), ymax * 0.985), "^", color=col,
+                    ms=4.0, zorder=5, clip_on=False)
+        # the true window conductance
+        ax.plot([D["truthC"]], [D["chibest"]], "*", color=WHITE, ms=9,
+                markeredgecolor="black", markeredgewidth=0.5, zorder=7)
+        ax.annotate(f"{tag} truth {D['truthC']:.3f} S", (D["truthC"], D["chibest"]),
+                    textcoords="offset points", xytext=(4, -9), color="white", fontsize=7)
+
+    # both threshold lines
+    ax.axhline(tabs, color="#e5e7eb", lw=0.9, ls="-", zorder=3)
+    for tag, D in DS.items():
+        ax.axhline(D["trel"], color=COLS[tag][0], lw=0.8, ls=(0, (5, 3)), zorder=3)
+
+    ax.set_xscale("log")
+    ax.set_ylim(0, ymax)
+    # Labels in AXES coordinates and after the limits are set: placed against
+    # get_xlim() beforehand they landed off the plot.
+    ax.text(0.012, tabs / ymax + 0.012, f"absolute, N + 3.84 = {tabs:.2f}",
+            transform=ax.get_yaxis_transform(which="grid") if False else ax.transAxes,
+            color="#e5e7eb", fontsize=7, va="bottom")
+    for k, (tag, D) in enumerate(DS.items()):
+        ax.text(0.012, D["trel"] / ymax + 0.012 - 0.045 * k,
+                f"{tag} relative, chiref + 3.84 = {D['trel']:.2f}",
+                transform=ax.transAxes, color=COLS[tag][0], fontsize=7, va="bottom")
+    ax.set_xlabel(r"forced window conductance $C$  (S)", color="black")
+    ax.set_ylabel(r"min $\chi^2$", color="black")
+    ax.tick_params(colors="black")
+    for sp in ax.spines.values():
+        sp.set_color("black")
+    leg = ax.legend(loc="lower right", framealpha=0.85, facecolor="#1f2937",
+                    edgecolor="none", labelcolor="white", handlelength=1.8)
+    for t in leg.get_texts():
+        t.set_fontsize(7)
+    ax.text(0.0, 1.02, "a", transform=ax.transAxes, color="black", fontsize=9,
+            fontweight="bold", va="bottom")
+    save(fig, out)
+
+
+# ---------------------------------------------------------------- figure (c)
+def ceiling(C, thick, phi, m, mgl):
+    """Clay-free salinity ceiling: every bit of the window's conductance given to
+    pore water. sigma_w = (C/L) / phi**m ; TDS = sigma_w * mgl."""
+    return (C / thick) / (phi ** m) * mgl
+
+
+def fig_ceiling(DS, out, classes=None):
+    fig, ax = plt.subplots(figsize=(W_COL * 2, 78 * MM))
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor(PANEL_BG)
+    xs, labels = [], []
+    for i, (tag, D) in enumerate(DS.items()):
+        col, mk, lab = COLS[tag]
+        pet = D["pet"]; thick = D["thick"]
+        plo, phi_ = pet["phi"]; mlo, mhi = pet["m"]; mgl = pet["mgl"]
+        C = np.asarray(D["gate"]["C"], float)
+        adm = np.asarray(D["gate"]["adm"], int).astype(bool)
+        Chi = C[adm].max()
+        corners = {"widest  (phi lo, m hi)": (plo, mhi),
+                   "central": (0.5 * (plo + phi_), 0.5 * (mlo + mhi)),
+                   "tightest (phi hi, m lo)": (phi_, mlo)}
+        for j, (nm, (ph, mm)) in enumerate(corners.items()):
+            v = ceiling(Chi, thick, ph, mm, mgl)
+            x = i + (j - 1) * 0.22
+            ax.plot([x], [v], mk, color=col, ms=5.5, zorder=5,
+                    markeredgecolor="black", markeredgewidth=0.4)
+            ax.annotate(f"{v:,.0f}", (x, v), textcoords="offset points",
+                        xytext=(0, 6), ha="center", color="white", fontsize=6.5)
+        tds_true = D["claytrue"]["tds"]
+        ax.plot([i - 0.33, i + 0.33], [tds_true, tds_true], color=WHITE, lw=1.4, zorder=6)
+        ax.annotate(f"true {tds_true:,.0f} mg/L", (i + 0.34, tds_true),
+                    textcoords="offset points", xytext=(2, -2), color="white",
+                    fontsize=7, va="center")
+        xs.append(i); labels.append(f"{tag}\n{lab}")
+    if classes:
+        for v, nm in classes:
+            ax.axhline(v, color="#9ca3af", lw=0.7, ls=(0, (4, 3)), zorder=2)
+            ax.annotate(nm, (ax.get_xlim()[1], v), textcoords="offset points",
+                        xytext=(-2, 3), ha="right", color="#9ca3af", fontsize=6.5)
+    ax.set_yscale("log")
+    ax.set_xticks(xs); ax.set_xticklabels(labels, color="black")
+    # headroom for the value labels above the highest marker, and room on the
+    # right for the true-value annotation; without both, the top label and the
+    # "true ... mg/L" text were clipped by the axes.
+    ax.set_xlim(-0.6, len(xs) - 0.4 + 0.55)
+    lo, hi = ax.get_ylim()
+    ax.set_ylim(lo * 0.75, hi * 2.2)
+    ax.set_ylabel("clay-free salinity ceiling  (mg/L TDS)", color="black")
+    ax.tick_params(colors="black")
+    for sp in ax.spines.values():
+        sp.set_color("black")
+    ax.text(0.0, 1.02, "b", transform=ax.transAxes, color="black", fontsize=9,
+            fontweight="bold", va="bottom")
+    save(fig, out)
+
+
 def save(fig, out):
     base = os.path.splitext(out)[0]
     for ext, kw in ((".pdf", {}), (".svg", {}), (".png", {"dpi": 300})):
@@ -191,7 +317,7 @@ def save(fig, out):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="append", default=[])
-    ap.add_argument("--fig", default="depth", choices=["depth"])
+    ap.add_argument("--fig", default="depth", choices=["depth", "misfit", "ceiling", "all"])
     ap.add_argument("--outdir", default="figures")
     ap.add_argument("--suffix", default="",
                     help="appended to the file name; use it to mark a panel "
@@ -200,12 +326,29 @@ def main():
     if not a.json:
         sys.exit("give --json figures/report_<column>.json")
     os.makedirs(a.outdir, exist_ok=True)
+    DS = {}
     for jf in a.json:
-        D = json.load(open(jf))
         tag = os.path.basename(jf).replace("report_", "").replace(".json", "")
-        out = os.path.join(a.outdir, f"fig_depth_{tag}{a.suffix}.pdf")
-        print(f"{tag}: from {jf}")
-        fig_depth(D, tag, out)
+        DS[tag] = json.load(open(jf))
+    if a.fig in ("depth", "all"):
+        for tag, D in DS.items():
+            out = os.path.join(a.outdir, f"fig_depth_{tag}{a.suffix}.pdf")
+            print(f"{tag}: from report_{tag}.json")
+            fig_depth(D, tag, out)
+    if a.fig in ("misfit", "all"):
+        nm = "_".join(DS) + a.suffix
+        print(f"misfit: {', '.join(DS)}")
+        fig_misfit(DS, os.path.join(a.outdir, f"fig_misfit_{nm}.pdf"))
+    if a.fig in ("ceiling", "all"):
+        nm = "_".join(DS) + a.suffix
+        print(f"ceiling: {', '.join(DS)}")
+        # CLASS LINES ARE NOT DEFINED ANYWHERE IN THE REPOSITORY. config.toml
+        # asserts one salinity threshold, [hypothesis.salinity].value, and
+        # "classes in config" is deferred work. Only that asserted value is
+        # drawn; no class scheme is invented here.
+        thr = 1000.0
+        fig_ceiling(DS, os.path.join(a.outdir, f"fig_ceiling_{nm}.pdf"),
+                    classes=[(thr, f"asserted threshold {thr:,.0f} mg/L")])
 
 
 if __name__ == "__main__":
