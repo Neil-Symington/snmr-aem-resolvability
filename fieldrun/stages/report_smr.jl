@@ -16,7 +16,8 @@
 #   misfit/<site>_e<k>_misfit_chi2.png   per ensemble: chi2 and k traces
 #   swarm/<site>_e<k>_swarm.png          per ensemble: model swarm + fits
 #
-# These follow staging/scripts/smrp_invert.jl, with three departures, each
+# These follow the figures and tables of smrp_invert.jl, the standalone SMR
+# inversion script (not in this repository), with three departures, each
 # deliberate:
 #   * POSTERIOR AND TABLES ARE POOLED over the [kernel] n_draws ensembles: that
 #     pooled posterior is the result every later stage uses.

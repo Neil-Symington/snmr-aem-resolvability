@@ -15,8 +15,8 @@
 #   width = end - start) and the loop area is checked against the config.
 #
 # DECLARED IN THE CONFIG: tx_area_m2, rx_dz_m, lowpass_hz, nominal_unc,
-# halt_noise_pv. See staging/data/aem/XCITE_DECISIONS.md for every choice
-# below; the short version:
+# halt_noise_pv. The choices, and why (fieldrun/README.md, "AEM systems",
+# has the summary):
 #
 #   WAVEFORM = column 5 + two fitted first-order low-pass corners, NOT column 6.
 #   Column 6 is the same current already convolved with the Rx coil and

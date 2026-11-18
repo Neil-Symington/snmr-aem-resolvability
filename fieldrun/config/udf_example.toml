@@ -95,6 +95,14 @@ extendfrac = 1.028          # zbnd[end] = 147.4 m, "bottom about 150 m"
 [mcmc]
 nchains    = 4
 tmax       = 2.5            # log-spaced temperature ladder
+# The SNMR stage can have its own ladder. Each key is optional and falls back
+# to the shared nchains / tmax above, and to one chain at T = 1. Leaving them
+# out reproduces the UDF production run.
+#   nchains_snmr      = 7      # chains in the SNMR ladder
+#   nchainsatone_snmr = 2      # how many of them sit at T = 1
+#   tmax_snmr         = 2.5
+#   replicates_snmr   = 4      # independent ladders per kernel draw (default 1),
+#                              # gated on their agreement; see fieldrun/README.md
 # THE TWO TRANS-D STAGES DO NOT SHARE A SAMPLE COUNT, and this file used to
 # give them one. The production run's own outputs record what each used:
 #

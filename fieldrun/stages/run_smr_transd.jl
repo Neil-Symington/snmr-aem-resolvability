@@ -8,7 +8,17 @@
 # udf_smr.jl because UDF has no EK-style inversion spreadsheet and no supplied
 # resistivity profile, so `--supplied` is not offered.
 #
-#   julia --project=. -p 4 run_smr_transd.jl --sites A,B,C
+#   julia --project=. fieldrun/stages/run_smr_transd.jl --config <toml> [--site S]
+#
+# The stage adds its own chain workers ([mcmc] nchains_snmr), so no -p.
+# With [mcmc] replicates_snmr = R > 1, each kernel draw gets R independent
+# ladders, and one (draw, replicate) pair is a "unit". Units can run as
+# separate processes, several to a node, and be combined afterwards:
+#
+#   ... --site S --ens 1,2 --rep 3     run only these units; save them, no gate
+#   ... --site S --combine             gate and pool the units already on disk
+#
+# With neither flag the stage runs every unit and then combines them.
 #
 # Three deliberate differences from ek_prerun/run_prerun_mcmc.jl:
 #

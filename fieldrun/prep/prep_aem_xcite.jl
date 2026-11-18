@@ -28,7 +28,7 @@
 #
 # NOISE: sigma_i = sqrt((nominal_unc * d_i)^2 + halt_i^2), the HiQGA VTEM form
 # (VTEM1DInversion.read_survey_files). Units pV/(A.m^4) throughout.
-# See staging/data/aem/XCITE_DECISIONS.md.
+# The system choices are in stages/xcite_system.jl's header.
 
 using TOML, Printf, DelimitedFiles
 
