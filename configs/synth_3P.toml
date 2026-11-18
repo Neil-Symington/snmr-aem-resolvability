@@ -16,7 +16,7 @@ truth  = "data/truth_murray3P.jld2"
 column = "3P"
 parent = ""             # a primary column, not derived
 role   = "primary"
-snmr_ensemble = "data/cond_C2_typical3PT.jld2"
+snmr_ensemble = "data/stage2/3PT_pooled_20261118-145749/cond_C2_typical3PT.jld2"   # eight-ensemble pooled run, 18 Nov
 # NOT aem_draws_3P: the Stage 1 AEM run for this column is tagged 3M.
 # truth_murray3M and truth_murray3P have IDENTICAL sigma_bulk, clay, sigma_w
 # and phi and differ only in theta_SMR, and Stage 1 sees only sigma_bulk,
