@@ -207,6 +207,8 @@ function main()
 
     # ---- the conductance grid ------------------------------------------
     sb = Float64.(g["sigma_bounds"])
+    # the clamp in MODEL space (log10 sigma), which is what a stored model is in
+    sb_log = (log10(sb[1]), log10(sb[2]))
     # --grid overrides the config, for the launcher's smoke only: a three-node
     # single pass exercises every sweep, both edge searches and every save path
     # in a couple of minutes. Production takes the config's value.
@@ -225,6 +227,12 @@ function main()
         chis = fill(NaN, NP); phis = fill(NaN, NP)
         ldH = fill(NaN, NP); ldP = fill(NaN, NP)
         nb = zeros(Int, NP); good = falses(NP); cres = fill(NaN, NP)
+        # THE WINNING MODEL AT EACH NODE. Stage 4 stored misfits and diagnostics
+        # but no model vector, so the gate-models panel could not be built from a
+        # release-path output at all -- synthetic or field -- and only the
+        # gate_check drivers' own `models` key made the published figure
+        # possible. The model is already computed here; it was simply discarded.
+        ms = [Float64[] for _ in 1:NP]
         warm = copy(mref); t0 = time()
         for (i, C) in enumerate(Cgv)
             m, chi, H, nf = occam(aem, warm, m0, R, ndata; fixidx = fixidx, fixval = C,
@@ -266,13 +274,15 @@ function main()
             # 0.1426-0.1795 S and put the truth at 0.2063 S outside it, while the
             # nodes it dropped sat at chi2 25.3-28.9 against a threshold of 45.84.
             good[i] = nf.conres < 1e-8 && nf.settled
+            ms[i] = copy(m)
             warm = copy(m)
             print("\r    $(tag)lambda2 $(round(l2,sigdigits=3)): $i/$NP good $(count(good))   "); flush(stdout)
         end
         println()
         @printf("    %.0f s, %d/%d admissible, %d on a bound\n",
                 time()-t0, count(good), NP, count(nb .> 0))
-        (chi2 = chis, phi = phis, ldH = ldH, ldP = ldP, nbound = nb, good = good, conres = cres)
+        (chi2 = chis, phi = phis, ldH = ldH, ldP = ldP, nbound = nb, good = good,
+         conres = cres, models = ms)
     end
     local lt, Cg, coarse_step, coarse_info
     if mode == "two_pass"
@@ -322,7 +332,8 @@ function main()
     # arriving from the other side regularly finds a different local minimum.
     revsw(S) = (chi2 = reverse(S.chi2), phi = reverse(S.phi), ldH = reverse(S.ldH),
                 ldP = reverse(S.ldP), nbound = reverse(S.nbound),
-                good = reverse(S.good), conres = reverse(S.conres))
+                good = reverse(S.good), conres = reverse(S.conres),
+                models = reverse(S.models))
     # `local nn`, NOT `n`. A nested function assigning to a name that is a local
     # of the ENCLOSING function assigns to that outer local -- Julia closures
     # share the binding. Writing `n = length(A.chi2)` here silently overwrote
@@ -337,7 +348,7 @@ function main()
         (chi2 = sel(A.chi2, B.chi2), phi = sel(A.phi, B.phi),
          ldH = sel(A.ldH, B.ldH), ldP = sel(A.ldP, B.ldP),
          nbound = sel(A.nbound, B.nbound), good = sel(A.good, B.good),
-         conres = sel(A.conres, B.conres))
+         conres = sel(A.conres, B.conres), models = sel(A.models, B.models))
     end
     n == length(aem.ρ) - 1 || error("the cell count n was clobbered: $n")
     for l2 in LAM_SET
@@ -495,6 +506,20 @@ function main()
         lambda_hat = lhat, lamgrid = lamgrid, logML = mls, ml_usable = mlok,
         unimodal = unimodal, ndata = ndata, chiref = chiref,
         sweeps = Dict(string(k) => v for (k,v) in SW),
+        # Per-node models over the whole fixed set, both directions -- the
+        # per-node minimum the band is defined on. Without these a release
+        # Stage 4 output cannot produce a gate-models figure.
+        node_models = SWMIN.models,
+        node_chi2 = SWMIN.chi2, node_good = SWMIN.good,
+        # nbound RECOMPUTED from the stored model with the same predicate the
+        # published tables use. The solver's own count has been seen to disagree
+        # with the model beside it -- edges_3P_sed2.jld2 reads 0 at C = 0.0506 S
+        # where its model has three cells on the 0.001 S/m floor -- so the count
+        # that travels with the models is the one derived from them.
+        node_nbound = [isempty(m) ? -1 :
+                       count(x -> x <= sb_log[1] + 1e-9 || x >= sb_log[2] - 1e-9, m)
+                       for m in SWMIN.models],
+        node_nbound_solver = SWMIN.nbound,
         m_prior = collect(info.m_prior), sigma_bounds = sb,
         grid_mode = mode, coarse_step_dex = coarse_step,
         edge_lo_dex = elo, edge_hi_dex = ehi, edge_lo_open = open_lo, edge_hi_open = open_hi,

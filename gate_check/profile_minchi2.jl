@@ -63,6 +63,12 @@ const COLD    = STARTS in ("mref", "all")
 const COLD_M0 = STARTS == "all"
 
 wtop = parse(Float64, arg("top","7.5")); wbot = parse(Float64, arg("base","23.5"))
+# CELL GEOMETRY, and a trap. `zall` is the vector of cell BOTTOMS, so the tops
+# are [0; zall[1:end-1]]. It is NOT `zboundaries_aem`, which is a different set
+# of depths: using that instead picks the wrong window cells and gives a truth
+# window conductance of 0.2100 S on 3P where the right convention gives 0.2058 S.
+# The convention here reproduces "support 16.0000 m over 9 of 65 cells" and the
+# 0.2058 S in TRUECHECK.md exactly. Cost an independent reader an hour, 19 Nov.
 celltop = vcat(0.0, collect(Float64, zall)[1:end-1]); cellbot = collect(Float64, zall)
 ov = [max(0.0, min(cellbot[i], wbot) - max(celltop[i], wtop)) for i in 1:n]
 fixidx = findall(>(1e-9), ov)

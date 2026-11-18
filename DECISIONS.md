@@ -331,6 +331,78 @@ those columns allow a window. That is the result. It is also why the windows
 moved when the SNMR data were corrected (3P 7.50-23.50 -> 9.25-25.25 m), and why
 they are not a sound basis for forcing conductance.
 
+## CORRECTION 19 Nov: chiref for 3P is 25.17992, not 25.28304
+
+Found by an independent reader of the stored files; verified here from the
+stores. **This is not a new ruling.** The definition already recorded is
+`chiref = min(unconstrained multi-start, min over constrained nodes)`. It was
+applied WITHIN each store and never ACROSS them:
+
+| store | chiref held | min over its own nodes |
+|---|---|---|
+| `profile_3P_sed.jld2` | 25.28304 | 25.28304 (unconstrained multi-start was 25.37477) |
+| `edges_3P_sed2.jld2` | seeded 25.28304 | **25.17992**, at the node C = 0.2014 S the bisection added |
+
+The bisection reached a lower constrained misfit than the coarse profile had and
+the reference was never updated. **chiref = 25.17992, and the relative threshold
+is 29.020, not the published 29.123 — too high by 0.103.**
+
+**The absolute rule, which drives the verdict, is unaffected.** The relative
+bracket is unchanged either: 0.3582 S passes at 28.920 and 0.3634 S fails at
+29.384 under both thresholds, so the relative edge stays inside the same
+interval. The published relative edge **0.3605 S** was measured against the high
+threshold and is to be **re-derived or re-stated** against 29.020.
+
+`tools/make_report.jl` already uses the lower value and says so on the page.
+
+The pipeline's assertion `chiref <= min over nodes of the constrained chi2`
+exists but is evaluated per store, so it cannot see this. Any future reference
+has to be taken across every store that contributes a node.
+
+## Three defects found by the same reader, recorded 19 Nov
+
+**`nbound` stored by the edge finder disagrees with the model beside it.**
+`edges_3P_sed2.jld2` reads 0 at C = 0.0506 S where its own stored model has
+three cells on the 0.001 S/m floor. `pinned_two_variant.jl` was already immune,
+because it recomputes from the models with `onbound(m, mb)` -- which is why its
+published table says 3 and reproduces exactly. **Anything that trusts the stored
+array gets wrong counts.** From 19 Nov `stage4_gate_v2.jl` stores
+`node_nbound`, recomputed from the model it stores beside it, and keeps the
+solver's own count separately as `node_nbound_solver`.
+
+**`depth_limit` is declared and never read.** `config.toml` sets
+`depth_limit = "min_detect_responding"` with a comment that it "decides the
+verdict on real data more often than anything else in the workflow". The string
+does not appear in any `.jl` in the repository: no stage computes it, Stage 2
+stores no depth limit, and there is nothing for a figure to draw. It is a dead
+setting, and on field data it would be a silent one.
+
+**The raised window floor was never active in the STATED stores.** Both
+`profile_3P_sed.jld2` and `edges_3P_sed2.jld2` hold a two-element global
+`mbounds` and no per-cell, `boundkind` or floor key, so one clamp applied to
+every cell. It is inert at the provisional 50 mg/L either way -- 3P's floor is
+0.000627 S/m, below the 0.001 clamp -- but **the stores cannot distinguish "off"
+from "on and not binding"**, which is the same gap already recorded under the
+depth-dependent limits item.
+
+## The conditions-table clay error has a located cause
+
+Recorded earlier as "clay terms were wrong by 5-16x". The cause:
+**`σ_clay` in the truth files IS the clay term already** -- on 3P the window mean
+0.00864 S/m equals `σ_bulk - σ_w·θ^m` exactly -- and `conditions.jl:85`
+multiplies it by the clay fraction a second time. The factor is 15.80x on 3P and
+4.95x on 2P.
+
+## Stage 4 now stores its per-node models
+
+`sweep` computed the winning model at every node and discarded it, so a
+release-path Stage 4 output carried misfits and diagnostics but nothing to plot:
+**the gate-models figure could not be built from the release path at all**, on
+synthetic or field data, and the published figure exists only because the
+`gate_check` drivers keep a `models` key. From 19 Nov the model is kept through
+the direction merge and stored as `node_models`, with `node_chi2`, `node_good`
+and the recomputed `node_nbound` beside it.
+
 ## The release lambda-squared set is {0.01, 0.1}, fixed, both sweep directions
 
 Decided during validation and restated 18 Nov. **It is not a ladder built around
