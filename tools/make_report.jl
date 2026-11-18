@@ -203,11 +203,7 @@ if size(θ_smr, 2) < 50
     @warn "only $(size(θ_smr,2)) SNMR draws: this file is a point estimate, not a posterior, and its histogram will be a single line"
 end
 const NS = size(θ_smr, 1)
-# 30 bins, halved from 60 on 19 Nov. At 0.0075 v/v a bin the water-content
-# histogram was speckled: with ~40,000 draws over 60 depths the per-depth counts
-# are thin enough that neighbouring bins alternate. The BINS are coarser; the
-# image is not smoothed, so nothing is drawn that the draws do not support.
-const SNMR_LO, SNMR_HI, SNMR_NB = 0.0, 0.45, 30
+const SNMR_LO, SNMR_HI, SNMR_NB = 0.0, 0.45, 60
 snmr_hist = [binrow(view(θ_smr, i, :), SNMR_LO, SNMR_HI, SNMR_NB) for i in 1:NS]
 snmr_p05 = [pct(view(θ_smr, i, :), 0.05) for i in 1:NS]
 snmr_p50 = [pct(view(θ_smr, i, :), 0.50) for i in 1:NS]
@@ -634,6 +630,31 @@ end
 const PAGE = raw"""
 <title>Test One, Depth by Depth</title>
 <style>
+/* FIGURE MODE, ?fig=depth. The paper's figures are drawn by THIS code, so a
+   figure and the page cannot differ in look: same dark ground, same inferno
+   with its square-root per-depth scaling, same smooth percentile curves, same
+   white haloed truth, same cyan selection and amber best fit, same faint
+   admissible fan, same window and sensitivity lines. The mode only HIDES
+   chrome -- header, misfit strip, sliders, buttons, table -- and fixes the
+   depth axis. It changes no drawing code. */
+body.figmode{background:#0b0d10;margin:0}
+body.figmode .head,
+body.figmode .chiw,
+body.figmode .ctl,
+body.figmode #rowbtns,
+body.figmode #say,
+body.figmode #ta{display:none !important}
+body.figmode .app{padding:10px 12px 6px 12px;max-width:none}
+body.figmode .strip{margin-top:2px;grid-template-columns:1fr !important}
+body.figmode .box{border:none;background:none;padding:0;box-shadow:none}
+body.figmode #rowkey{justify-content:center;padding:2px 0 0 0}
+body.figmode .panels{gap:10px;
+  /* the page collapses to one column below 900 px; a figure is always three
+     across, whatever width it is rendered at */
+  grid-template-columns:repeat(3,1fr) !important;min-height:0}
+body.figmode .tab:not(.on){display:none}          /* no tab control in print */
+body.figmode .tabs{border:none}
+body.figmode .pan{min-height:0}
 :root{
   --bg:#f1f4f4;--panel:#fff;--ink:#16262b;--soft:#4a5f65;--mute:#7b9095;
   --rule:#ccd8d8;--line:#9fb3b3;--acc:#0d6a68;--acc2:#1d7fa8;--hot:#b4502f;
@@ -776,11 +797,11 @@ textarea{width:100%;box-sizing:border-box;height:72px;font-family:ui-monospace,M
         <input type="range" id="sK" min="0" max="95" step="1" value="0">
         <output id="oK"></output>
       </div>
-      <div class="row">
+      <div class="row" id="rowbtns">
         <button class="btn" id="bC">Export CSV</button>
         <button class="btn" id="bS" hidden>Select all</button>
-        <span class="key" id="key"></span>
       </div>
+      <div class="row" id="rowkey"><span class="key" id="key"></span></div>
       <textarea id="ta" hidden readonly aria-label="CSV"></textarea>
     </div>
   </div>
@@ -790,6 +811,18 @@ textarea{width:100%;box-sizing:border-box;height:72px;font-family:ui-monospace,M
 const SCRIPT = raw"""
 <script>
 (function(){
+// FIGURE MODE. ?fig=depth hides the chrome and fixes the depth axis at 70 m;
+// the selected gate model becomes the node nearest the CENTRE of the admissible
+// range, which is what the paper's panel shows. Nothing else changes.
+const FIGMODE = new URLSearchParams(location.search).get('fig');
+if(FIGMODE){
+  document.body.classList.add('figmode');
+  // headless Chrome reports a LIGHT colour scheme, so the dark palette has to
+  // be asked for rather than inherited: a figure is always on the dark ground.
+  document.documentElement.setAttribute('data-theme','dark');
+  const zq = new URLSearchParams(location.search).get('zmax');
+  if(zq) D.zmax = parseFloat(zq);
+}
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const F = (x,n) => x.toFixed(n===undefined?3:n);
 const clamp=(a,b,c)=>Math.max(b,Math.min(c,a));
@@ -822,12 +855,15 @@ const GROUND=ramp(0);
 // halo: the p50 sits exactly where density peaks, which is the palest part of
 // the ramp, and a plain white line would disappear into it.
 //   white  the true model, in every panel
-//   cyan   what the data produced -- percentiles, and the selected gate model
+  //   cyan   the ENSEMBLE -- p50 and the p05/p95 pair, and nothing else
+  //   green  the selected gate model. It had been cyan too, which read as a
+  //          third percentile line: one model forced to a conductance is not
+  //          a posterior summary and must not share the ensemble's colour.
 //   amber  the lowest-misfit model, a reference and nothing else
 //   green  a cell resting on a stated limit
 const C_P50='#00e5ff', C_PTL='rgba(0,229,255,.72)', C_TRUE='#ffffff',
       C_FAINT='rgba(255,255,255,.22)', C_BEST='#ffb703',
-      C_SEL='#00e5ff', C_LIM='#ffffff', C_GRID='rgba(255,255,255,.13)',
+      C_SEL='#4ade80', C_LIM='#ffffff', C_GRID='rgba(255,255,255,.13)',
       C_HALO='rgba(0,0,0,.6)';
 
 function setup(cv){
@@ -897,7 +933,6 @@ function veil(g,A){
   g.save(); g.beginPath(); g.rect(A.x0,A.y0,A.x1-A.x0,A.y1-A.y0); g.clip();
   g.fillStyle='rgba(0,0,0,.52)'; g.fillRect(A.x0,Y,A.x1-A.x0,A.y1-Y);
   g.restore();
-  sensline(g,A);
 }
 function sensline(g,A){
   if(!D.sens || D.sens.z>=D.zmax) return;
@@ -944,8 +979,15 @@ function smooth(g,A,xof,v,top,bot,col,wd,dash){
   for(let i=0;i<pts.length-1;i++){
     const p0=pts[i>0?i-1:0], p1=pts[i], p2=pts[i+1],
           p3=pts[i+2<pts.length?i+2:pts.length-1];
-    g.bezierCurveTo(p1.x+(p2.x-p0.x)/6, p1.y+(p2.y-p0.y)/6,
-                    p2.x-(p3.x-p1.x)/6, p2.y-(p3.y-p1.y)/6, p2.x, p2.y);
+    // MONOTONE between points: the cardinal tangents are kept, but every
+    // control point is clamped into the box spanned by the two points it
+    // lies between, so the curve cannot overshoot either of them. Same
+    // shape wherever the data are smooth; the wiggles in the water-content
+    // panel, where neighbouring depths differ sharply, are gone.
+    const cl=(v,a,b)=>Math.max(Math.min(a,b),Math.min(Math.max(a,b),v));
+    g.bezierCurveTo(cl(p1.x+(p2.x-p0.x)/6,p1.x,p2.x), cl(p1.y+(p2.y-p0.y)/6,p1.y,p2.y),
+                    cl(p2.x-(p3.x-p1.x)/6,p1.x,p2.x), cl(p2.y-(p3.y-p1.y)/6,p1.y,p2.y),
+                    p2.x, p2.y);
   }
   g.stroke(); g.setLineDash([]); g.restore();
 }
@@ -983,9 +1025,9 @@ function drawAEM(){
   band(g,A);
   smooth(g,A,X,D.aem.p05,aemTop,aemBot,C_PTL,1.3,[5,3]);
   smooth(g,A,X,D.aem.p95,aemTop,aemBot,C_PTL,1.3,[5,3]);
-  smooth(g,A,X,D.aem.p50,aemTop,aemBot,C_P50,2.1);
   steps(g,A,X,D.aem.truth,aemTop,aemBot,C_TRUE,2,null,true);
-  sensline(g,A);
+  // p50 ON TOP of the truth: where the two coincide the question is whether the inversion found it, so the inversion's line is the one that must be visible.
+  smooth(g,A,X,D.aem.p50,aemTop,aemBot,C_P50,2.1);
 }
 function drawSNMR(){
   const {g,w,h}=setup(document.getElementById('c2')); if(w<8) return;
@@ -998,9 +1040,10 @@ function drawSNMR(){
   band(g,A);
   smooth(g,A,X,D.snmr.p05,top,bot,C_PTL,1.3,[5,3]);
   smooth(g,A,X,D.snmr.p95,top,bot,C_PTL,1.3,[5,3]);
-  smooth(g,A,X,D.snmr.p50,top,bot,C_P50,2.1);
   steps(g,A,X,D.snmr.truth,top,bot,C_TRUE,2,null,true);
-  if(D.snmr.dlim===null||D.snmr.dlim===undefined) note(g,A,'depth limit not stored');
+  // p50 ON TOP of the truth: where the two coincide the question is whether the inversion found it, so the inversion's line is the one that must be visible.
+  smooth(g,A,X,D.snmr.p50,top,bot,C_P50,2.1);
+  if(!FIGMODE && (D.snmr.dlim===null||D.snmr.dlim===undefined)) note(g,A,'depth limit not stored');
   else veilAt(g,A,D.snmr.dlim,'depth limit');
 }
 function drawFit(){
@@ -1110,7 +1153,9 @@ function drawGate(){
   }
   const bi=D.gate.C.indexOf(D.gate.best);
   if(bi>=0 && bi!==sel)
-    steps(g,A,X,MS[bi].map(v=>Math.pow(10,v)),aemTop,aemBot,C_BEST,1.4,[5,3]);
+    // the best fit is the default selection now, so the amber line would sit
+    // under the green one; draw it only when the reader has moved off it
+    if(bi!==sel) steps(g,A,X,MS[bi].map(v=>Math.pow(10,v)),aemTop,aemBot,C_BEST,1.4,[5,3]);
   steps(g,A,X,D.aem.truth,aemTop,aemBot,C_TRUE,2,null,true);
   const m=MS[sel].map(v=>Math.pow(10,v));
   steps(g,A,X,m,aemTop,aemBot,C_SEL,3.2,null,true);
@@ -1121,7 +1166,10 @@ function drawGate(){
     g.fillStyle='rgba(0,0,0,.8)'; g.fill();
     g.lineWidth=1.8; g.strokeStyle=C_LIM; g.stroke();
   }
-  veil(g,A);
+  // the sensitivity veil goes with the sensitivity line, which figure mode
+  // does not draw; at a 100 m axis it would otherwise dim test one below
+  // 84.6 m with no line to explain why
+  if(!FIGMODE) veil(g,A);
   g.strokeStyle=css('--line'); g.lineWidth=1;
   g.strokeRect(A.x0,A.y0,A.x1-A.x0,A.y1-A.y0);
 }
@@ -1214,12 +1262,19 @@ let useSmooth=false;
 const obOf = k => (useSmooth && D.gate.ms)
   ? D.gate.ms[k].map((v,i)=>[v,i]).filter(([v])=>v<=D.mb[0]+1e-9||v>=D.mb[1]-1e-9).map(([,i])=>i)
   : D.gate.ob[k];
-// open on the node nearest the geometric centre of the admissible range: a
-// well-fitting model in the middle of what the data allow, picked by the
-// range alone and not by where the answer happens to be
-const admMid = Math.sqrt(D.gate.C[admIdx[0]]*D.gate.C[admIdx[admIdx.length-1]]);
-let sel = admIdx.reduce((a,b)=>
-  Math.abs(Math.log(D.gate.C[b]/admMid))<Math.abs(Math.log(D.gate.C[a]/admMid))?b:a, admIdx[0]);
+// OPEN ON THE LOWEST-MISFIT ADMISSIBLE NODE. Chosen 19 Nov after the previous
+// default -- the node nearest the geometric centre of the admissible range --
+// put the confined column on 0.5060 S, a node with 15 of 65 cells resting on a
+// stated limit, sitting between two clean ones. That rule picks on the range's
+// arithmetic alone and never looks at the model it is about to show; on a band
+// spanning a factor of 126 it lands wherever the ends happen to be. It looked
+// right on the unconfined column only by luck.
+//
+// The lowest-misfit node is defined by the DATA, not by the range: 1.6000 S on
+// the confined column and 0.2014 S on the unconfined one, and neither has a
+// cell on a limit. It is a representative of the admissible set, not the
+// answer -- the slider moves through every other node.
+let sel = admIdx.reduce((a,b)=> D.gate.chi2[b] < D.gate.chi2[a] ? b : a, admIdx[0]);
 
 // Conductance above and below the window, as a factor of the lowest-misfit
 // model: the compensation the forced conductance is paid for with. Exported
@@ -1360,7 +1415,7 @@ document.getElementById('n3').textContent=admIdx.length+' of '+D.gate.C.length+'
 document.getElementById('key').innerHTML=
   '<span><i style="background:'+C_P50+';outline:1px solid '+css('--rule')+'"></i>p50</span>'+
   '<span><i style="background:'+C_PTL+';outline:1px solid '+css('--rule')+'"></i>p05 p95</span>'+
-  '<span><i style="background:'+C_TRUE+';outline:1px solid '+css('--rule')+'"></i>true</span>'+'<span><i style="background:'+C_BEST+'"></i>best fit</span>'+'<span><i style="background:rgba(255,255,255,.65)"></i>sensitivity depth</span>'+
+  '<span><i style="background:'+C_TRUE+';outline:1px solid '+css('--rule')+'"></i>true</span>'+'<span><i style="background:'+C_SEL+'"></i>gate model shown</span>'+'<span><i style="background:'+C_BEST+'"></i>best fit</span>'+
   '<span><i style="background:transparent;border:1.6px solid '+C_LIM+';outline:1px solid '+css('--rule')+';height:8px;width:8px;border-radius:50%"></i>on a stated limit</span>'+
   '<span>window '+D.win[0]+'&ndash;'+D.win[1]+' m</span>';
 

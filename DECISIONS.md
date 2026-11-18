@@ -403,6 +403,42 @@ synthetic or field data, and the published figure exists only because the
 the direction merge and stored as `node_models`, with `node_chi2`, `node_good`
 and the recomputed `node_nbound` beside it.
 
+## The gate panel shows the LOWEST-MISFIT admissible node, 19 Nov
+
+The report page had opened on the admissible node nearest the **geometric
+centre** of the admissible range. That rule picks on the range's arithmetic
+alone and never looks at the model it is about to show.
+
+On the confined column it chose **0.5060 S**, a node with **15 of 65 cells
+resting on a stated limit**, sitting between two clean ones -- the admissible
+range there spans a factor of 126 (0.0506-6.3697 S), so the geometric centre
+lands wherever the ends happen to be. The profile it drew ran to the floor below
+35 m. It had looked right on the unconfined column only by luck, the centre node
+there happening to have no pinned cells.
+
+**The default is now the lowest-misfit admissible node**, which is defined by the
+data rather than by the range:
+
+| column | shown model | chi2 | cells on a limit | truth |
+|---|---|---|---|---|
+| test one, unconfined | **0.2014 S** | 25.180 | 2 | 0.2063 S |
+| test two, confined | **1.6000 S** | 25.858 | 0 | 0.6856 S |
+
+It is a representative of the admissible set and **not the answer**; the slider
+moves through every other node, and the figures say so in the key as "gate model
+shown". Because the shown model is now the best fit, the amber best-fit line
+would sit under the green one, so it is drawn only once the reader has moved the
+selection off it.
+
+**Colour, same date:** the shown model was cyan, the colour the ensemble's p50
+and p05/p95 use, so in the gate panel it read as a third percentile line. One
+model forced to a conductance is not a posterior summary. It is now green.
+
+**Removed from the figures, same date:** the sensitivity-depth line and the veil
+that dims models below it. The veil was dormant at a 70 m axis on both fresh
+columns and would have switched on at 84.6 m once the axis went to 100 m, with
+no line to explain it. The interactive page keeps the veil; the figures do not.
+
 ## The release lambda-squared set is {0.01, 0.1}, fixed, both sweep directions
 
 Decided during validation and restated 18 Nov. **It is not a ladder built around
