@@ -68,6 +68,7 @@ const SNMRF   = abspath_rel(arg("snmr",
     "../synthetics/outputs/HYP_SYNTH/cond_C2_typical3PT.jld2"))
 const GATEF   = abspath_rel.(splitlist(arg("gate",
     "gate_check/results/profile_3P_sed.jld2,gate_check/results/edges_3P_sed2.jld2")))
+const COLNAME = arg("name", "Test one")
 const TRUTHF  = abspath_rel(arg("truth", "data/truth_murray3P.jld2"))
 "The true window conductance, on the truth's own grid -- not its grid representation."
 function truth_window_fine(path, a, b)
@@ -588,6 +589,8 @@ function js_payload()
     # test two -- and a figure marking "the truth" must mark the latter.
     print(io, "truthC:", jnum(Ctruth_grid), ",truthC_fine:", jnum(Ctruth_fine), ",")
     print(io, "snmr_run:", jstr(basename(dirname(SNMRF))), ",")
+    print(io, "colname:", jstr(COLNAME), ",")
+    print(io, "aem_dirs:", jstr(join(basename.(AEMDIRS), " ")), ",")
     print(io, "sens:", SENS === nothing ? "null" :
         string("{z:", jnum(SENS.z), ",frac:", jnum(SENS.frac), "}"), ",")
     print(io, "pet:{mgl:", jnum(PET.mgl), ",phi:", jarr(PET.phi), ",m:", jarr(PET.m),
@@ -654,6 +657,15 @@ body.figmode .panels{gap:10px;
   grid-template-columns:repeat(3,1fr) !important;min-height:0}
 body.figmode .tab:not(.on){display:none}          /* no tab control in print */
 body.figmode .tabs{border:none}
+body.figmode .tab.on{border-bottom-color:transparent;color:var(--ink)}
+/* 5. panel letters and the column name, drawn by CSS so no canvas code moves */
+body.figmode .pan{position:relative}
+body.figmode .pan::before{content:attr(data-letter);position:absolute;left:9px;top:6px;
+  font-weight:700;font-size:12px;color:var(--ink);z-index:3}
+body.figmode .pt{padding-left:26px}
+body.figmode #colname{display:block;font-weight:700;font-size:12.5px;
+  color:var(--ink);padding:0 0 4px 2px}
+#colname{display:none}
 body.figmode .pan{min-height:0}
 :root{
   --bg:#f1f4f4;--panel:#fff;--ink:#16262b;--soft:#4a5f65;--mute:#7b9095;
@@ -748,6 +760,7 @@ textarea{width:100%;box-sizing:border-box;height:72px;font-family:ui-monospace,M
     <div class="prov" id="prov"></div>
   </div>
 
+  <div id="colname"></div>
   <div class="panels">
     <div class="pan">
       <div class="pt"><span>Conductivity, AEM ensemble</span><em id="n1"></em></div>
@@ -755,7 +768,7 @@ textarea{width:100%;box-sizing:border-box;height:72px;font-family:ui-monospace,M
     </div>
     <div class="pan">
       <div class="pt">
-        <span class="tabs"><button class="tab on" id="t2a">Water content</button><button class="tab" id="t2b">Data fit</button></span>
+        <span class="tabs"><button class="tab on" id="t2a">Water content, SNMR ensemble</button><button class="tab" id="t2b">Data fit</button></span>
         <em id="n2"></em>
       </div>
       <div class="cw"><canvas id="c2"></canvas></div>
@@ -862,7 +875,12 @@ const GROUND=ramp(0);
 //   amber  the lowest-misfit model, a reference and nothing else
 //   green  a cell resting on a stated limit
 const C_P50='#00e5ff', C_PTL='rgba(0,229,255,.72)', C_TRUE='#ffffff',
-      C_FAINT='rgba(255,255,255,.22)', C_BEST='#ffb703',
+      C_FAINT='rgba(255,255,255,.22)',
+        // The admissible family is CONTEXT, not lines to read one by one. 17
+        // strokes at 20% opacity accumulate to near-white where they overlap,
+        // which is why it still competed with the truth; 12% and a thinner
+        // line keep the eye on the truth and the selected model.
+        C_FAM='rgba(255,255,255,.12)', C_BEST='#ffb703',
       C_SEL='#4ade80', C_LIM='#ffffff', C_GRID='rgba(255,255,255,.13)',
       C_HALO='rgba(0,0,0,.6)';
 
@@ -903,7 +921,9 @@ const yOf=(A,d)=>A.y0+(clamp(d,0,D.zmax)/D.zmax)*(A.y1-A.y0);
 function band(g,A){
   const a=yOf(A,D.win[0]), b=yOf(A,D.win[1]);
   g.save(); g.beginPath(); g.rect(A.x0,A.y0,A.x1-A.x0,A.y1-A.y0); g.clip();
-  g.fillStyle='rgba(255,255,255,.07)'; g.fillRect(A.x0,a,A.x1-A.x0,b-a);
+  // the tint competes with the density underneath in print; the two dashed
+  // lines carry the window on their own
+  if(!FIGMODE){ g.fillStyle='rgba(255,255,255,.07)'; g.fillRect(A.x0,a,A.x1-A.x0,b-a); }
   g.strokeStyle='rgba(255,255,255,.55)'; g.lineWidth=1; g.setLineDash([4,3]);
   g.beginPath(); g.moveTo(A.x0,a); g.lineTo(A.x1,a); g.moveTo(A.x0,b); g.lineTo(A.x1,b);
   g.stroke(); g.setLineDash([]); g.restore();
@@ -964,7 +984,7 @@ function steps(g,A,xof,v,top,bot,col,wd,dash,halo,alpha){
 // The percentiles are a summary of a distribution that varies continuously
 // with depth, not a layered model, so they are drawn as a curve. The truth
 // and the gate's models stay as steps, because those ARE layered models.
-function smooth(g,A,xof,v,top,bot,col,wd,dash){
+function smooth(g,A,xof,v,top,bot,col,wd,dash,halo){
   const pts=[];
   for(let i=0;i<v.length;i++){
     const zc=(top[i]+bot[i])/2;
@@ -974,22 +994,25 @@ function smooth(g,A,xof,v,top,bot,col,wd,dash){
   }
   if(pts.length<2) return;
   g.save(); g.beginPath(); g.rect(A.x0,A.y0,A.x1-A.x0,A.y1-A.y0); g.clip();
-  g.strokeStyle=col; g.lineWidth=wd; g.setLineDash(dash||[]); g.lineJoin='round';
-  g.beginPath(); g.moveTo(pts[0].x,pts[0].y);
-  for(let i=0;i<pts.length-1;i++){
-    const p0=pts[i>0?i-1:0], p1=pts[i], p2=pts[i+1],
-          p3=pts[i+2<pts.length?i+2:pts.length-1];
-    // MONOTONE between points: the cardinal tangents are kept, but every
-    // control point is clamped into the box spanned by the two points it
-    // lies between, so the curve cannot overshoot either of them. Same
-    // shape wherever the data are smooth; the wiggles in the water-content
-    // panel, where neighbouring depths differ sharply, are gone.
-    const cl=(v,a,b)=>Math.max(Math.min(a,b),Math.min(Math.max(a,b),v));
-    g.bezierCurveTo(cl(p1.x+(p2.x-p0.x)/6,p1.x,p2.x), cl(p1.y+(p2.y-p0.y)/6,p1.y,p2.y),
-                    cl(p2.x-(p3.x-p1.x)/6,p1.x,p2.x), cl(p2.y-(p3.y-p1.y)/6,p1.y,p2.y),
-                    p2.x, p2.y);
-  }
-  g.stroke(); g.setLineDash([]); g.restore();
+  g.lineJoin='round';
+  // MONOTONE between points: the cardinal tangents are kept, but every control
+  // point is clamped into the box spanned by the two points it lies between, so
+  // the curve cannot overshoot either of them.
+  const cl=(q,a,b)=>Math.max(Math.min(a,b),Math.min(Math.max(a,b),q));
+  const trace=()=>{
+    g.beginPath(); g.moveTo(pts[0].x,pts[0].y);
+    for(let i=0;i<pts.length-1;i++){
+      const p0=pts[i>0?i-1:0], p1=pts[i], p2=pts[i+1],
+            p3=pts[i+2<pts.length?i+2:pts.length-1];
+      g.bezierCurveTo(cl(p1.x+(p2.x-p0.x)/6,p1.x,p2.x), cl(p1.y+(p2.y-p0.y)/6,p1.y,p2.y),
+                      cl(p2.x-(p3.x-p1.x)/6,p1.x,p2.x), cl(p2.y-(p3.y-p1.y)/6,p1.y,p2.y),
+                      p2.x, p2.y);
+    }
+  };
+  // a dark halo first, as steps() does, so a white line stays legible on the ramp
+  if(halo){ g.strokeStyle=C_HALO; g.lineWidth=wd+2.2; g.setLineDash([]); trace(); g.stroke(); }
+  g.strokeStyle=col; g.lineWidth=wd; g.setLineDash(dash||[]); trace(); g.stroke();
+  g.setLineDash([]); g.restore();
 }
 // per-depth normalisation: each row is the marginal at that depth scaled to
 // its own maximum, so a well-determined depth and a poorly determined one are
@@ -1025,7 +1048,7 @@ function drawAEM(){
   band(g,A);
   smooth(g,A,X,D.aem.p05,aemTop,aemBot,C_PTL,1.3,[5,3]);
   smooth(g,A,X,D.aem.p95,aemTop,aemBot,C_PTL,1.3,[5,3]);
-  steps(g,A,X,D.aem.truth,aemTop,aemBot,C_TRUE,2,null,true);
+  smooth(g,A,X,D.aem.truth,aemTop,aemBot,C_TRUE,2,null,true);
   // p50 ON TOP of the truth: where the two coincide the question is whether the inversion found it, so the inversion's line is the one that must be visible.
   smooth(g,A,X,D.aem.p50,aemTop,aemBot,C_P50,2.1);
 }
@@ -1040,7 +1063,7 @@ function drawSNMR(){
   band(g,A);
   smooth(g,A,X,D.snmr.p05,top,bot,C_PTL,1.3,[5,3]);
   smooth(g,A,X,D.snmr.p95,top,bot,C_PTL,1.3,[5,3]);
-  steps(g,A,X,D.snmr.truth,top,bot,C_TRUE,2,null,true);
+  smooth(g,A,X,D.snmr.truth,top,bot,C_TRUE,2,null,true);
   // p50 ON TOP of the truth: where the two coincide the question is whether the inversion found it, so the inversion's line is the one that must be visible.
   smooth(g,A,X,D.snmr.p50,top,bot,C_P50,2.1);
   if(!FIGMODE && (D.snmr.dlim===null||D.snmr.dlim===undefined)) note(g,A,'depth limit not stored');
@@ -1149,14 +1172,14 @@ function drawGate(){
   const MS = (useSmooth && D.gate.ms) ? D.gate.ms : D.gate.m;
   for(const k of admIdx){
     if(k===sel) continue;
-    steps(g,A,X,MS[k].map(v=>Math.pow(10,v)),aemTop,aemBot,C_FAINT,1);
+    steps(g,A,X,MS[k].map(v=>Math.pow(10,v)),aemTop,aemBot,C_FAM,0.8);
   }
   const bi=D.gate.C.indexOf(D.gate.best);
   if(bi>=0 && bi!==sel)
     // the best fit is the default selection now, so the amber line would sit
     // under the green one; draw it only when the reader has moved off it
-    if(bi!==sel) steps(g,A,X,MS[bi].map(v=>Math.pow(10,v)),aemTop,aemBot,C_BEST,1.4,[5,3]);
-  steps(g,A,X,D.aem.truth,aemTop,aemBot,C_TRUE,2,null,true);
+    steps(g,A,X,MS[bi].map(v=>Math.pow(10,v)),aemTop,aemBot,C_BEST,1.4,[5,3]);
+  smooth(g,A,X,D.aem.truth,aemTop,aemBot,C_TRUE,2,null,true);
   const m=MS[sel].map(v=>Math.pow(10,v));
   steps(g,A,X,m,aemTop,aemBot,C_SEL,3.2,null,true);
   for(const i of obOf(sel)){
@@ -1412,10 +1435,13 @@ document.getElementById('t2b').addEventListener('click',()=>setTab('fit'));
 if(!D.fit) document.getElementById('t2b').disabled=true;
 document.getElementById('n2').textContent=D.snmr.ndraw.toLocaleString()+' draws';
 document.getElementById('n3').textContent=admIdx.length+' of '+D.gate.C.length+' nodes';
+document.getElementById('colname').textContent = D.colname || '';
+['a','b','c'].forEach((t,n)=>{const p=document.querySelectorAll('.pan')[n];
+  if(p) p.setAttribute('data-letter',t);});
 document.getElementById('key').innerHTML=
   '<span><i style="background:'+C_P50+';outline:1px solid '+css('--rule')+'"></i>p50</span>'+
   '<span><i style="background:'+C_PTL+';outline:1px solid '+css('--rule')+'"></i>p05 p95</span>'+
-  '<span><i style="background:'+C_TRUE+';outline:1px solid '+css('--rule')+'"></i>true</span>'+'<span><i style="background:'+C_SEL+'"></i>gate model shown</span>'+'<span><i style="background:'+C_BEST+'"></i>best fit</span>'+
+  '<span><i style="background:'+C_TRUE+';outline:1px solid '+css('--rule')+'"></i>true</span>'+'<span><i style="background:'+C_SEL+'"></i>gate model shown</span>'+(D.gate.C.indexOf(D.gate.best)!==sel ? '<span><i style="background:'+C_BEST+'"></i>best fit</span>' : '')+
   '<span><i style="background:transparent;border:1.6px solid '+C_LIM+';outline:1px solid '+css('--rule')+';height:8px;width:8px;border-radius:50%"></i>on a stated limit</span>'+
   '<span>window '+D.win[0]+'&ndash;'+D.win[1]+' m</span>';
 
