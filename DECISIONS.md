@@ -508,6 +508,24 @@ the aquitard stays 11.3x (3S) and 6.7x (2S) more conductive than the aquifer. Th
 Calivil is a resistor enclosed by conductors, "the hard case" -- and that geometry
 is unchanged by the water edit.
 
+## 18 Nov: sigma-hat is right; the SNMR misfit is a sampling failure
+
+One forward call per column: the TRUE water content through the TRUE kernel,
+against the noisy data, weighted by the same sigma-hat the inversion is given.
+
+**chi2/N = 0.806 on all four columns** (chi2 = 19.35 on N = 24). Identical across
+columns because the residual is then exactly the shared noise draw, so chi2 is
+the sum of 24 squared standard normals from the one realisation. Against chi2_24
+that is **-0.67 sigma** from the expectation, p ~= 0.27: consistent with 1. The
+forward reproduced the stored `V0_clean` to 0.00e+00, and the truncated-normal
+noise draw never fired on the typical tier (lowest SNR 11.9).
+
+So **sigma-hat does not understate the noise that was added.** By the stated
+rule, the inversions' chi2 per datum of 1.0-3.0 is the inversion failing to
+reach a fit the data permit. That is sampling, and it agrees with the control
+(removing the kernel error entirely does not improve the misfit) and with the
+convergence numbers (R-hat 1.3-1.7, ESS 13-25 on eight ensembles).
+
 ## 18 Nov: Stage 2 runs are not bit-reproducible. Seeds are logged, not honoured.
 
 **Do not fix the seeding.** Recorded as a property of the runs.
