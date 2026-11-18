@@ -299,6 +299,39 @@ standing choice. The per-draw kernel is parked.
 **STATED**. The limits are the user's, set in Stage 0; this study uses
 0.001-2 S/m. Every earlier record of "SEDIMENTARY" means STATED.
 
+## The release lambda-squared set is {0.01, 0.1}, fixed, both sweep directions
+
+Decided during validation and restated 18 Nov. **It is not a ladder built around
+lambda-hat.** lambda-hat belongs to the evidence calculation; it has no part in
+the band.
+
+**Why the light end.** The band is the MINIMUM chi2 over the set subject to the
+forced conductance, so heavier smoothing can only ever narrow it -- a larger
+lambda2 cannot reach a lower misfit at a given conductance. The validated edges
+were found at the light end: on 2P the winning solve at 6.3697 S was a cold start
+at lambda2 = 0.01.
+
+**What a lambda-hat ladder did.** `stages/stage4_gate_v2.jl` had been sweeping
+`(lhat/10, lhat, lhat*10)`. On 2P lambda-hat came out at 100, so the set was
+{10, 100, 1000}, which never tries lambda2 below 10 and shares only one value
+with the validated set. Its upper edge was **5.8863 S against the validated
+6.3697-7.1469 S**, 0.0343 dex low -- a failure of the acceptance test by
+0.0043 dex, from the set and not from the gate. 3P's run of the same day used
+lambda-hat = 10, so {1, 10, 100}, and is likewise non-comparable.
+
+Also fixed with it: the sweep now runs **both directions** at each lambda2 and
+keeps, per node, whichever reached the lower admissible chi2. A warm chain
+arriving from the other side regularly lands in a different local minimum; the
+2P coarse grid showed 36.577 against 37.888 at the same node from the two
+directions.
+
+**The lower edge is not an acceptance criterion.** Its search is capped at about
+15 solves (4 refinements, 3 extensions) rather than driven to convergence -- on
+2P it spent 37 solves extending a lost bracket toward the floor. Both edges are
+now reported with what set them: **data** (the bisection converged on a
+crossing), **limit** (the edge sits on a model bound, so the limit stopped it,
+not the misfit), or **search** (neither, within budget).
+
 ## The gate's acceptance evidence: true-model check, 17 Nov
 
 `gate_check/truecheck.jl`, both release columns, STATED bounds, absolute

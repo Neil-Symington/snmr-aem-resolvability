@@ -60,6 +60,21 @@ end
 const CFGPATH = get(ARG, "config", "")
 isempty(CFGPATH) && error("usage: stage4_gate_v2.jl --config <path>")
 const NPTS_OVERRIDE = parse(Int, get(ARG, "npts", "0"))
+
+# THE RELEASE LAMBDA-SQUARED SET IS FIXED, both sweep directions. Decided during
+# validation and in the record; it is NOT a ladder built around lambda-hat.
+#
+# The band is the MINIMUM chi2 over the set subject to the forced conductance, so
+# heavier smoothing can only narrow it -- a larger lambda2 cannot reach a lower
+# misfit at a given conductance. The validated edges were found at the light end:
+# on 2P the winning solve at 6.3697 S was a cold start at lambda2 = 0.01.
+#
+# A lambda-hat ladder got this wrong on 18 Nov. With lambda-hat = 100 on 2P the
+# ladder was {10, 100, 1000}, which never tries lambda2 below 10, and the upper
+# edge came out at 5.8863 S against the validated 6.3697-7.1469 S -- 0.034 dex
+# low, from a set that shared only one value with the validated one. lambda-hat
+# belongs to the evidence calculation, not to the band.
+const LAM_SET = [0.01, 0.1]
 # Tier F reuses lambda-hat from tier P: the ladder is 7 unconstrained solves per
 # realisation and it is selecting a prior weight for the SAME column under a
 # different NOISE realisation, which is not a thing the noise should move.
@@ -302,7 +317,27 @@ function main()
 
     println("\nsweeping conductance")
     SW = Dict{Float64,Any}()
-    for l2 in (lhat/10, lhat, lhat*10); SW[l2] = sweep(l2, lt, Cg); end
+    # Per node, keep whichever (direction, lambda2) reached the lower ADMISSIBLE
+    # chi2 -- that is what "min chi2 over the set" means, and a warm chain
+    # arriving from the other side regularly finds a different local minimum.
+    revsw(S) = (chi2 = reverse(S.chi2), phi = reverse(S.phi), ldH = reverse(S.ldH),
+                ldP = reverse(S.ldP), nbound = reverse(S.nbound),
+                good = reverse(S.good), conres = reverse(S.conres))
+    function best_of(A, B)
+        n = length(A.chi2)
+        pick = [(B.good[i] && (!A.good[i] || B.chi2[i] < A.chi2[i])) for i in 1:n]
+        sel(a, b) = [pick[i] ? b[i] : a[i] for i in 1:n]
+        (chi2 = sel(A.chi2, B.chi2), phi = sel(A.phi, B.phi),
+         ldH = sel(A.ldH, B.ldH), ldP = sel(A.ldP, B.ldP),
+         nbound = sel(A.nbound, B.nbound), good = sel(A.good, B.good),
+         conres = sel(A.conres, B.conres))
+    end
+    for l2 in LAM_SET
+        fwd = sweep(l2, lt, Cg; tag = "fwd ")
+        bwd = sweep(l2, reverse(lt), reverse(Cg); laplace = false, tag = "bwd ")
+        SW[l2] = best_of(fwd, revsw(bwd))
+    end
+    SWMIN = reduce(best_of, [SW[l2] for l2 in LAM_SET])
 
     # ---- band edges by TRUE BISECTION ----------------------------------
     # Each step solves the constrained problem at a new C rather than
@@ -311,15 +346,20 @@ function main()
     # it crosses N + delta_chi2. An edge that bisection cannot bracket inside
     # the fine grid is OPEN, and under the two-pass grid it is open by at least
     # one coarse step -- which is the error tier F exists to catch.
-    l2prof = minimum(collect(keys(SW)))
+    l2prof = minimum(LAM_SET)      # recorded for provenance only; see LAM_SET
     target = ndata + Float64(g["band"]["delta_chi2"])
     etol = Float64(g["band"]["edge_tol"]); emax = Int(g["band"]["edge_max_iter"])
-    function chi2_at(C, l2)
-        m, chi, _H, nf = occam(aem, mref, m0, R, ndata; fixidx = fixidx, fixval = C,
-                               mode = :map, ctype = :cond, dz = dzeff, lambda2 = l2,
-                               beta2 = BETA2, withH = false, info = true)
-        ok = nf.conres < 1e-8 && nf.settled      # see the ruling above
-        (chi, ok)
+    "Lowest admissible chi2 at C over the WHOLE fixed set, which is the band's definition."
+    function chi2_at(C, _unused = nothing)
+        best = Inf; anyok = false
+        for l2 in LAM_SET
+            _m, chi, _H, nf = occam(aem, mref, m0, R, ndata; fixidx = fixidx, fixval = C,
+                                    mode = :map, ctype = :cond, dz = dzeff, lambda2 = l2,
+                                    beta2 = BETA2, withH = false, info = true)
+            ok = nf.conres < 1e-8 && nf.settled      # see the ruling above
+            ok && chi < best && (best = chi; anyok = true)
+        end
+        (best, anyok)
     end
     # THE SEARCH IS THE VALIDATED MODULE, not a second implementation.
     #
@@ -333,8 +373,8 @@ function main()
     # node currently bounds the bracket, and is unit-tested against an injected
     # mock solver in test/test_edgefinder.jl. It is now the only search; the old
     # one is deleted rather than left selectable.
-    function edge_via_module(l2, upper::Bool, thr::Float64)
-        SWp = SW[l2]
+    function edge_via_module(l2, upper::Bool, thr::Float64; budget = 0)
+        SWp = SWMIN            # per-node minimum over the fixed set, both directions
         # the already-solved grid, as EdgeFinder's S: abscissa -> (chi, m)
         S = Dict{Float64,Any}()
         for i in eachindex(lt)
@@ -347,16 +387,21 @@ function main()
             chi, ok = chi2_at(10^x * thick, l2)
             (chi = ok ? chi : Inf, m = from)
         end
+        # THE LOWER EDGE IS NOT AN ACCEPTANCE CRITERION, so its search is capped
+        # rather than driven to convergence: on 2P it spent 37 solves extending a
+        # lost bracket toward the floor. maxref 4 and max_extend 3 keep it near
+        # 15 solves, and the state is reported instead of chased.
+        mref_n, mext = budget > 0 ? (4, 3) : (emax, 6)
         if upper
             r = EdgeFinder.bisect_edge(S, solvefn, thr;
-                                       dex_tol = etol, maxref = emax)
+                                       dex_tol = etol, maxref = mref_n, max_extend = mext)
         else
             # EdgeFinder locates an UPPER crossing, so the lower edge is found by
             # reflecting the abscissa: a decreasing crossing becomes increasing.
             Sr = Dict(-k => v for (k, v) in S)
             solvefnr = (x, from) -> solvefn(-x, from)
             rr = EdgeFinder.bisect_edge(Sr, solvefnr, thr;
-                                        dex_tol = etol, maxref = emax)
+                                        dex_tol = etol, maxref = mref_n, max_extend = mext)
             r = (edge = isfinite(rr.edge) ? -rr.edge : NaN, converged = rr.converged,
                  state = rr.state, nsolves = rr.nsolves)
         end
@@ -370,19 +415,37 @@ function main()
     # the verdict; the relative rule (chiref + delta) is reported beside it, as
     # agreed, so the two can be compared without a second run.
     target_rel = chiref + Float64(g["band"]["delta_chi2"])
-    rlo     = edge_via_module(l2prof, false, target)
+    rlo     = edge_via_module(l2prof, false, target;     budget = 15)
     rhi     = edge_via_module(l2prof, true,  target)
-    rlo_rel = edge_via_module(l2prof, false, target_rel)
+    rlo_rel = edge_via_module(l2prof, false, target_rel; budget = 15)
     rhi_rel = edge_via_module(l2prof, true,  target_rel)
+
+    """
+    What SET this edge: the data, the search, or a stated limit.
+
+      limit   the edge sits on the grid's end, which is a model bound, so the
+              limit is what stopped it and not the misfit
+      data    the bisection converged on a crossing
+      search  it neither converged nor reached a bound within its budget
+    """
+    function edgestate(r, atbound)
+        !isfinite(r.edge) && return "none"
+        atbound && return "limit"
+        r.converged ? "data" : "search"
+    end
+    lo_at_bound = isfinite(rlo.edge) && abs(rlo.edge - log10(sb[1])) < 2*etol
+    hi_at_bound = isfinite(rhi.edge) && abs(rhi.edge - log10(sb[2])) < 2*etol
+    lo_kind = edgestate(rlo, lo_at_bound)
+    hi_kind = edgestate(rhi, hi_at_bound)
     elo, ehi = rlo.edge, rhi.edge
     open_lo, open_hi = !rlo.converged, !rhi.converged
     nlo, nhi = rlo.nsolves, rhi.nsolves
-    @printf("  lower edge sigma_eff %.5g S/m  C %.4f S  %s [%s]  (%d solves)\n",
+    @printf("  lower edge sigma_eff %.5g S/m  C %.4f S  set by %s [%s]  (%d solves, capped)\n",
             isfinite(elo) ? 10^elo : NaN, isfinite(elo) ? 10^elo*thick : NaN,
-            rlo.converged ? "converged" : "NOT CONVERGED", rlo.state, nlo)
-    @printf("  upper edge sigma_eff %.5g S/m  C %.4f S  %s [%s]  (%d solves)\n",
+            uppercase(lo_kind), rlo.state, nlo)
+    @printf("  upper edge sigma_eff %.5g S/m  C %.4f S  set by %s [%s]  (%d solves)\n",
             isfinite(ehi) ? 10^ehi : NaN, isfinite(ehi) ? 10^ehi*thick : NaN,
-            rhi.converged ? "converged" : "NOT CONVERGED", rhi.state, nhi)
+            uppercase(hi_kind), rhi.state, nhi)
 
     # ---- assert the fine grid's end nodes are interior -----------------
     # The fine grid was bracketed by coarse nodes already shown to be
@@ -422,6 +485,8 @@ function main()
         edge_lo_rel_converged = rlo_rel.converged,
         edge_hi_rel_converged = rhi_rel.converged,
         search = "gate_check/edgefinder.jl EdgeFinder.bisect_edge",
+        lam_set = LAM_SET, lam_hat_unused_for_band = lhat,
+        edge_lo_kind = lo_kind, edge_hi_kind = hi_kind,
         edge_solves = nlo + nhi, edge_profile_lambda2 = l2prof,
         ladder_lambda_hat = ladder_lhat,
         coarse = coarse_info === nothing ? nothing :

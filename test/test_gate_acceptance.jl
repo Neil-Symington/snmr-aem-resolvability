@@ -51,6 +51,23 @@ const CASES = [
             # the search must be the validated module, not a second implementation
             @test get(D, "search", "") == "gate_check/edgefinder.jl EdgeFinder.bisect_edge"
 
+            # IT MUST NOT BE A SMOKE. Stage 4's output name is a function of the
+            # site alone, so the launcher's three-node smoke writes the same path
+            # as the production run. Without this the test would happily accept a
+            # smoke -- which nearly happened on 18 Nov, when a three-node
+            # single-pass output was archived as a production record.
+            gm = string(get(D, "grid_mode", "?"))
+            nnodes = length(get(D, "lt", Float64[]))
+            @printf("  %s grid %s, %d nodes\n", c.name, gm, nnodes)
+            @test gm == "two_pass"
+            @test nnodes >= 15
+
+            # and it must use the FIXED lambda-squared set, not a lambda-hat
+            # ladder: a ladder put 2P's upper edge 0.034 dex low on 18 Nov.
+            ls = get(D, "lam_set", Float64[])
+            @printf("  %s lambda2 set %s\n", c.name, string(ls))
+            @test sort(collect(Float64, ls)) == [0.01, 0.1]
+
             # THE WINDOW MUST BE THE ONE THE TARGETS WERE ESTABLISHED ON. Stage 3's
             # window moved after the 18 Nov SNMR fix (the water criterion is
             # saturated, so the window comes from a tie-break), so an acceptance
