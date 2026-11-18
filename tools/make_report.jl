@@ -69,6 +69,12 @@ const SNMRF   = abspath_rel(arg("snmr",
 const GATEF   = abspath_rel.(splitlist(arg("gate",
     "gate_check/results/profile_3P_sed.jld2,gate_check/results/edges_3P_sed2.jld2")))
 const TRUTHF  = abspath_rel(arg("truth", "data/truth_murray3P.jld2"))
+"The true window conductance, on the truth's own grid -- not its grid representation."
+function truth_window_fine(path, a, b)
+    isfile(path) || return NaN
+    T = JLD2.load(path); z = T["z"]; sb = T["σ_bulk"]; dz = T["dz"]
+    sum(sb[i]*dz for i in eachindex(z) if a <= z[i] < b)
+end
 const SENSF   = abspath_rel(arg("sens", "gate_check/results/sensdepth_3P.jld2"))
 const CFGF    = abspath_rel(arg("config", "configs/synth_3P.toml"))
 const SMOOTHF = abspath_rel(arg("smooth", "gate_check/results/smooth_3P_sed.jld2"))
@@ -197,7 +203,11 @@ if size(θ_smr, 2) < 50
     @warn "only $(size(θ_smr,2)) SNMR draws: this file is a point estimate, not a posterior, and its histogram will be a single line"
 end
 const NS = size(θ_smr, 1)
-const SNMR_LO, SNMR_HI, SNMR_NB = 0.0, 0.45, 60
+# 30 bins, halved from 60 on 19 Nov. At 0.0075 v/v a bin the water-content
+# histogram was speckled: with ~40,000 draws over 60 depths the per-depth counts
+# are thin enough that neighbouring bins alternate. The BINS are coarser; the
+# image is not smoothed, so nothing is drawn that the draws do not support.
+const SNMR_LO, SNMR_HI, SNMR_NB = 0.0, 0.45, 30
 snmr_hist = [binrow(view(θ_smr, i, :), SNMR_LO, SNMR_HI, SNMR_NB) for i in 1:NS]
 snmr_p05 = [pct(view(θ_smr, i, :), 0.05) for i in 1:NS]
 snmr_p50 = [pct(view(θ_smr, i, :), 0.50) for i in 1:NS]
@@ -533,6 +543,8 @@ gate_chi2   = [nodes[c].chi2 for c in Cs]
 gate_ob     = [onbound(nodes[c].model, mbounds) for c in Cs]
 gate_adm    = [nodes[c].chi2 <= TABS for c in Cs]
 
+const Ctruth_fine = truth_window_fine(TRUTHF, WTOP, WBOT)
+
 function js_payload()
     io = IOBuffer()
     print(io, "const D={")
@@ -574,7 +586,12 @@ function js_payload()
           ",msn:", SMOOTH === nothing ? 0 : count(c -> haskey(SMOOTH, c), adm),
           ",msneed:", length(adm),
           ",src:", jstr(join(basename.(GATEF), " + ")), "},")
-    print(io, "truthC:", jnum(Ctruth_grid), ",")
+    # BOTH: the truth on the inversion grid, which is what a model can represent,
+    # and the truth on ITS OWN 0.25 m grid, which is the true window conductance.
+    # They differ -- 0.2058 against 0.2063 on test one, 0.7435 against 0.6856 on
+    # test two -- and a figure marking "the truth" must mark the latter.
+    print(io, "truthC:", jnum(Ctruth_grid), ",truthC_fine:", jnum(Ctruth_fine), ",")
+    print(io, "snmr_run:", jstr(basename(dirname(SNMRF))), ",")
     print(io, "sens:", SENS === nothing ? "null" :
         string("{z:", jnum(SENS.z), ",frac:", jnum(SENS.frac), "}"), ",")
     print(io, "pet:{mgl:", jnum(PET.mgl), ",phi:", jarr(PET.phi), ",m:", jarr(PET.m),
