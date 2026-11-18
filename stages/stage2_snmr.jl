@@ -24,7 +24,7 @@
 #   julia --project=. synthetics/run_conditions.jl --tier typical --conds C1,C2
 #   julia --project=. synthetics/run_conditions.jl --conds C4 --shard 1/3
 
-using Distributed, Printf
+using Distributed, Printf, Dates
 
 const ARG = Dict{String,String}()
 # Valueless flags, listed so the pair-wise loop below does not eat the token
@@ -70,7 +70,13 @@ const TTAG   = replace(TAG, "T" => "")
 const LABEL  = get(ARG, "label", "")
 const CONDS  = split(get(ARG, "conds", "C1,C2"), ",")
 const NSAMP  = parse(Int, get(ARG, "nsamples", "100001"))
-const NENS   = 4
+# EIGHT ensembles from 18 Nov, confirmed by Neil. The chains are not seeded in
+# practice -- Random.seed! inside remotecall_fetch is inert, HiQGA issuing a
+# fresh remote call per MCMC step and Julia's RNG being task-local -- so a
+# re-run is four MORE independent ensembles rather than a reproduction of the
+# first four. Eight in one run is the same information with one provenance
+# record instead of two. Stage 1 stays at four.
+const NENS   = parse(Int, get(ARG, "nens", "8"))
 # Per-ensemble seed base, from SMR_SEED or the historical default. Ensemble e
 # uses SEED_BASE + e, and each of its workers SEED_BASE + e + worker id.
 const SEED_BASE = haskey(ENV, "SMR_SEED") ? parse(Int, ENV["SMR_SEED"]) : 20261101
@@ -93,7 +99,17 @@ using Statistics, Random, JLD2, LinearAlgebra
 const HERE = @__DIR__
 const ROOT = normpath(joinpath(HERE, ".."))
 const OUT  = joinpath(HERE, "..", "data")
-const RUN  = joinpath(OUT, "smr_runs"); mkpath(RUN)
+# EVERY RUN WRITES TO ITS OWN FOLDER: column, kernel type, timestamp. Two
+# full-length results were lost to name collisions on 18 Nov -- the control's
+# chain files over the pooled run's, then the pooled re-run's posterior over the
+# original's -- because the output name was a function of the column alone and
+# --force was passed to get past the provenance guard. A fresh folder per run
+# removes the collision class, so --force is no longer needed and must not be
+# passed over a full-length result.
+const STAMP  = Dates.format(Dates.now(), "yyyymmdd-HHMMSS")
+const KIND   = haskey(ARG, "truekernel") ? "truekernel" : "pooled"
+const RUNDIR = joinpath(OUT, "stage2", "$(get(ARG, "tag", "x"))_$(KIND)_$(STAMP)")
+const RUN    = joinpath(RUNDIR, "chains"); mkpath(RUN)
 # Vendored into src/. This include used to point at ../ek_prerun/, which is
 # outside the repository and was never shipped, so Stage 2 -- and therefore
 # every stage after it -- could not start from a clone at all.
@@ -342,6 +358,7 @@ function main()
     @printf("SMR kernel built from %s  (σ %.4f–%.4f S/m)\n", kernelsrc, extrema(σref)...)
 
     pids = workers()
+    @printf("RUN FOLDER: %s\n", RUNDIR)
     @printf("run_conditions — tier %s, conds %s, %d samples × %d chains × %d ensembles\n",
             TIER, join(CONDS, ","), NSAMP, NCHAIN, NENS)
     @printf("workers %s; σ̂ median %.2f nV\n\n", string(pids), 1e9*median(σ̂))
@@ -350,7 +367,7 @@ function main()
 
     todo = [c for (i, c) in enumerate(CONDS) if c == "C4" || mod(i - 1, NSHARD) == SHARD - 1]
     for cond in todo
-        f = joinpath(OUT, "cond_$(cond)_$(TIER)$(TAG)$(TRUEKERNEL ? "_truekernel" : "").jld2")
+        f = joinpath(RUNDIR, "cond_$(cond)_$(TIER)$(TAG)$(TRUEKERNEL ? "_truekernel" : "").jld2")
         cond == "C4" && (f = joinpath(OUT, "cond_C4_$(TIER)_shard$(SHARD).jld2"))
         sig = inputsig(cond, cond == "C2", V, σ̂, σref, zA, zsmr, R, ϕ, Be,
                        QGRID, kernelfile,
@@ -430,6 +447,7 @@ function main()
                     nsamples = NSAMP, zsmr = zsmr, input_sig = sig,
                     pooled_folders = isempty(POOL) ? [kernelfile] : POOL,
                     pooled_ndraws = isempty(POOL) ? -1 : POOLED_N,
+                    rundir = RUNDIR, stamp = STAMP, nens = NENS,
                     seed_base = SEED_BASE,
                     seeds_ensemble = [SEED_BASE + e for e in 1:NENS])
         elseif cond == "C4" && TAG == "2"

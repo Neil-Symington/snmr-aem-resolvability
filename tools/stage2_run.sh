@@ -28,16 +28,12 @@ for a in "$@"; do
     esac
 done
 NS=100001; [ "$SMOKE" = 1 ] && NS=2001
-# --force on BOTH the smoke and the real run. Stage 2's output name is fixed by
-# cond, tier and tag, so the launcher's smoke necessarily writes the same path
-# as the real run that follows it, and the next invocation's smoke then meets
-# the previous real run's file. Stage 2's provenance guard compares an input
-# signature that includes the sample count, so it refuses both collisions --
-# correctly, and fatally for this runner, which exists to produce the run.
-#
-# The guard still protects every other caller (run_stages.sh, run_site.jl).
-# What is given up here is "already done, skip": this runner always rebuilds.
-FORCE="--force"
+# NO --force. From 18 Nov every Stage 2 run writes to its own folder,
+# data/stage2/<tag>_<kernel>_<timestamp>/, so nothing it writes can collide
+# with anything and the provenance guard has nothing to refuse. Two full-length
+# results were lost in one day to name collisions that --force walked straight
+# past; it must never be passed over a full-length result again.
+FORCE=""
 
 case "$TAG" in 3P) COL=1 ;; 2P) COL=2 ;; 3S) COL=3 ;; 2S) COL=4 ;;
   *) echo "unknown tag $TAG" >&2; exit 2 ;; esac

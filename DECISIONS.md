@@ -508,6 +508,71 @@ the aquitard stays 11.3x (3S) and 6.7x (2S) more conductive than the aquifer. Th
 Calivil is a resistor enclosed by conductors, "the hard case" -- and that geometry
 is unchanged by the water edit.
 
+## 18 Nov: Stage 2 runs are not bit-reproducible. Seeds are logged, not honoured.
+
+**Do not fix the seeding.** Recorded as a property of the runs.
+
+`stages/stage2_snmr.jl` seeds per ensemble as `SEED_BASE + e` and seeds each
+worker inside a `remotecall_fetch`. That idiom is **inert**: HiQGA issues a fresh
+remote call per MCMC step and Julia's RNG is task-local, so the seed does not
+reach the task that samples. The seeds are a record of intent, nothing more. The
+same defect is already recorded for the trans-D AEM chains.
+
+Measured on 3S, two pooled runs with **identical** seeds, data file, pool and
+sample count, the only code difference between them being a chain-file prefix
+string:
+
+| | run A, 07:38 | run B, 10:52 |
+|---|---|---|
+| window water p50 | 0.2710 v/v | **0.2672** (-1.4%) |
+| range of the four ensemble medians | 0.2653-0.2741 | **0.2611-0.2692** |
+| truth 0.2704 against that range | **inside** | **above all four** |
+| pooled p05-p95 | 0.2631-0.2763 | 0.2602-0.2733 |
+| truth inside the pooled interval | yes | yes |
+| R-hat / ESS bulk, window average | 1.507 / 9 | 1.720 / 7 |
+| s p50 per ensemble | 0.84 / 1.77 / 1.99 / 1.82 | 1.71 / 2.35 / 1.54 / 1.91 |
+| chi2 per datum vs true noise | 2.96 / 1.54 / 1.81 / 1.95 | 1.92 / 3.01 / 1.71 / 2.26 |
+
+Three consequences, all standing:
+
+1. **The pooled interval is the statement to report.** It contains the truth in
+   both runs. The range of ensemble medians does not, and is a property of the
+   realisation -- a suggestion to quote it as "the honest figure" was made and
+   **retracted** the same day.
+2. **An `s` figure is reported as a RANGE OVER ENSEMBLES, never a single value**,
+   and never without naming the run it came from.
+3. **A re-run is more independent ensembles, not a reproduction.** With inert
+   seeds, run B's four ensembles are four more draws: the eight medians together
+   span 0.2611-0.2741 and bracket the truth. Stage 2 therefore goes to **eight
+   ensembles per column** from 18 Nov (Neil's decision); Stage 1 stays at four.
+
+**The archived outputs are the record**, not the seeds. Which makes the next
+item a correctness requirement rather than tidiness.
+
+## 18 Nov: every Stage 2 run writes its own folder. Never --force a full-length result.
+
+Two full-length results were lost to name collisions in one day:
+
+- the control run's chain files overwrote the pooled run's, because
+  `run_condition`'s prefix carried the column but not the `--truekernel` flag,
+  and the nuisance history is the only place the inferred noise factor lives;
+- the pooled re-run's posterior then overwrote **run A's**, because the output
+  name was a function of the column alone and `tools/stage2_run.sh` passed
+  `--force` to get past Stage 2's provenance guard, which had been refusing
+  exactly this.
+
+**Run A no longer exists.** `data/cond_C2_typical3ST.jld2` was overwritten at
+10:51:58 and there is no archived copy anywhere in the tree; the same happened to
+2S's first pooled run. The only surviving record of run A is the table above and
+the report it was quoted in. Stated in `RUN_REPORT.md`.
+
+From now: output goes to `data/stage2/<tag>_<kernel>_<timestamp>/`, with the
+posterior in it and the chain files under `chains/`. The folder is announced in
+the log as `RUN FOLDER:` and recorded in the output as `rundir` and `stamp`.
+Nothing a run writes can collide with anything, so `--force` is unnecessary and
+is **no longer passed by `tools/stage2_run.sh`**. `tools/stage2_report.jl` takes
+`--rundir`, defaulting to the newest matching folder.
+
 ## FIXED 18 Nov: the SNMR generating kernel is built on the true conductivity
 
 `tools/smr_data.jl` took the true water content from the truth file, which was

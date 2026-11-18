@@ -38,7 +38,6 @@ using .PrerunLib: rhat_and_ess
 const HERE = @__DIR__
 const ROOT = normpath(joinpath(HERE, ".."))
 const OUT  = joinpath(ROOT, "data")
-const RUN  = joinpath(OUT, "smr_runs")
 
 const ARG = Dict{String,String}()
 let i = 1
@@ -95,9 +94,9 @@ The hot chains tolerate worse fits and so inflate s -- on 3S ensemble 1 the
 chain-1 rows give 0.83 against 1.9 to 3.1 for chains 2 to 4 -- which is exactly
 why the selection has to be right.
 """
-function s_factor(prefix, e)
-    fv = joinpath(RUN, "values_nuisance_$(prefix)_e$(e)_.bin")
-    fm = joinpath(RUN, "misfits_$(prefix)_e$(e)_nuisance.bin")
+function s_factor(prefix, e; chains = "")
+    fv = joinpath(chains, "values_nuisance_$(prefix)_e$(e)_.bin")
+    fm = joinpath(chains, "misfits_$(prefix)_e$(e)_nuisance.bin")
     (isfile(fv) && isfile(fm)) || return Float64[]
     V = readdlm(fv); M = readdlm(fm)
     (size(V, 1) == 0 || size(M, 1) == 0) && return Float64[]
@@ -116,8 +115,25 @@ function s_factor(prefix, e)
     exp.(val[keep])
 end
 
+"""
+The run folder to report on. From 18 Nov every Stage 2 run writes its own
+data/stage2/<tag>_<kernel>_<timestamp>/, so there is no single current output
+and the newest matching folder is the default. --rundir names one explicitly,
+which is what a report for the paper should do.
+"""
+function pick_rundir()
+    haskey(ARG, "rundir") && return ARG["rundir"]
+    root = joinpath(OUT, "stage2")
+    isdir(root) || error("no data/stage2 -- run Stage 2 first")
+    kind = CONTROL ? "truekernel" : "pooled"
+    cands = filter(d -> startswith(d, "$(TAG)T_$(kind)_"), readdir(root))
+    isempty(cands) && error("no run folder for $(TAG)T_$(kind) under $root")
+    joinpath(root, sort(cands)[end])       # timestamps sort lexically
+end
+
 function main()
-    cf = joinpath(OUT, "cond_C2_typical$(TAG)T$(SUF).jld2")
+    rundir = pick_rundir()
+    cf = joinpath(rundir, "cond_C2_typical$(TAG)T$(SUF).jld2")
     df = joinpath(OUT, "smr_data_murray$(TAG)T.jld2")
     for p in (cf, df)
         isfile(p) || error("missing $p")
@@ -133,6 +149,7 @@ function main()
     N    = length(V)
 
     @printf("Stage 2 report  tag=%s%s\n", TAG, CONTROL ? "  CONTROL (true-conductivity kernel)" : "")
+    @printf("  run folder: %s\n", basename(rundir))
     @printf("  posterior : %s\n", basename(cf))
     @printf("  data      : %s\n", basename(df))
     @printf("  kernel    : %s\n", string(get(C, "kernel", "?")))
@@ -162,6 +179,7 @@ function main()
 
     # ---- 1, 2, 4 per ensemble ---------------------------------------------
     prefix = "C2_typical$(TAG)T$(SUF)"
+    chaindir = joinpath(rundir, "chains")
     @printf("\n(1) INFERRED NOISE FACTOR s, and (2) chi2 PER DATUM against the TRUE noise\n")
     @printf("    %-4s %22s %28s\n", "ens", "s (factor on sigma-hat)", "chi2/N vs true noise")
     @printf("    %-4s %8s %6s %6s %10s %8s %8s\n", "", "p50", "p05", "p95", "p50", "p05", "p95")
@@ -176,7 +194,7 @@ function main()
         Fi = nothing
     end
     for e in eachindex(ens)
-        sf = s_factor(prefix, e)
+        sf = s_factor(prefix, e; chains = chaindir)
         Θ  = Float64.(ens[e])
         chi = Float64[]
         if Fi !== nothing && size(Θ, 2) > 0
@@ -242,7 +260,7 @@ function main()
     # One line a run, for the three-line-per-column table.
     @printf("\nSUMMARY %s %s  s_p50=%s  chi2N_p50=%s  win_p50=%.4f  win_p05=%.4f  win_p95=%.4f  truth=%.4f  rhat=%.3f  essb=%.0f  medrange=%.4f-%.4f\n",
             TAG, CONTROL ? "truekernel" : "pooled",
-            join([@sprintf("%.3f", quantile(s_factor(prefix, e), 0.50)) for e in eachindex(ens)], "/"),
+            join([@sprintf("%.3f", quantile(s_factor(prefix, e; chains = chaindir), 0.50)) for e in eachindex(ens)], "/"),
             join([@sprintf("%.2f", c) for c in chi2_p50], "/"),
             quantile(allm, 0.50), quantile(allm, 0.05), quantile(allm, 0.95), wt,
             r.rhat, r.ess_bulk, minimum(meds), maximum(meds))
