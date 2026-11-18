@@ -299,6 +299,39 @@ standing choice. The per-draw kernel is parked.
 **STATED**. The limits are the user's, set in Stage 0; this study uses
 0.001-2 S/m. Every earlier record of "SEDIMENTARY" means STATED.
 
+## The gate stays on the stated aquifer intervals. Stage 3's windows are a result.
+
+**Provisional, 19 Nov — Neil marked it "[Neil to confirm]" and it is recorded as
+awaiting that confirmation.** Nothing is being re-run on the strength of it,
+because it is what the running gate already does.
+
+**The gate forces conductance over the stated aquifer intervals: 7.5-23.5 m
+(test one, 3P and 3S) and 17.5-33.5 m (test two, 2P and 2S).** These are the
+intervals every established gate number was computed on, and the validated gate
+on 3S and 2S is running on them. **No gate re-runs for the Stage 3 windows.**
+
+**Stage 3's selected windows are recorded as a RESULT, not as an input to the
+gate.** Run on all four columns on 19 Nov against the eight-ensemble pooled
+Stage 2 posteriors:
+
+| column | window carried forward | passing interval | windows passing | tied |
+|---|---|---|---|---|
+| 3P | 9.25-25.25 m | 5.00-47.75 m | 55.7% of 5709 | 3180 |
+| 2P | 16.75-32.75 m | 5.00-60.00 m | 30.5% | 1739 |
+| 3S | 9.50-25.50 m | 5.00-48.25 m | 50.9% | 2907 |
+| 2S | 17.25-33.25 m | 5.00-60.00 m | 24.8% | 1417 |
+
+Secondary intervals: 3P 47.75-48.50 m (max p_pass 0.335), 3S 48.25-60.00 m
+(0.422); none on 2P or 2S.
+
+**Every column is saturated**, with `P_fixed = 1.0000 +/- 0.0000`, so the window
+carried forward comes from the tie-break and not from the data -- 1,417 to 3,180
+windows tie on each column. On 2P and 2S the passing interval spans the whole
+allowed depth range, 5.00-60.00 m: the water criterion cannot fail anywhere
+those columns allow a window. That is the result. It is also why the windows
+moved when the SNMR data were corrected (3P 7.50-23.50 -> 9.25-25.25 m), and why
+they are not a sound basis for forcing conductance.
+
 ## The release lambda-squared set is {0.01, 0.1}, fixed, both sweep directions
 
 Decided during validation and restated 18 Nov. **It is not a ladder built around
