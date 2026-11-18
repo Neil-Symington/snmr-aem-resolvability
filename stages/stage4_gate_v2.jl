@@ -113,7 +113,29 @@ function main()
     Pof(l2) = (M = l2 .* RtR; M[diagind(M)] .+= l2 * BETA2; Symmetric(M))
 
     # ---- the window, from STAGE 3 -------------------------------------
+    # The window comes from Stage 3. --top/--base override it, and exist for ONE
+    # purpose: the acceptance test must force conductance over the window its
+    # target numbers were established on. Stage 3's window is not stable under a
+    # change upstream -- the water criterion is saturated on these columns, so the
+    # window comes from a tie-break among windows the data cannot separate, and
+    # the 18 Nov SNMR fix plus eight pooled ensembles moved it from 7.50-23.50 to
+    # 9.25-25.25 m on 3P and 17.50-33.50 to 16.75-32.75 m on 2P. Comparing a band
+    # forced over one window against targets established on another compares two
+    # different problems.
+    #
+    # The source is RECORDED in the output and the acceptance test asserts the
+    # window it got, so a production run cannot accidentally satisfy the test and
+    # an accepted run cannot be mistaken for production.
+    wsrc = "stage3"
     wtop = Float64(S3["fixed_window"].top); wbot = Float64(S3["fixed_window"].base)
+    if haskey(ARG, "top") || haskey(ARG, "base")
+        haskey(ARG, "top") && haskey(ARG, "base") ||
+            error("--top and --base must be given together")
+        wtop = parse(Float64, ARG["top"]); wbot = parse(Float64, ARG["base"])
+        wsrc = "override"
+        @printf("\n  WINDOW OVERRIDDEN: %.2f-%.2f m (Stage 3 selected %.2f-%.2f m)\n",
+                wtop, wbot, Float64(S3["fixed_window"].top), Float64(S3["fixed_window"].base))
+    end
     celltop = vcat(0.0, collect(Float64, zall)[1:end-1]); cellbot = collect(Float64, zall)
     ov = [max(0.0, min(cellbot[i], wbot) - max(celltop[i], wtop)) for i in 1:n]
     fixidx = findall(>(1e-9), ov)
@@ -380,6 +402,9 @@ function main()
     jldsave(joinpath(odir, "stage4_$(cfg["name"]).jld2");
         column = d["column"], parent = get(d,"parent",""), role = info.role,
         window = (top = wtop, base = wbot), thick = thick,
+        window_source = wsrc,
+        window_stage3 = (top = Float64(S3["fixed_window"].top),
+                         base = Float64(S3["fixed_window"].base)),
         fixidx = fixidx, dzeff = dzeff[fixidx], lt = lt, Cg = Cg,
         lambda_hat = lhat, lamgrid = lamgrid, logML = mls, ml_usable = mlok,
         unimodal = unimodal, ndata = ndata, chiref = chiref,

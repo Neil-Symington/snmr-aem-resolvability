@@ -29,11 +29,13 @@ struct Expect
     abs_hi::Float64
     rel_edge::Float64        # S, expected relative upper edge (NaN = not checked)
     truth_C::Float64         # S, true window conductance
+    wtop::Float64            # m, the window the targets were established on
+    wbot::Float64
 end
 
 const CASES = [
-    Expect("synth_3P", 0.4320, NaN, NaN, 0.3605, 0.2063),
-    Expect("synth_2P", NaN, 6.3697, 7.1469, NaN, 0.6856),
+    Expect("synth_3P", 0.4320, NaN, NaN, 0.3605, 0.2063,  7.50, 23.50),
+    Expect("synth_2P", NaN, 6.3697, 7.1469, NaN, 0.6856, 17.50, 33.50),
 ]
 
 @testset "gate acceptance, release output" begin
@@ -48,6 +50,21 @@ const CASES = [
         @testset "$(c.name)" begin
             # the search must be the validated module, not a second implementation
             @test get(D, "search", "") == "gate_check/edgefinder.jl EdgeFinder.bisect_edge"
+
+            # THE WINDOW MUST BE THE ONE THE TARGETS WERE ESTABLISHED ON. Stage 3's
+            # window moved after the 18 Nov SNMR fix (the water criterion is
+            # saturated, so the window comes from a tie-break), so an acceptance
+            # run forces the established window explicitly and says so. Without
+            # this assertion the test would silently compare two different
+            # problems -- a band over 9.25-25.25 m against a target from
+            # 7.50-23.50 m.
+            w = D["window"]
+            @printf("  %s window %.2f-%.2f m (source %s; Stage 3 selected %.2f-%.2f m)\n",
+                    c.name, w.top, w.base, get(D, "window_source", "?"),
+                    get(D, "window_stage3", (top = NaN, base = NaN)).top,
+                    get(D, "window_stage3", (top = NaN, base = NaN)).base)
+            @test isapprox(w.top, c.wtop; atol = 1e-6)
+            @test isapprox(w.base, c.wbot; atol = 1e-6)
 
             Cabs = get(D, "edge_hi_C", NaN)
             Crel = get(D, "edge_hi_C_rel", NaN)

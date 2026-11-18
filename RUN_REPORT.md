@@ -68,14 +68,42 @@ and `--force` is never passed over a full-length result.
 It parses cleanly and fails only on evaluation. Closed by
 `test/test_stage_loads.jl`.
 
+### The reviewer's Stage 1 folders arrived without a manifest
+
+3P and 2P's four Stage 1 ensembles each arrived on 18 Nov as two zip archives,
+`aem3P_m4c1e.zip` and `aem2P_m4c2e.zip`, 57 MB apiece. All three arrival checks
+pass: eight of eight directories with all five expected files non-empty at 14 MB
+each; every seed exactly `20261117 + 100*column + ensemble`, so 20261218-21 and
+20261318-21, at 200,001 samples and 4 chains; and the truth window conductances
+0.2063 S (3P) and 0.6856 S (2P), which are the values the gate's acceptance
+targets reference.
+
+**No manifest came with either archive.** The reviewer's machine writes
+`data/m4/manifest.toml` recording its host, commit, Julia version, runner
+checksum and the truth content digest it computed, and that file was not
+included. The consequence is specific: the content digests **cannot be compared
+across machines**. The checks above were run against the truth files on this
+machine, so they confirm that these Stage 1 outputs are consistent with the
+local truths and carry the specified seeds; they do not confirm that the
+reviewer's machine built them from a bit-identical truth column. For the
+record, the local digests are `853f0cd9c471432b...` (3P) and
+`4c5811b2e3dc1643...` (2P), over z, sigma_bulk, theta_SMR, theta_total, clay
+and phi.
+
+Nothing in the run depends on closing that gap, but it is the one provenance
+link in the chain that is asserted rather than verified.
+
 ## What is current
 
 | stage | 3P | 2P | 3S | 2S |
 |---|---|---|---|---|
 | Stage 0 + Stage 1, four ensembles | on the reviewer's machine | on the reviewer's machine | **done 18 Nov 05:42** | **done 18 Nov 05:42** |
 | SNMR data, true-conductivity kernel | done | done | done | done |
-| Stage 2, eight ensembles, pooled kernel | pending folders | pending folders | running | running |
-| Stage 2 control, true-conductivity kernel | pending folders | pending folders | running | running |
+| Stage 1, four ensembles, from the reviewer | **arrived and verified 18 Nov** | **arrived and verified 18 Nov** | n/a | n/a |
+| Stage 2, eight ensembles, pooled kernel | **done, 21 min** | **done, 21 min** | **done, 22 min** | **done, 22 min** |
+| Stage 2 control, true-conductivity kernel | queued after the freeze | queued after the freeze | **done** | **done** |
+| Stage 0 and Stage 3 through the release path | **done** | **done** | not yet | not yet |
+| Stage 4 gate, acceptance windows | running | running | n/a | n/a |
 
 Stage 1 for 3S and 2S: 200,001 samples, 4 chains, Tmax 2.5, layer limit 40, one
 chain at T = 1, burn-in 0.5; seeds `20261117 + 100*column + ensemble`; eight of
