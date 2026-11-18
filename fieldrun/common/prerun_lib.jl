@@ -16,7 +16,7 @@ using Statistics, Printf
 export norminvcdf, iat, ess_basic, rank_normalise, split_rhat, rhat_and_ess,
        stationary_trend, doi_from_width, kl_against_uniform, detection_flag,
        interval_mean_max, set_run_filenames!, nodes_at_T1, assert_one_chain_at_T1,
-       assert_chains_at_T1, t1_rows_by_chain, tempering_stats
+       assert_chains_at_T1, t1_rows_by_chain, tempering_stats, t1_slot_order
 
 # ── Inverse normal CDF ──────────────────────────────────────────────────────
 const _A = (-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
@@ -433,6 +433,35 @@ function t1_rows_by_chain(costs_filename; burninfrac = 0.5, Tcol = 10)
         push!(out, (chain = i, mask = m, T = Ti))
     end
     out
+end
+
+"""
+The T=1 draws of one ladder IN ITERATION ORDER, across chain ids.
+
+`Ttraces[c]` is chain c's temperature at each saved step (every chain is saved
+at the same steps). Returns `(step, chain, k)` for every post-burn-in step at
+which chain c sat at T=1, sorted by step then chain; `k` indexes chain c's
+stored T=1 models (HiQGA stores a chain's model only while it is at T=1), so
+`F[chain][k]` is the draw. With several chains at T=1 the draws of one step are
+adjacent.
+
+This is the ordering a replicate comparison needs. Chain-id order -- all of
+chain 1's T=1 visits, then chain 2's -- puts state-selected, discontiguous
+visits side by side, and split-R-hat on it compares chain ids again.
+"""
+function t1_slot_order(Ttraces::Vector{<:AbstractVector}; burninfrac = 0.5)
+    out = NTuple{3,Int}[]
+    for (c, Ti) in enumerate(Ttraces)
+        n = length(Ti)
+        start = round(Int, n * burninfrac); start == 0 && (start = 1)
+        k = 0
+        for j in 1:n
+            isapprox(Ti[j], 1.0; atol = 1e-12) || continue
+            k += 1
+            j >= start && push!(out, (j, c, k))
+        end
+    end
+    sort!(out)
 end
 
 """

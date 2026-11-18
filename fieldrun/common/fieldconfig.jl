@@ -78,6 +78,8 @@ const KNOWN = Dict(
                       # the SNMR stage's own ladder; each falls back to the
                       # shared nchains / tmax, and to 1 chain at T=1
                       "nchains_snmr", "nchainsatone_snmr", "tmax_snmr",
+                      # independent SNMR ladders per kernel draw (default 1)
+                      "replicates_snmr",
                       "burninfrac", "save_freq",
                       "seed_base", "nmin", "nmax", "lambda_gp",
                       "delta", "fbounds", "smoke"],
@@ -141,6 +143,7 @@ function check_values(c::Dict, path)
                     (v isa AbstractFloat && isfinite(v) && v == round(v))
     ints   = (("run","npar"), ("grid","nz"), ("mcmc","nchains"),
               ("mcmc","nchains_snmr"), ("mcmc","nchainsatone_snmr"),
+              ("mcmc","replicates_snmr"),
               ("mcmc","nsamples_aem"), ("mcmc","nsamples_snmr"),
               ("mcmc","save_freq"),
               ("mcmc","seed_base"), ("mcmc","nmin"), ("mcmc","nmax"),
@@ -208,7 +211,7 @@ function check_values(c::Dict, path)
     for (sec, k) in (("run","npar"), ("run","minfree_gb"), ("grid","nz"), ("grid","dz"),
                      ("mcmc","nchains"), ("mcmc","nsamples_aem"),
                      ("mcmc","nchains_snmr"), ("mcmc","nchainsatone_snmr"),
-                     ("mcmc","nsamples_snmr"),
+                     ("mcmc","replicates_snmr"), ("mcmc","nsamples_snmr"),
                      ("mcmc","save_freq"), ("kernel","n_draws"),
                      ("snmr","min_pulse_moments"), ("aem","tx_area_m2"),
                      ("aem","max_sep_m"), ("convergence","min_ess"))

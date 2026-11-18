@@ -77,6 +77,10 @@ const NCHAINS_SNMR      = haskey(ARGN, "nchains") ? NCHAINS_CFG :
                           Int(get(MC, "nchains_snmr", MC["nchains"]))
 const NCHAINSATONE_SNMR = Int(get(MC, "nchainsatone_snmr", 1))
 const TMAX_SNMR         = Float64(get(MC, "tmax_snmr", TMAX_CFG))
+# REPLICATE LADDERS: R independent ladders on each kernel draw, differing only in
+# seed. Agreement between them is the mixing test (see run_smr_transd.jl
+# apply_gates); 1 keeps the single-ladder run and its chain-id test.
+const REPLICATES_SNMR   = Int(get(MC, "replicates_snmr", 1))
 
 @printf("[%s] %d/%d samples (aem/snmr), %d chains, Tmax %.3g; SNMR ladder %d chains (%d at T=1), Tmax %.3g  (mode %s)\n",
         basename(CFGPATH), NSAMPLES_AEM, NSAMPLES_SNMR, NCHAINS_CFG, TMAX_CFG,

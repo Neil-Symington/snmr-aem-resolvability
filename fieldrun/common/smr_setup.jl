@@ -40,6 +40,12 @@ const NENS     = haskey(ARG, "ensembles") ? parse(Int, ARG["ensembles"]) :
 # equal, so the shared value was only ever right by agreement; the ladder is
 # now read from the control file.
 const NCHAINS      = NCHAINS_SNMR
+# R independent ladders per kernel draw ([mcmc] replicates_snmr, or
+# --replicates). Ensemble e, replicate r is one "unit": its own seed, its own
+# chain files, and with --ens/--rep its own process, so a node can run several.
+const REPS         = haskey(ARG, "replicates") ? parse(Int, ARG["replicates"]) :
+                     REPLICATES_SNMR
+@assert REPS >= 1 "[mcmc] replicates_snmr must be >= 1, got $REPS"
 const NCHAINSATONE = NCHAINSATONE_SNMR
 const TMAX         = TMAX_SNMR
 @assert 1 <= NCHAINSATONE < NCHAINS "SNMR ladder needs 1 <= nchainsatone ($NCHAINSATONE) < nchains ($NCHAINS)"
@@ -109,3 +115,18 @@ function hier(b)
         s_prior_logwidth = S_TAU, s_init = CFG.S_INIT,
         linearsat = true, amponly = true)
 end
+
+"""
+The chain-file prefix of ensemble `e`, replicate `r`.
+
+With one replicate this is the prefix every earlier run used, so old run
+directories still read. With more it is `_e<e>r<r>_`: never a substring of
+another unit's prefix, which matters because each unit clears its own prefix
+before sampling, and several units share the directory and may run at once.
+"""
+unit_prefix(sounding_id, e, r = 1) =
+    REPS == 1 ? "$(sounding_id)$(LABEL)_e$(e)_" : "$(sounding_id)$(LABEL)_e$(e)r$(r)_"
+
+"Seed of one unit: replicate 1 keeps the single-ladder seed."
+unit_seed(sounding_id, e, r = 1) =
+    seed_for(sounding_id * LABEL * (r == 1 ? "" : "_r$r"), e)

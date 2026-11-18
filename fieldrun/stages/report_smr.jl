@@ -148,7 +148,7 @@ function report_site(fid)
     # ---- per ensemble: misfit traces and swarm --------------------------------
     rundir = joinpath(RUNDIR, fid * LABEL)
     for e in 1:nens
-        prefix = "$(D["sounding_id"])$(LABEL)_e$(e)_"
+        prefix = unit_prefix(D["sounding_id"], e, 1)   # replicate 1 only
         be = udf_kernel(b0, job, fid, OUT; ens = e, occam = OCCAMK)
         S  = hier(be)
         cd(rundir) do
