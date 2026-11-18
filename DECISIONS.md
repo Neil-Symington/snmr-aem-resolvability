@@ -301,9 +301,8 @@ standing choice. The per-draw kernel is parked.
 
 ## The gate stays on the stated aquifer intervals. Stage 3's windows are a result.
 
-**Provisional, 19 Nov — Neil marked it "[Neil to confirm]" and it is recorded as
-awaiting that confirmation.** Nothing is being re-run on the strength of it,
-because it is what the running gate already does.
+**Confirmed by Neil, 19 Nov.** Nothing was re-run on the strength of it, because
+it is what the running gate already does.
 
 **The gate forces conductance over the stated aquifer intervals: 7.5-23.5 m
 (test one, 3P and 3S) and 17.5-33.5 m (test two, 2P and 2S).** These are the
