@@ -248,72 +248,70 @@ def fig_depth(D, tag, out):
 # NAMES. The columns are "test one" and "test two"; the internal tags 3P, 2P,
 # 3S, 2S never appear on a figure.
 def fig_misfit(DS, out):
-    """Min chi2 against forced window conductance, in the style of the page's
-    misfit panel: dark card, the two thresholds, the class boundaries as
-    vertical ticks, the truth marked.
+    """Min chi2 against window conductance. The caption carries the explanation;
+    the plot carries the curves, one threshold, the truths and a salinity scale.
 
-    Nodes ABOVE the axis are drawn as carets on the top spine CARRYING THEIR
-    VALUE, so a rejected node reads as rejected and by how much. A node the
-    solver could not place on the constraint is not a rejection and is not
-    drawn."""
-    fig, ax = plt.subplots(figsize=(W_FULL, 82 * MM))
+    Nodes above the axis are carets on the top spine -- a rejected node reads as
+    rejected. A node the solver could not place on the constraint is not a
+    rejection and is not drawn."""
+    from matplotlib.ticker import FixedLocator, FixedFormatter
+    from matplotlib.lines import Line2D
+
+    fig, ax = plt.subplots(figsize=(W_FULL, 84 * MM))
     tabs = max(D["tabs"] for D in DS.values())
-    ymin, ymax = 20.0, tabs * 1.28
-    f = lambda v: (v - ymin) / (ymax - ymin)
+    ymin, ymax = 20.0, tabs * 1.22
 
-    # class boundaries first, behind everything
-    D0 = next(iter(DS.values()))
-    for tds, nm in CLASS_LINES:
-        cx = class_conductance(tds, D0["pet"], D0["thick"])
-        ax.axvline(cx, color=RULE, lw=0.9, ls=(0, (3, 3)), zorder=1)
-        ax.text(cx, 0.015, f" {nm}  {cx:.3f} S", transform=ax.get_xaxis_transform(),
-                rotation=90, color=MUTE, fontsize=6.8, va="bottom", ha="left", **MONO)
-
-    ax.axhline(tabs, color=INK, lw=0.9, zorder=2, alpha=0.75)
-    for tag, D in DS.items():
-        ax.axhline(D["trel"], color=COLS[tag][0], lw=0.6, ls=(0, (5, 3)), zorder=2)
+    ax.axhline(tabs, color=INK, lw=0.9, alpha=0.75, zorder=2)
 
     for tag, D in DS.items():
         col, mk, lab = COLS[tag]
         C = np.asarray(D["gate"]["C"], float)
         chi = np.asarray([np.nan if v is None else v for v in D["gate"]["chi2"]], float)
         ok = np.isfinite(chi); over = ok & (chi > ymax); ins = ok & ~over
-        ax.plot(C[ins], chi[ins], mk + "-", color=col, ms=3.4, lw=1.0, label=lab, zorder=5)
-        if over.any():
-            ax.plot(C[over], np.full(over.sum(), ymax), "^", color=col, ms=4.6,
-                    zorder=6, clip_on=False)
-            for cc, vv in zip(C[over], chi[over]):
-                ax.annotate(f"{vv:,.0f}", (cc, ymax), textcoords="offset points",
-                            xytext=(0, -9), ha="center", color=col, fontsize=6.8,
-                            **MONO)
+        # The curve is drawn THROUGH the off-axis nodes and clipped by the axes,
+        # so it visibly leaves the top of the plot. No carets: they collided with
+        # the salinity ticks above, and the rise already says the nodes are
+        # rejected. A node the solver could not place on the constraint is still
+        # not drawn -- that is a different thing from a rejection.
+        seq = ok
+        ax.plot(C[seq], chi[seq], mk + "-", color=col, ms=3.4, lw=1.0, label=lab,
+                zorder=5, clip_on=True)
         tc = D.get("truthC_fine", D["truthC"])
-        ax.plot([tc], [D["chibest"]], "*", color=WHITE, ms=10, markeredgecolor="#000",
-                markeredgewidth=0.6, zorder=8)
-        # staggered: the two sit at nearly the same misfit and would collide
-        dy = 11 if tag == list(DS)[0] else -16
-        ax.annotate(f"{lab} truth {tc:.3f} S", (tc, D["chibest"]),
-                    textcoords="offset points", xytext=(0, dy), ha="center",
-                    color=WHITE, fontsize=7.2)
+        ax.plot([tc], [D["chibest"]], "*", color=WHITE, ms=10,
+                markeredgecolor="#000", markeredgewidth=0.6, zorder=8)
 
     ax.set_xscale("log")
     ax.set_ylim(ymin, ymax)
-    ax.text(0.012, f(tabs) + 0.013, f"N + 3.84 = {tabs:.2f}", transform=ax.transAxes,
-            color=INK, fontsize=7.2, va="bottom", alpha=0.85, **MONO)
-    for k, tag in enumerate(sorted(DS, key=lambda t: DS[t]["trel"])):
-        ax.text(0.012, f(DS[tag]["trel"]) + 0.014 + 0.050 * k,
-                f"{NAME[tag]}: best fit + 3.84 = {DS[tag]['trel']:.2f}",
-                transform=ax.transAxes, color=COLS[tag][0], fontsize=7.2,
-                va="bottom", ha="left", **MONO)
+    ax.text(0.012, (tabs - ymin) / (ymax - ymin) + 0.013, "threshold",
+            transform=ax.transAxes, color=INK, fontsize=7.2, va="bottom", alpha=0.85)
 
-    from matplotlib.ticker import FixedLocator, FixedFormatter
     cticks = [0.05, 0.1, 0.2, 0.5, 1, 2, 5]
     ax.xaxis.set_major_locator(FixedLocator(cticks))
     ax.xaxis.set_major_formatter(FixedFormatter([f"{t:g}" for t in cticks]))
     ax.xaxis.set_minor_locator(FixedLocator([]))
     ax.set_xlabel("window conductance  (S)", color=INK)
     ax.set_ylabel(r"min $\chi^2$", color=INK)
-    panel_box(ax, letter="a", title="Misfit against window conductance")
-    leg = ax.legend(loc="upper right", frameon=True, facecolor=PANEL,
+
+    # A SALINITY SCALE ALONG THE TOP instead of lines and rotated text inside
+    # the plot: the two class boundaries as the conductance they correspond to,
+    # with no clay term at the central rock properties.
+    D0 = next(iter(DS.values()))
+    sx = [class_conductance(t, D0["pet"], D0["thick"]) for t, _ in CLASS_LINES]
+    top = ax.secondary_xaxis("top")
+    top.set_xscale("log")
+    top.xaxis.set_major_locator(FixedLocator(sx))
+    top.xaxis.set_major_formatter(FixedFormatter([f"{int(t):,}" for t, _ in CLASS_LINES]))
+    top.xaxis.set_minor_locator(FixedLocator([]))
+    top.set_xlabel("salinity with no clay term  (mg/L)", color=MUTE, labelpad=4)
+    top.tick_params(colors=MUTE)
+    top.spines["top"].set_color(RULE)
+
+    panel_box(ax, letter="a")
+    handles, labs = ax.get_legend_handles_labels()
+    handles.append(Line2D([], [], marker="*", color="none", markerfacecolor=WHITE,
+                          markeredgecolor="#000", markeredgewidth=0.6, markersize=10))
+    labs.append("true value")
+    leg = ax.legend(handles, labs, loc="center left", frameon=True, facecolor=PANEL,
                     edgecolor=RULE, framealpha=0.95, handlelength=1.9)
     for t in leg.get_texts():
         t.set_color(INK); t.set_fontsize(7.5)
@@ -327,7 +325,17 @@ def ceiling(C, thick, phi, m, mgl):
 
 
 def fig_ceiling(DS, out):
-    fig, ax = plt.subplots(figsize=(W_FULL, 80 * MM))
+    """One bar a column, least cautious to most cautious, dot at the central
+    rock properties. No numbers on the plot."""
+    from matplotlib.lines import Line2D
+
+    fig, ax = plt.subplots(figsize=(W_COL * 1.6, 84 * MM))
+    LO, HI = 1e2, 1e5
+    for b0, b1, cc in ((LO, 1500.0, CYAN), (1500.0, 3000.0, AMBER), (3000.0, HI, "#dd7d60")):
+        ax.axhspan(b0, b1, color=cc, alpha=0.06, zorder=0)
+    for v, _ in CLASS_LINES:
+        ax.axhline(v, color=RULE, lw=0.9, ls=(0, (3, 3)), zorder=1)
+
     xs, labels = [], []
     for i, (tag, D) in enumerate(DS.items()):
         col, mk, lab = COLS[tag]
@@ -336,49 +344,34 @@ def fig_ceiling(DS, out):
         C = np.asarray(D["gate"]["C"], float)
         adm = np.asarray(D["gate"]["adm"], int).astype(bool)
         Chi = C[adm].max()
-        corners = {"cautious": (plo, mhi),
-                   "central": (0.5 * (plo + phi_), 0.5 * (mlo + mhi)),
-                   "least cautious": (phi_, mlo)}
-        for j, (nm, (ph, mm)) in enumerate(corners.items()):
-            v = ceiling(Chi, thick, ph, mm, mgl)
-            x = i + (j - 1) * 0.2
-            ax.plot([x], [v], mk, color=col, ms=6, zorder=5,
-                    markeredgecolor="#000", markeredgewidth=0.5)
-            ax.annotate(f"{v:,.0f}", (x, v), textcoords="offset points", xytext=(0, 7),
-                        ha="center", color=INK, fontsize=7, **MONO)
-            if i == 0:
-                ax.annotate(nm, (x, v), textcoords="offset points",
-                            xytext=(0, -20 if j == 0 else -12), ha="center",
-                            color=MUTE, fontsize=6.8)
+        hi_v = ceiling(Chi, thick, plo, mhi, mgl)                       # cautious
+        mid  = ceiling(Chi, thick, 0.5*(plo+phi_), 0.5*(mlo+mhi), mgl)  # central
+        lo_v = ceiling(Chi, thick, phi_, mlo, mgl)                      # least cautious
+        ax.plot([i, i], [lo_v, hi_v], color=col, lw=5, solid_capstyle="butt",
+                zorder=4, alpha=0.9)
+        ax.plot([i], [mid], "o", color=col, ms=6, markeredgecolor="#000",
+                markeredgewidth=0.5, zorder=5)
         t = D["claytrue"]["tds"]
-        ax.plot([i - 0.3, i + 0.3], [t, t], color=WHITE, lw=1.6, zorder=6)
-        ax.annotate(f"true {t:,.0f} mg/L", (i, t), textcoords="offset points",
-                    xytext=(0, -12), ha="center", color=WHITE, fontsize=7.2)
+        ax.plot([i - 0.17, i + 0.17], [t, t], color=WHITE, lw=1.8, zorder=6)
         xs.append(i); labels.append(lab)
 
-    for b0, b1, cc in ((0.0, 1500.0, CYAN), (1500.0, 3000.0, AMBER),
-                       (3000.0, 1e9, "#dd7d60")):
-        ax.axhspan(b0, b1, color=cc, alpha=0.06, zorder=0)
-    for v, _ in CLASS_LINES:
-        ax.axhline(v, color=RULE, lw=0.9, ls=(0, (3, 3)), zorder=1)
-
     ax.set_yscale("log")
+    ax.set_ylim(LO, HI)
     ax.set_xticks(xs); ax.set_xticklabels(labels, color=INK)
-    ax.set_xlim(-0.55, len(xs) - 0.45)
-    lo, hi = ax.get_ylim(); ax.set_ylim(lo * 0.7, hi * 2.0)
-    # the band labels AFTER the limits are final: computed against provisional
-    # limits, the fresh one landed below the axis and never appeared
-    lo, hi = ax.get_ylim()
-    for b0, b1, nm, cc in ((lo, 1500.0, "fresh", CYAN),
-                           (1500.0, 3000.0, "brackish", AMBER),
-                           (3000.0, hi, "saline", "#dd7d60")):
-        if b1 <= lo or b0 >= hi:
-            continue
-        ax.text(0.012, np.sqrt(max(b0, lo) * min(b1, hi)), nm,
-                transform=ax.get_yaxis_transform(), color=cc, fontsize=7,
-                va="center", ha="left", alpha=0.95)
+    ax.set_xlim(-0.6, len(xs) - 0.4)
     ax.set_ylabel("salinity ceiling with no clay term  (mg/L)", color=INK)
-    panel_box(ax, letter="b", title="Salinity ceiling at the band's upper edge")
+    for b0, b1, nm, cc in ((LO, 1500.0, "fresh", CYAN),
+                           (1500.0, 3000.0, "brackish", AMBER),
+                           (3000.0, HI, "saline", "#dd7d60")):
+        ax.text(0.988, np.sqrt(b0 * b1), nm, transform=ax.get_yaxis_transform(),
+                color=cc, fontsize=7, va="center", ha="right", alpha=0.95)
+
+    panel_box(ax, letter="b", title="Salinity ceiling")
+    leg = ax.legend([Line2D([], [], color=WHITE, lw=1.8)], ["true salinity"],
+                    loc="lower left", frameon=True, facecolor=PANEL, edgecolor=RULE,
+                    framealpha=0.95, handlelength=1.9)
+    for t in leg.get_texts():
+        t.set_color(INK); t.set_fontsize(7.5)
     save(fig, out)
 
 
