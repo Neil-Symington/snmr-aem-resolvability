@@ -323,15 +323,23 @@ function main()
     revsw(S) = (chi2 = reverse(S.chi2), phi = reverse(S.phi), ldH = reverse(S.ldH),
                 ldP = reverse(S.ldP), nbound = reverse(S.nbound),
                 good = reverse(S.good), conres = reverse(S.conres))
+    # `local nn`, NOT `n`. A nested function assigning to a name that is a local
+    # of the ENCLOSING function assigns to that outer local -- Julia closures
+    # share the binding. Writing `n = length(A.chi2)` here silently overwrote
+    # main's `n`, the cell count, with the NODE count, and the next logdets call
+    # did `zeros(3)[fixidx]` and threw a BoundsError 48 minutes into the smoke.
+    # Same family as the soft-scope traps already on record, and the reason the
+    # smoke exists.
     function best_of(A, B)
-        n = length(A.chi2)
-        pick = [(B.good[i] && (!A.good[i] || B.chi2[i] < A.chi2[i])) for i in 1:n]
-        sel(a, b) = [pick[i] ? b[i] : a[i] for i in 1:n]
+        local nn = length(A.chi2)
+        pick = [(B.good[i] && (!A.good[i] || B.chi2[i] < A.chi2[i])) for i in 1:nn]
+        sel(a, b) = [pick[i] ? b[i] : a[i] for i in 1:nn]
         (chi2 = sel(A.chi2, B.chi2), phi = sel(A.phi, B.phi),
          ldH = sel(A.ldH, B.ldH), ldP = sel(A.ldP, B.ldP),
          nbound = sel(A.nbound, B.nbound), good = sel(A.good, B.good),
          conres = sel(A.conres, B.conres))
     end
+    n == length(aem.ρ) - 1 || error("the cell count n was clobbered: $n")
     for l2 in LAM_SET
         fwd = sweep(l2, lt, Cg; tag = "fwd ")
         bwd = sweep(l2, reverse(lt), reverse(Cg); laplace = false, tag = "bwd ")
@@ -349,17 +357,29 @@ function main()
     l2prof = minimum(LAM_SET)      # recorded for provenance only; see LAM_SET
     target = ndata + Float64(g["band"]["delta_chi2"])
     etol = Float64(g["band"]["edge_tol"]); emax = Int(g["band"]["edge_max_iter"])
-    "Lowest admissible chi2 at C over the WHOLE fixed set, which is the band's definition."
-    function chi2_at(C, _unused = nothing)
-        best = Inf; anyok = false
+    """
+    Lowest admissible chi2 at C over the WHOLE fixed set -- the band's definition.
+
+    WARM-STARTED from `from`. EdgeFinder's contract is that `solvefn(x, from)`
+    returns a lower chi2 the closer `from` is to x's own answer, and bisection is
+    used instead of a grid precisely because of that continuation. Starting every
+    solve from `mref` instead, as this did, discards it: at lambda2 = 0.01 a cold
+    solve costs about 330 s against roughly 70 s at lambda2 = 10, so four edges
+    would have run into days. Returns the winning model so the next step can
+    continue from it.
+    """
+    function chi2_at(C, from = mref)
+        best = Inf; anyok = false; bestm = from
         for l2 in LAM_SET
-            _m, chi, _H, nf = occam(aem, mref, m0, R, ndata; fixidx = fixidx, fixval = C,
+            mm, chi, _H, nf = occam(aem, from, m0, R, ndata; fixidx = fixidx, fixval = C,
                                     mode = :map, ctype = :cond, dz = dzeff, lambda2 = l2,
                                     beta2 = BETA2, withH = false, info = true)
             ok = nf.conres < 1e-8 && nf.settled      # see the ruling above
-            ok && chi < best && (best = chi; anyok = true)
+            if ok && chi < best
+                best = chi; anyok = true; bestm = mm
+            end
         end
-        (best, anyok)
+        (best, anyok, bestm)
     end
     # THE SEARCH IS THE VALIDATED MODULE, not a second implementation.
     #
@@ -380,12 +400,15 @@ function main()
         for i in eachindex(lt)
             SWp.good[i] && isfinite(SWp.chi2[i]) &&
                 (S[lt[i]] = (chi = SWp.chi2[i], m = mref))   # thr applied by EdgeFinder
+            # mref is the only model the sweep kept per node; the first solve at
+            # a new abscissa therefore starts cold and every later one continues
+            # from its neighbour, which is what the continuation needs.
         end
         length(S) >= 2 || return (edge = NaN, converged = false, state = "no solved nodes",
                                   nsolves = 0)
         solvefn = (x, from) -> begin
-            chi, ok = chi2_at(10^x * thick, l2)
-            (chi = ok ? chi : Inf, m = from)
+            chi, ok, mm = chi2_at(10^x * thick, from)
+            (chi = ok ? chi : Inf, m = mm)
         end
         # THE LOWER EDGE IS NOT AN ACCEPTANCE CRITERION, so its search is capped
         # rather than driven to convergence: on 2P it spent 37 solves extending a
