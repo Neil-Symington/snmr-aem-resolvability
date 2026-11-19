@@ -17,10 +17,17 @@ const OUT  = @__DIR__
 const MGL  = 6400.0
 const ZMAX = 70.0
 
-# the depth figures' palette
-const BG, PANEL, INK, MUTE, RULE = "#0b0d10", "#162023", "#e3ebea", "#8098a0", "#2a393d"
-const WHITE = "#ffffff"
-const BRACK = Dict("3S" => "#a78bfa", "2S" => "#34d399")   # as in the gate figures
+# Light theme, on Neil's ask of 19 Nov. The depth figures' dark palette is kept
+# below, commented, so the two can be swapped back without rewriting the script.
+# TRUTH stands where the dark figures use white: it draws total porosity, SNMR
+# water content and the fresh column. BRACK are the gate figures' brackish
+# colours, darkened for white paper.
+const BG, PANEL, INK, MUTE, RULE = "#ffffff", "#f4f6f8", "#16202a", "#5a6b78", "#c9d3da"
+const TRUTH = "#16202a"
+const BRACK = Dict("3S" => "#6d28d9", "2S" => "#047857")
+const CLAYFILL = "#d9e0e5"   # flat, so a broad fill recedes on white paper
+# dark: BG #0b0d10, PANEL #162023, INK #e3ebea, MUTE #8098a0, RULE #2a393d,
+#       TRUTH #ffffff, BRACK 3S #a78bfa / 2S #34d399
 
 ld(t) = load(joinpath(SYN, "truth_murray$t.jld2"))
 
@@ -54,6 +61,7 @@ watertable(us) = (i = findfirst(u -> occursin("UNSATURATED", uppercase(string(ge
 
 function style!()
     rc("figure", facecolor = BG); rc("savefig", facecolor = BG, dpi = 300)
+    rc("legend", facecolor = BG)
     rc("axes", facecolor = PANEL, edgecolor = RULE, labelcolor = INK, linewidth = 0.7)
     rc("xtick", color = MUTE, labelsize = 7.0); rc("ytick", color = MUTE, labelsize = 7.0)
     rc("text", color = INK)
@@ -78,7 +86,7 @@ function main()
         # ---- 0. stratigraphic column ----------------------------------
         ax = axs[r, 1]
         Lithology.drawcolumn(ax, [(b[1], b[2], b[3]) for b in blocks], ZMAX;
-                             dark = true, px_per_m = 9.0)
+                             dark = false, px_per_m = 9.0)
         append!(allliths, [b[3] for b in blocks if b[1] < ZMAX])
         ax.set_xlim(0, 1.45)          # the right third carries the window bracket
         seen = String[]               # a role is named once; two units share "lower sand"
@@ -92,14 +100,14 @@ function main()
                 abs(zc - w) < 2.0 && (zc = w + (zc >= w ? 2.5 : -2.5))
             end
             ax.text(0.5, zc, b[4], ha = "center", va = "center",
-                    fontsize = 5.6, color = "#0b0f14", zorder = 6,
-                    bbox = Dict("facecolor" => "#e9eff5", "alpha" => 0.88,
+                    fontsize = 5.6, color = INK, zorder = 6,
+                    bbox = Dict("facecolor" => "#ffffff", "alpha" => 0.82,
                                 "edgecolor" => "none", "pad" => 1.0))
         end
         wt = watertable(us)
         if isfinite(wt)
-            ax.plot([0.12], [wt], marker = "v", ms = 6, color = WHITE,
-                    markeredgecolor = "#0b0f14", markeredgewidth = 0.5, zorder = 7)
+            ax.plot([0.12], [wt], marker = "v", ms = 6, color = "#ffffff",
+                    markeredgecolor = INK, markeredgewidth = 0.7, zorder = 7)
         end
         # the gate window, as a bracket on the right edge
         ax.plot([1.06, 1.14, 1.14, 1.06], [win[1], win[1], win[2], win[2]],
@@ -110,19 +118,19 @@ function main()
 
         # ---- 1. water -------------------------------------------------
         ax = axs[r, 2]
-        ax.plot(TF["θ_total"][zi], z[zi], color = WHITE, lw = 1.1)
-        ax.plot(TF["θ_SMR"][zi], z[zi], color = WHITE, lw = 1.1, ls = (0, (4, 2)))
+        ax.plot(TF["θ_total"][zi], z[zi], color = TRUTH, lw = 1.1)
+        ax.plot(TF["θ_SMR"][zi], z[zi], color = TRUTH, lw = 1.1, ls = (0, (4, 2)))
         ax.set_xlabel("water content (v/v)"); ax.set_xlim(0, 0.45)
 
         # ---- 2. clay --------------------------------------------------
         ax = axs[r, 3]
-        ax.plot(TF["clay"][zi], z[zi], color = WHITE, lw = 1.1)
+        ax.plot(TF["clay"][zi], z[zi], color = TRUTH, lw = 1.1)
         ax.set_xlabel("clay fraction (v/v)"); ax.set_xlim(0, 1.0)
 
         # ---- 3. pore-water salinity -----------------------------------
         ax = axs[r, 4]
         ax.plot(TS["σw"][zi] .* MGL, z[zi], color = bc, lw = 1.3)
-        ax.plot(TF["σw"][zi] .* MGL, z[zi], color = WHITE, lw = 1.1)
+        ax.plot(TF["σw"][zi] .* MGL, z[zi], color = TRUTH, lw = 1.1)
         for (v, nm) in ((1500.0, "1,500"), (3000.0, "3,000"))
             ax.axvline(v, color = RULE, lw = 0.9, ls = (0, (3, 3)), zorder = 1)
             r == 1 && ax.text(v, ZMAX - 1.5, " $nm", rotation = 90, fontsize = 5.8,
@@ -135,9 +143,9 @@ function main()
         ax = axs[r, 5]
         m = Float64(TF["m_archie"])
         clayterm = max.(TF["σ_bulk"][zi] .- TF["σw"][zi] .* TF["θ_total"][zi] .^ m, 1e-6)
-        ax.fill_betweenx(z[zi], 1e-3, clayterm, color = "#9aa6ad", alpha = 0.33, lw = 0)
+        ax.fill_betweenx(z[zi], 1e-3, clayterm, color = CLAYFILL, alpha = 1.0, lw = 0, zorder = 0)
         ax.plot(TS["σ_bulk"][zi], z[zi], color = bc, lw = 1.3)
-        ax.plot(TF["σ_bulk"][zi], z[zi], color = WHITE, lw = 1.1)
+        ax.plot(TF["σ_bulk"][zi], z[zi], color = TRUTH, lw = 1.1)
         ax.set_xlabel("bulk conductivity (S/m)"); ax.set_xscale("log")
         ax.set_xlim(1e-3, 3)
         ax.set_xticks([1e-3, 1e-2, 1e-1, 1.0])
@@ -147,7 +155,7 @@ function main()
             a = axs[r, c]
             a.set_ylim(ZMAX, 0)
             for w in win
-                a.axhline(w, color = "#cfd8dd", lw = 0.8, ls = (0, (4, 3)), zorder = 5)
+                a.axhline(w, color = "#3d4e5c", lw = 0.8, ls = (0, (4, 3)), zorder = 5)
             end
             c > 1 && a.set_yticklabels([])
             for k in ("top","bottom","left","right"); a.spines[k].set_color(RULE); end
@@ -161,16 +169,16 @@ function main()
 
     # ---- one shared key below --------------------------------------
     L = matplotlib.lines.Line2D; P = matplotlib.patches.Patch
-    hs = Any[L([], [], color = WHITE, lw = 1.1),
-             L([], [], color = WHITE, lw = 1.1, ls = (0, (4, 2))),
+    hs = Any[L([], [], color = TRUTH, lw = 1.1),
+             L([], [], color = TRUTH, lw = 1.1, ls = (0, (4, 2))),
              L([], [], color = BRACK["3S"], lw = 1.3),
              L([], [], color = BRACK["2S"], lw = 1.3),
-             P(facecolor = "#9aa6ad", alpha = 0.33, edgecolor = "none")]
+             P(facecolor = CLAYFILL, edgecolor = "none")]
     ls = ["total porosity; fresh pore water", "SNMR water content",
           "brackish partner, test one", "brackish partner, test two", "clay term"]
     present = [l for l in Lithology.LITH_ORDER if l in unique(allliths)]
     for l in present
-        push!(hs, P(facecolor = Lithology.tintof(l; dark = true),
+        push!(hs, P(facecolor = Lithology.tintof(l; dark = false),
                     edgecolor = INK, linewidth = 0.4)); push!(ls, l)
     end
     leg = fig.legend(hs, ls, loc = "lower center", ncol = 5, frameon = false,
