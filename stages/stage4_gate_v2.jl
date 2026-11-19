@@ -286,7 +286,12 @@ function main()
     end
     local lt, Cg, coarse_step, coarse_info
     if mode == "two_pass"
-        NC = Int(g["n_nodes_coarse"]); NF = Int(g["n_nodes_fine"])
+        # --npts drives BOTH passes, so the smoke can run two_pass end to end.
+        # Until 20 Nov the override applied to single_pass only, every smoke
+        # therefore ran single_pass, and the two_pass save path was never
+        # exercised -- which is how SW[lhat] survived to kill two production runs.
+        NC = NPTS_OVERRIDE > 0 ? NPTS_OVERRIDE : Int(g["n_nodes_coarse"])
+        NF = NPTS_OVERRIDE > 0 ? NPTS_OVERRIDE : Int(g["n_nodes_fine"])
         ltc = collect(range(log10(sb[1]), log10(sb[2]), length = NC))
         Cgc = (10 .^ ltc) .* thick
         coarse_step = ltc[2] - ltc[1]
@@ -351,10 +356,20 @@ function main()
          conres = sel(A.conres, B.conres), models = sel(A.models, B.models))
     end
     n == length(aem.ρ) - 1 || error("the cell count n was clobbered: $n")
+    # A sweep is about an hour. Everything solved is written after each one, so
+    # a failure anywhere later costs minutes, not a day. 2P died at the very
+    # last line of a five-hour run on 19 Nov and saved nothing.
+    ckpt = joinpath(odir, "stage4_$(cfg["name"])_checkpoint.jld2")
     for l2 in LAM_SET
         fwd = sweep(l2, lt, Cg; tag = "fwd ")
         bwd = sweep(l2, reverse(lt), reverse(Cg); laplace = false, tag = "bwd ")
         SW[l2] = best_of(fwd, revsw(bwd))
+        jldsave(ckpt; lt = lt, Cg = Cg, grid_mode = mode, lam_set = LAM_SET,
+                done = collect(keys(SW)), thick = thick, ndata = ndata,
+                chiref = chiref, window = (top = wtop, base = wbot),
+                sweeps = Dict(string(k) => v for (k, v) in SW))
+        @printf("    checkpoint: %d of %d lambda2 written to %s\n",
+                length(SW), length(LAM_SET), relpath(ckpt, ROOT))
     end
     SWMIN = reduce(best_of, [SW[l2] for l2 in LAM_SET])
 
@@ -481,22 +496,13 @@ function main()
             isfinite(ehi) ? 10^ehi : NaN, isfinite(ehi) ? 10^ehi*thick : NaN,
             uppercase(hi_kind), rhi.state, nhi)
 
-    # ---- assert the fine grid's end nodes are interior -----------------
-    # The fine grid was bracketed by coarse nodes already shown to be
-    # interior, so its ends must be too. If they are not, the bracket is wrong
-    # and the band computed inside it cannot be trusted.
-    if mode == "two_pass"
-        SWh = SW[lhat]
-        ends_ok = SWh.good[1] && SWh.good[end]
-        @printf("\n  fine-grid end nodes interior at lambda-hat: first %s, last %s  -> %s\n",
-                SWh.good[1] ? "yes" : "NO", SWh.good[end] ? "yes" : "NO",
-                ends_ok ? "ASSERTION PASSES" : "ASSERTION FAILS")
-        ends_ok || @warn """The fine grid's end nodes are not interior although they
-            sit on coarse nodes that were. The bracket is unreliable for this column;
-            treat its band edges as OPEN and widen n_nodes_coarse."""
-    end
-
-    jldsave(joinpath(odir, "stage4_$(cfg["name"]).jld2");
+    # ---- SAVE, THEN ASSERT ---------------------------------------------
+    # Ruling of 20 Nov: nothing is asserted before the artefact is on disk, and
+    # an assertion that fails marks the file "unverified" rather than discarding
+    # a day of solving. `verified` is written twice: false here, and the real
+    # outcome immediately after the checks run.
+    function writeout(verified, note)
+        jldsave(joinpath(odir, "stage4_$(cfg["name"]).jld2");
         column = d["column"], parent = get(d,"parent",""), role = info.role,
         window = (top = wtop, base = wbot), thick = thick,
         window_source = wsrc,
@@ -540,7 +546,39 @@ function main()
         coarse = coarse_info === nothing ? nothing :
                  Dict("ltc"=>coarse_info.ltc, "chi2"=>coarse_info.chi2,
                       "nbound"=>coarse_info.nbound, "good"=>coarse_info.good,
-                      "reach_lo"=>coarse_info.reach_lo, "reach_hi"=>coarse_info.reach_hi))
-    println("\nwrote ", relpath(joinpath(odir, "stage4_$(cfg["name"]).jld2"), ROOT))
+                      "reach_lo"=>coarse_info.reach_lo, "reach_hi"=>coarse_info.reach_hi),
+        verified = verified, verify_note = note)
+        nothing
+    end
+
+    writeout(false, "assertions not yet run")
+    println("\nwrote ", relpath(joinpath(odir, "stage4_$(cfg["name"]).jld2"), ROOT),
+            " (unverified)")
+
+    # ---- assert the fine grid's end nodes are interior -----------------
+    # The fine grid was bracketed by coarse nodes already shown to be interior,
+    # so its ends must be too. If they are not, the bracket is wrong and the
+    # band computed inside it cannot be trusted.
+    #
+    # Asserted on SWMIN, the per-node minimum over the fixed lambda2 set, which
+    # is the rule the band itself is defined on. It used to read SW[lhat], but
+    # PASS 2 never sweeps at lambda-hat: lambda-hat drives PASS 1 only, and the
+    # band uses the fixed set. SW therefore has no such key and the lookup threw
+    # KeyError, killing 2P after five hours and 3P after nine. See DECISIONS.md,
+    # 20 Nov.
+    ok, note = true, "ok"
+    if mode == "two_pass"
+        ok = SWMIN.good[1] && SWMIN.good[end]
+        @printf("\n  fine-grid end nodes admissible over the lambda2 set: first %s, last %s  -> %s\n",
+                SWMIN.good[1] ? "yes" : "NO", SWMIN.good[end] ? "yes" : "NO",
+                ok ? "ASSERTION PASSES" : "ASSERTION FAILS")
+        ok || (note = "fine-grid end nodes not admissible; bracket unreliable, treat edges as OPEN")
+        ok || @warn """The fine grid's end nodes are not admissible although they
+            sit on coarse nodes that were. The bracket is unreliable for this column;
+            treat its band edges as OPEN and widen n_nodes_coarse. The artefact is
+            kept and marked unverified."""
+    end
+    writeout(ok, note)
+    println("re-wrote with verified = ", ok, ok ? "" : "  [$note]")
 end
 main()

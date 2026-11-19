@@ -957,3 +957,34 @@ Stage 5 is rewritten as the conditions step.
 | conditions table (`conditions_table/`) | superseded: clay terms were wrong by 5–16x |
 | convergence diagnostics harness (`convergence_test/`) | retained, feeds M2 |
 | gate edge profile (`gate_check/`) | current, feeds M1.1 |
+
+## Stage 4's end-node assertion reads SWMIN, not SW[lambda-hat] — 20 Nov 2026
+
+RULED by Neil, 20 Nov. `stages/stage4_gate_v2.jl` asserted that the fine grid's
+end nodes are interior by looking up `SW[lhat]`. PASS 2 never sweeps at
+lambda-hat: lambda-hat drives PASS 1 only, locating the reachable range, and the
+band is defined on the FIXED lambda2 set {0.01, 0.1}. `SW` is keyed by lambda2,
+so the lookup threw `KeyError` on every two-pass run — 2P after five hours
+(lambda-hat 100) and 3P after nine (lambda-hat 10), both at the last line, both
+saving nothing. The file already recorded lambda-hat as `lam_hat_unused_for_band`.
+
+The assertion now reads `SWMIN`, the per-node minimum over the lambda2 set, which
+is the rule the band itself uses. It therefore asks "are the fine grid's end
+nodes admissible under the rule that defines the band", which is the question the
+assertion was written to ask. Picking one lambda2 arbitrarily would answer a
+weaker one.
+
+Two further rulings, same date, same cause:
+
+1. SAVE BEFORE ASSERTING. `jldsave` runs before any assertion, writing
+   `verified = false`. The checks then run and the artefact is re-written with
+   the real outcome in `verified` and `verify_note`. A failed assertion marks the
+   file unverified; it never discards a day of solving.
+
+2. CHECKPOINT EVERY SWEEP. `stage4_<name>_checkpoint.jld2` is written after each
+   lambda2 completes, so a late failure costs minutes rather than a day.
+
+3. THE SMOKE RUNS TWO_PASS. `--npts` now drives both passes, not single_pass
+   only. Every smoke to date ran single_pass, which is why the two_pass save path
+   was never exercised and `SW[lhat]` survived to kill two production runs.
+
