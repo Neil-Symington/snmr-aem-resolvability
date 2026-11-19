@@ -1,15 +1,26 @@
-# aem_lib.jl — loading and inversion helpers for the UDF AEM soundings
-# extracted at the four chosen SMR sites. Mirrors ek_realdata/aem_lib.jl; the
-# differences are the system module, the manifest columns that this delivery
-# carries, and the column name `d_pV` (Ord-Keep's exporter wrote `data_pV`).
+# aem_lib.jl — loading and inversion helpers for the AEM soundings extracted at
+# the SMR sites. Written for UDF (SkyTEM); [aem] system now also selects the
+# Birrindudu XCite. Mirrors ek_realdata/aem_lib.jl; the differences are the
+# system module, the manifest columns that this delivery carries, and the
+# column name `d_pV` (Ord-Keep's exporter wrote `data_pV`).
 
 using DelimitedFiles, Statistics, Printf, LinearAlgebra
 using HiQGA.transD_GP
 
-# udf_system.jl is a STAGE, not common: it parses the SkyTEM .des and
-# cross-checks it, which is stage work. This include pointed beside itself and
-# only loading the file found that -- it parses either way.
-include(joinpath(@__DIR__, "..", "stages", "udf_system.jl"));  using .UDFSystem
+# THE AEM SYSTEM, chosen by [aem] system. Each system module parses its own .des
+# and cross-checks it, which is stage work, so both live in stages/. They export
+# the same API -- build_grid, build_operator(g, height; ...), predicted(aem),
+# data_blocks(g), gate_times(), describe(), MU0, PV, rTx -- and nothing below or
+# in the stages names a system. A config without the key is a SkyTEM config:
+# that is what every config written before this switch meant.
+const AEM_SYSTEM = String(get(FieldConfig.CFG[]["aem"], "system", "skytem"))
+if AEM_SYSTEM == "skytem"
+    include(joinpath(@__DIR__, "..", "stages", "udf_system.jl"));  using .UDFSystem
+elseif AEM_SYSTEM == "xcite"
+    include(joinpath(@__DIR__, "..", "stages", "xcite_system.jl")); using .XCiteSystem
+else
+    error("[aem] system = \"$AEM_SYSTEM\": known systems are \"skytem\" and \"xcite\"")
+end
 include(joinpath(@__DIR__, "occam_udf.jl")); using .OccamUDF
 
 const HERE = @__DIR__
@@ -48,16 +59,30 @@ function manifest()
       bore_td_m = parse(Float64, d["bore_td_m"][i])) for i in 1:n]
 end
 
-"Z-component data and sigma for one site, split by moment, in delivered pV units."
+"""
+Z-component data and sigma for one site, in delivered pV units.
+
+Every system gets `d`, `σ`, `gate`, `moment` in the data order its operator
+uses (SkyTEM: LM then HM). SkyTEM also keeps the per-moment split
+(`d_lm`, `σ_lm`, ... ) that its operator is built from.
+"""
 function load_gates(field_id)
     d = readcsv_dict(joinpath(SND, "$(field_id).csv"))
-    mom = strip.(d["moment"])
+    mom = String.(strip.(d["moment"]))
     dat = parse.(Float64, d["d_pV"])
     sig = parse.(Float64, d["sigma_pV"])
     gat = parse.(Int, d["gate"])
-    il, ih = mom .== "LM", mom .== "HM"
-    (d_lm = dat[il], σ_lm = sig[il], g_lm = gat[il],
-     d_hm = dat[ih], σ_hm = sig[ih], g_hm = gat[ih])
+    if AEM_SYSTEM == "skytem"
+        il, ih = mom .== "LM", mom .== "HM"
+        o = [findall(il); findall(ih)]
+        (d_lm = dat[il], σ_lm = sig[il], g_lm = gat[il],
+         d_hm = dat[ih], σ_hm = sig[ih], g_hm = gat[ih],
+         d = dat[o], σ = sig[o], gate = gat[o], moment = mom[o])
+    else
+        all(==("Z"), mom) || error("$field_id.csv: an XCite sounding has only moment \"Z\", found $(unique(mom))")
+        issorted(gat) || error("$field_id.csv: gates are not in order")
+        (d = dat, σ = sig, gate = gat, moment = mom)
+    end
 end
 
 """
@@ -69,7 +94,7 @@ Smooth (Occam) fit with no constraint, from several uniform starts. Returns
 function fit_unconstrained(g, height; grid = build_grid(), σ_scale = 1.0,
                            starts = (-2.6, -2.0, -1.4), bounds = Bounds(),
                            m0val = -2.0)
-    aem = build_operator(g.d_lm, g.σ_lm, g.d_hm, g.σ_hm, height;
+    aem = build_operator(g, height;
                          grid = grid, calcjacobian = true, σ_scale = σ_scale)
     n = length(aem.ρ) - grid.nfixed
     ndata = length(aem.res)

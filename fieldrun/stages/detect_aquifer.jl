@@ -422,7 +422,19 @@ function analyse(field_id)
     @printf("    %7s %8s %8s %8s  %-22s %s\n", "floor", "p05", "p50", "p95",
             "p50 interval", "CV")
     Emain = nothing
-    for θc in FLOORS
+    # NO CELL ABOVE THE CONSTRAINT DEPTH. When the inferred noise is large
+    # enough that nothing is detectable (zlim = 0), `above` is empty and
+    # maxsub indexed an empty vector: the stage threw a BoundsError and the
+    # site got no verdict at all (Birrindudu Mulan31 on its raw .mat, s ~450).
+    # "Nothing resolved" IS the verdict there, so the scan records NaN --
+    # not 0, which would read as a measured absence -- and the stage goes on
+    # to NOT RESOLVED like any other site.
+    if isempty(above)
+        @printf("    no cell lies above the constraint depth (%.1f m): nothing to scan\n", zlim)
+        nanv = fill(NaN, nd)
+        Emain = (E = nanv, top = nanv, bot = nanv)
+    end
+    for θc in (isempty(above) ? Float64[] : FLOORS)
         r = excess(θc)
         @printf("    %7.2f %8.2f %8.2f %8.2f  %7.1f - %-11.1f %.3f\n",
                 θc, quantile(r.E, .05), quantile(r.E, .5), quantile(r.E, .95),

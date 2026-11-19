@@ -55,6 +55,9 @@ loop_shape        = "square"
 # forward takes the HALF-side, which is applied in code -- do not halve it here.
 
 [aem]
+# Which AEM system module the stages load: "skytem" (stages/udf_system.jl) or
+# "xcite" (stages/xcite_system.jl). Absent means "skytem".
+system       = "skytem"
 # From AUS_10087_report.pdf p.33: "a nominal uncertainty of 3% was applied to
 # each datum, as well as the calculated relative uncertainty as provided with
 # the EM data", so sigma_i = |d_i| * sqrt(0.03^2 + RUNC_i^2).
@@ -92,6 +95,14 @@ extendfrac = 1.028          # zbnd[end] = 147.4 m, "bottom about 150 m"
 [mcmc]
 nchains    = 4
 tmax       = 2.5            # log-spaced temperature ladder
+# The SNMR stage can have its own ladder. Each key is optional and falls back
+# to the shared nchains / tmax above, and to one chain at T = 1. Leaving them
+# out reproduces the UDF production run.
+#   nchains_snmr      = 7      # chains in the SNMR ladder
+#   nchainsatone_snmr = 2      # how many of them sit at T = 1
+#   tmax_snmr         = 2.5
+#   replicates_snmr   = 4      # independent ladders per kernel draw (default 1),
+#                              # gated on their agreement; see fieldrun/README.md
 # THE TWO TRANS-D STAGES DO NOT SHARE A SAMPLE COUNT, and this file used to
 # give them one. The production run's own outputs record what each used:
 #

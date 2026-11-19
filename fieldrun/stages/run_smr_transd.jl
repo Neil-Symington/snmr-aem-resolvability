@@ -8,7 +8,17 @@
 # udf_smr.jl because UDF has no EK-style inversion spreadsheet and no supplied
 # resistivity profile, so `--supplied` is not offered.
 #
-#   julia --project=. -p 4 run_smr_transd.jl --sites A,B,C
+#   julia --project=. fieldrun/stages/run_smr_transd.jl --config <toml> [--site S]
+#
+# The stage adds its own chain workers ([mcmc] nchains_snmr), so no -p.
+# With [mcmc] replicates_snmr = R > 1, each kernel draw gets R independent
+# ladders, and one (draw, replicate) pair is a "unit". Units can run as
+# separate processes, several to a node, and be combined afterwards:
+#
+#   ... --site S --ens 1,2 --rep 3     run only these units; save them, no gate
+#   ... --site S --combine             gate and pool the units already on disk
+#
+# With neither flag the stage runs every unit and then combines them.
 #
 # Three deliberate differences from ek_prerun/run_prerun_mcmc.jl:
 #
@@ -34,18 +44,7 @@ using Distributed, Printf
 # The control file first: support modules read it at load time.
 include(joinpath(@__DIR__, "..", "common", "stage_prelude.jl"))
 
-const ARG = Dict{String,String}()
-let i = 1
-    while i <= length(ARGS)
-        if startswith(ARGS[i], "--")
-            if i < length(ARGS) && !startswith(ARGS[i+1], "--")
-                ARG[ARGS[i][3:end]] = ARGS[i+1]; i += 2
-            else
-                ARG[ARGS[i][3:end]] = "true"; i += 1
-            end
-        else; i += 1; end
-    end
-end
+# --flags are parsed in common/smr_setup.jl, included below.
 
 # PRERUN is gone: prerun_data.jl and prerun_lib.jl are in common/
 
@@ -62,8 +61,11 @@ end
 # went on to skip every site for missing inputs. Ask for the processes the
 # control file specifies and assert, as run_aem_transd.jl does -- a chain
 # count that silently disagrees with [mcmc] is not a run worth saving.
-addprocs(NCHAINS_CFG - (nworkers() == 1 ? 0 : nworkers()))
-@assert nworkers() == NCHAINS_CFG "need $(NCHAINS_CFG) workers, got $(nworkers())"
+# The SNMR ladder can differ from the AEM one ([mcmc] nchains_snmr).
+# --combine only gates units already on disk, so it needs no chains.
+const COMBINE_ONLY = "--combine" in ARGS
+COMBINE_ONLY || addprocs(NCHAINS_SNMR - (nworkers() == 1 ? 0 : nworkers()))
+COMBINE_ONLY || @assert nworkers() == NCHAINS_SNMR "need $(NCHAINS_SNMR) workers, got $(nworkers())"
 
 # THE WORKERS NEED THE CONFIG TOO, and this is where the port bit back.
 # `@everywhere` runs on every process, and COMMON is defined by the prelude on
@@ -95,77 +97,13 @@ const HERE     = @__DIR__
 # first real run wrote to fieldrun/common/outputs/ instead of where the
 # control file said. Four separate definitions of one path, which is what
 # the control file exists to prevent.
-const RUNDIR   = joinpath(OUT, "smr_mcmc")
-const NSAMPLES = NSAMPLES_SNMR  # [mcmc] nsamples_snmr, or --nsamples
-# NENS is the ensemble count AND the kernel-draw count -- one kernel per
-# ensemble, the pooled posterior marginalising over them (see run_ensemble).
-# It was hardcoded 4, so [kernel] n_draws and [mcmc] nensembles were both dead
-# keys and the smoke overlay's kernel_draws = 1 never took effect: "smoke" ran
-# four ensembles, not one. [kernel] n_draws governs it now, being the key the
-# overlay already maps onto and the one documented with the reason. In full
-# mode it is 4, as every run so far has used, so no full-mode result moves.
-const NENS     = haskey(ARG, "ensembles") ? parse(Int, ARG["ensembles"]) :
-                 Int(FCFG["kernel"]["n_draws"])
-const NCHAINS  = NCHAINS_CFG    # from [mcmc], not prerun_config.jl
-# THE [noise] SECTION WAS DECORATIVE. fieldconfig.jl validated all five keys
-# and the stage then used none of them: s_prior_tau, s_sdev, s_bounds_log10 and
-# sigma_hat_branch came from hardcoded constants here or from prerun_config.jl,
-# so editing the control file changed nothing. Two of them also DISAGREED with
-# the code, which is worse than unused:
-#
-#   s_prior_tau        control file 0.5    this stage 2.0
-#   s_bounds_log10     control file 1e2    this stage 1e4 (upper)
-#
-# 2.0 is the right tau and the header above says why: at 0.5 the East Kimberley
-# posterior s sat at chi2/N 2.90 against SSC's 1.02, the prior being too narrow
-# by about 1.7x in sigma. The 1e4 upper bound is what the working version ran
-# with, and it is not academic -- the smoke posterior puts s in the tens, so
-# an upper bound of 1e2 would pin it where 1e4 does not. Both control-file
-# values have been corrected to what the code actually used, so wiring them
-# through changes no result; from here the control file governs.
-const S_TAU    = haskey(ARG, "stau") ? parse(Float64, ARG["stau"]) :
-                 Float64(FCFG["noise"]["s_prior_tau"])
-const SBOUNDS  = let b = Float64.(FCFG["noise"]["s_bounds_log10"])
-    # the control file states the bounds as log10, transD_GP wants natural log
-    reshape([log(10.0^b[1]), log(10.0^b[2])], 1, 2)
-end
-const S_SDEV   = Float64.(FCFG["noise"]["s_sdev"])
-const S_PRIOR_CENTER = Float64(FCFG["noise"]["s_prior_center"])
-# --supplied: use the operator's resistivity profile instead of the AEM model,
-# as a kernel-sensitivity control.
-const SUPPLIED = false   # no operator profile exists for UDF
-# --flat: sigma-hat_j = median(sigma-hat_j) for every j. The LEVEL is preserved
-# and the per-moment SHAPE removed. The pre-run measured that shape rising 2.5x
-# with pulse moment and tracking signal amplitude, which is decay-model
-# mismatch rather than the additive noise the physics implies; it is also the
-# spec's own fallback. It matters here because the inferred noise level sets
-# the constraint depth, which sets what the detection criteria can see.
-const FLAT     = haskey(ARG, "flat")
-# --occam: force the smooth Occam conductivity for the kernel even when a
-# trans-D ensemble exists. The control for whether a Stage-1 conductivity
-# change is what moved the Stage-2 water.
-const OCCAMK   = haskey(ARG, "occam")
-const LABEL    = (SUPPLIED ? "_supplied" : "") * (FLAT ? "_flat" : "") *
-                 (OCCAMK ? "_occamk" : "")
+# RUNDIR, NSAMPLES, NENS, NCHAINS, the [noise] constants, FLAT/OCCAMK/LABEL,
+# make_opts and hier live in common/smr_setup.jl, so report_smr.jl rebuilds
+# exactly the options and sounding this stage sampled with.
+include(joinpath(COMMON, "smr_setup.jl"))
 
 mkpath(RUNDIR)
 
-function make_opts(prefix, zbnd)
-    nz = length(zbnd)
-    opt = transD_GP.OptionsStat(
-        nmin = CFG.NMIN, nmax = CFG.NMAX,
-        xbounds = [1.0 Float64(nz)], fbounds = CFG.FBOUNDS, fdataname = prefix,
-        xall = permutedims(collect(1:1.0:nz)), λ = CFG.LAMBDA_GP, δ = CFG.DELTA,
-        sdev_prop = 0.07 * diff(CFG.FBOUNDS, dims = 2)[:],
-        sdev_pos  = [0.05 * nz],
-        sdev_dc   = 0.008 * diff(CFG.FBOUNDS, dims = 2)[:],
-        save_freq = CFG.SAVE_FREQ, quasimultid = false, K = CFG.GP_KERNEL)
-    optn = transD_GP.OptionsNuisance(opt;
-        sdev = copy(S_SDEV), bounds = copy(SBOUNDS),
-        nsamples = NSAMPLES, updatenuisances = true)
-    optn.fdataname = prefix
-    opt, optn
-end
 
 function clear_tag(dir, prefix)
     for f in readdir(dir)
@@ -214,14 +152,6 @@ function with_aem_conductivity(b, job, field_id; ens::Int = 0)
               aem_sigma = σ, aem_ztop = ztop, n_kernel_draws = nk))
 end
 
-"Hierarchical sounding with the widened s prior."
-function hier(b)
-    σ̂ = FLAT ? fill(median(b.σ̂), length(b.σ̂)) : b.σ̂
-    SMRPInversion.newSMRSoundingHierarchical(b.V0, b.ϕ, b.F;
-        σ̂_V0 = σ̂, s_prior_center = S_PRIOR_CENTER,
-        s_prior_logwidth = S_TAU, s_init = CFG.S_INIT,
-        linearsat = true, amponly = true)
-end
 
 # ── convergence gates and summaries ─────────────────────────────────────────
 # These three live inside ek_prerun/run_prerun_mcmc.jl rather than in
@@ -231,42 +161,132 @@ end
 
 gate_idx(zbnd) = [argmin(abs.(zbnd .- z)) for z in CFG.GATE_DEPTHS]
 
-function apply_gates(zbnd, ens)
+"""
+The gate scalars of one ordered sample: theta at the gate depths and total
+water to 100 m, from an ncells x ndraws `fstar`.
+"""
+function gate_scalars(fstar, zbnd)
     gi = gate_idx(zbnd)
     dz = diff(vcat(0.0, collect(Float64, zbnd)))
     i100 = findlast(zbnd .<= 100.0)
-    scal = Dict{String,Vector{Vector{Float64}}}()
-    for (k, idx) in zip(["theta_$(Int(z))m" for z in CFG.GATE_DEPTHS], gi)
-        scal[k] = [collect(Float64, view(e.fstar, idx, :)) for e in ens if size(e.fstar, 2) > 0]
+    d = Dict{String,Vector{Float64}}()
+    for (z, idx) in zip(CFG.GATE_DEPTHS, gi)
+        d["theta_$(Int(z))m"] = collect(Float64, view(fstar, idx, :))
     end
-    scal["totalwater_100m"] = [vec(sum(e.fstar[1:i100, :] .* dz[1:i100], dims = 1))
-                               for e in ens if size(e.fstar, 2) > 0]
-    scal["log_s"]  = [e.logs for e in ens if !isempty(e.logs)]
-    scal["misfit"] = [e.U    for e in ens if !isempty(e.U)]
-    scal["k"]      = [Float64.(e.nodes) for e in ens if !isempty(e.nodes)]
+    d["totalwater_100m"] = size(fstar, 2) == 0 ? Float64[] :
+                           vec(sum(fstar[1:i100, :] .* dz[1:i100], dims = 1))
+    d
+end
+
+"""
+THE GATE.
+
+Three comparisons, of which the first available is gated on:
+
+  replicate    ([mcmc] replicates_snmr >= 2) R independent ladders on each
+               kernel draw. Their T=1 samples, each in iteration order, are
+               the chains of a rank-normalised split-R-hat, per ensemble, on
+               theta at the gate depths, total water to 100 m, log s, misfit
+               and layer count. Independent ladders share nothing but the
+               kernel, so disagreement is mixing failure and nothing else.
+               R-hat is the worst over ensembles and scalars; ESS adds across
+               ensembles, each contributing its worst scalar.
+  within-kernel  (one replicate, >= 2 T=1 chain-id streams) the T=1 draws of
+               one ladder split by chain id. Kept as a diagnostic. Once swaps
+               are frequent the streams are short, state-selected visits (a
+               chain swaps down when its misfit is low), and their R-hat is
+               inflated: the 17 Nov Gadi run read 5.5-7.5 here while the T=1
+               slot was stable to 1.05-1.33.
+  across-ensemble  each ensemble has its own kernel draw, so this mixes
+               sampler mixing with kernel spread. Always reported, as kernel
+               spread; gated on only when nothing else is available.
+"""
+function apply_gates(zbnd, units)
     pw = CFG.FBOUNDS[2] - CFG.FBOUNDS[1]
+    pwof(k) = startswith(k, "theta_") ? pw : nothing
+    enss = sort(unique(u.e for u in units))
+    byens = [filter(u -> u.e == e, units) for e in enss]
+    nrep = minimum(length, byens)
+
+    # ACROSS ensembles (kernel spread), on each ensemble's replicates pooled
+    efs = [hcat([u.fstar for u in g]...) for g in byens]
+    scal = Dict{String,Vector{Vector{Float64}}}()
+    for f in efs
+        size(f, 2) > 0 || continue
+        for (k, v) in gate_scalars(f, zbnd)
+            push!(get!(scal, k, Vector{Float64}[]), v)
+        end
+    end
+    scal["log_s"]  = [vcat([u.logs for u in g]...) for g in byens if any(u -> !isempty(u.logs), g)]
+    scal["misfit"] = [vcat([u.U for u in g]...) for g in byens if any(u -> !isempty(u.U), g)]
+    scal["k"]      = [vcat([Float64.(u.nodes) for u in g]...) for g in byens if any(u -> !isempty(u.nodes), g)]
     res = Dict{String,NamedTuple}()
     for (k, ch) in scal
-        pwk = startswith(k, "theta_") ? pw : nothing
-        res[k] = length(ch) >= 2 ? rhat_and_ess(ch; priorwidth = pwk) :
+        res[k] = length(ch) >= 2 ? rhat_and_ess(ch; priorwidth = pwof(k)) :
                  (rhat = NaN, ess_bulk = NaN, ess_tail = NaN, determined = false)
     end
     rh = filter(isfinite, [v.rhat for v in values(res)])
     eb = filter(isfinite, [v.ess_bulk for v in values(res)])
     et = filter(isfinite, [v.ess_tail for v in values(res)])
-    st = [stationary_trend(e.U; nsig = CFG.TREND_SIGMA) for e in ens if !isempty(e.U)]
-    pooled = hcat([e.fstar for e in ens if size(e.fstar, 2) > 0]...)
+
+    # WITHIN a kernel by chain id (precomputed per unit; diagnostic)
+    cid_rh = filter(isfinite, [u.chainid_rhat for u in units])
+    cid_ess = sum((u.chainid_ess for u in units if isfinite(u.chainid_ess)); init = 0.0)
+    ncid = count(u -> isfinite(u.chainid_rhat), units)
+
+    # BETWEEN replicate ladders on one kernel
+    rep_by_scalar = Dict{String,Float64}()
+    rep_rh = Float64[]; rep_ess = 0.0
+    if nrep >= 2
+        for g in byens
+            ks = intersect([keys(u.slot) for u in g]...)
+            r = Float64[]; q = Float64[]
+            for k in ks
+                v = rhat_and_ess([u.slot[k] for u in g]; priorwidth = pwof(k))
+                isfinite(v.rhat) && (push!(r, v.rhat);
+                    rep_by_scalar[k] = max(get(rep_by_scalar, k, -Inf), v.rhat))
+                isfinite(v.ess_bulk) && push!(q, v.ess_bulk)
+            end
+            isempty(r) || push!(rep_rh, maximum(r))
+            isempty(q) || (rep_ess += minimum(q))
+        end
+    end
+
+    trips = [minimum(u.round_trips) for u in units]
+    st = [stationary_trend(u.U; nsig = CFG.TREND_SIGMA) for u in units if !isempty(u.U)]
+    pooled = hcat(efs...)
+    gi = gate_idx(zbnd)
     shmax = NaN
     if size(pooled, 2) >= 8
         h = size(pooled, 2) ÷ 2
         shmax = maximum(abs(median(pooled[i, 1:h]) - median(pooled[i, h+1:2h])) for i in gi)
     end
-    (per_scalar = res, scalars = scal,
-     ndetermined = count(v -> get(v, :determined, false), values(res)),
-     rhat_max = isempty(rh) ? NaN : maximum(rh),
-     ess_bulk_min = isempty(eb) ? NaN : minimum(eb),
+    rk  = isempty(rh) ? NaN : maximum(rh)
+    rc  = isempty(cid_rh) ? NaN : maximum(cid_rh)
+    rr  = isempty(rep_rh) ? NaN : maximum(rep_rh)
+    stat_ok = isempty(st) ? false : all(s -> s.stationary, st)
+    ladder_ok = stat_ok && minimum(trips) >= 1
+    basis, rm, me = if nrep >= 2 && length(rep_rh) == length(byens)
+        "replicate", rr, rep_ess
+    elseif ncid == length(units)
+        "within-kernel", rc, cid_ess
+    else
+        "across-ensemble", rk, (isempty(eb) ? NaN : minimum(eb))
+    end
+    pass = rm <= CFG.GATE_RHAT && me >= CFG.GATE_MIN_ESS &&
+           (basis == "across-ensemble" ? stat_ok : ladder_ok)
+    (per_scalar = res, ndetermined = count(v -> get(v, :determined, false), values(res)),
+     rhat_max = rm, rhat_mixing_max = rm, ess_mixing = me,
+     rhat_replicate_max = rr, ess_replicate = nrep >= 2 ? rep_ess : NaN,
+     rhat_replicate_by_scalar = rep_by_scalar, nreplicates = nrep,
+     rhat_chainid_max = rc, ess_chainid = ncid == 0 ? NaN : cid_ess,
+     rhat_kernel_max = rk, gate_basis = basis, gates_pass = pass,
+     min_round_trips = trips,
+     swap_rate = [u.swap_rate for u in units],
+     frac_at_T1 = [u.frac_at_T1 for u in units],
+     ess_bulk_min = me,
      ess_tail_min = isempty(et) ? NaN : minimum(et),
-     stationary = isempty(st) ? false : all(s -> s.stationary, st),
+     stationary = stat_ok,
      misfit_t = isempty(st) ? NaN : maximum(abs(s.t) for s in st),
      splithalf_max = shmax, pooled = pooled)
 end
@@ -284,10 +304,76 @@ function summarise(b, pooled)
      doi = doi, doi_05 = doiA, doi_07 = doiB)
 end
 
-function run_ensemble(b, sounding_id, e, pids)
-    prefix = "$(sounding_id)$(LABEL)_e$(e)_"
+"""
+The T=1 draws of ONE ladder, two ways, plus the ladder's health.
+
+  streams  split by chain id. `transD_GP.assembleTat1` pools every T=1 row
+           across chains and drops which chain made it; the split recovers it.
+           Used only for the chain-id diagnostic (see apply_gates).
+  slot     the T=1 slot in ITERATION order (t1_slot_order), as gate scalars.
+           This is the sample a replicate comparison treats as one chain.
+"""
+function t1_streams(opt, optn, zbnd)
+    rows = t1_rows_by_chain(opt.costs_filename; burninfrac = CFG.BURNINFRAC)
+    nrows = t1_rows_by_chain(optn.costs_filename; burninfrac = CFG.BURNINFRAC, Tcol = 4)
+    vals = readdlm(optn.vals_filename, ' ', String)
+    vcid = parse.(Int, vals[:, 1]); vlogs = parse.(Float64, vals[:, end])
+    cr = [split(l) for l in readlines(opt.costs_filename) if !isempty(strip(l))]
+    ccid = [parse(Int, r[1]) for r in cr]
+    Fs = Vector{Any}(undef, length(rows))
+    st = map(rows) do r
+        # The models file holds a chain's model ONLY while it is at T=1 (as
+        # transD_GP.assembleTat1 indexes it), so the burn-in mask is taken over
+        # that chain's T=1 rows, not over all its rows.
+        F = transD_GP.history(opt; stat = :fstar, chain_idx = r.chain)
+        Fs[r.chain] = F
+        at1 = isapprox.(r.T, 1.0; atol = 1e-12)
+        @assert length(F) == count(at1) "chain $(r.chain): $(length(F)) stored models, $(count(at1)) T=1 rows"
+        keep = r.mask[at1]
+        fs = any(keep) ? hcat([f[:] for f in F[keep]]...) : zeros(length(opt.xall), 0)
+        ln = vlogs[vcid .== r.chain]
+        nm = nrows[r.chain].mask
+        (chain = r.chain, fstar = fs,
+         logs = length(ln) == length(nm) ? ln[nm] : Float64[])
+    end
+    # the T=1 slot in iteration order
+    ord = t1_slot_order([r.T for r in rows]; burninfrac = CFG.BURNINFRAC)
+    crc = [cr[ccid .== c] for c in eachindex(rows)]
+    lnc = [vlogs[vcid .== c] for c in eachindex(rows)]
+    fslot = isempty(ord) ? zeros(length(opt.xall), 0) :
+            hcat([Fs[c][k][:] for (j, c, k) in ord]...)
+    slot = gate_scalars(fslot, zbnd)
+    slot["misfit"] = [parse(Float64, crc[c][j][9]) for (j, c, k) in ord]
+    slot["k"]      = [parse(Float64, crc[c][j][8]) for (j, c, k) in ord]
+    if all(c -> length(lnc[c]) == length(rows[c].T), eachindex(rows))
+        slot["log_s"] = [lnc[c][j] for (j, c, k) in ord]
+    end
+    st, slot, tempering_stats([r.T for r in rows])
+end
+
+"Chain-id R-hat of one unit: the worst scalar, and its ESS (diagnostic)."
+function chainid_check(streams, zbnd)
+    pw = CFG.FBOUNDS[2] - CFG.FBOUNDS[1]
+    S = [x for x in streams if size(x.fstar, 2) >= 8]
+    length(S) >= 2 || return (rhat = NaN, ess = NaN)
+    gs = [gate_scalars(x.fstar, zbnd) for x in S]
+    vs = [rhat_and_ess([g[k] for g in gs]; priorwidth = startswith(k, "theta_") ? pw : nothing)
+          for k in keys(gs[1])]
+    L = [x.logs for x in S if length(x.logs) >= 8]
+    length(L) >= 2 && push!(vs, rhat_and_ess(L))
+    r = filter(isfinite, [v.rhat for v in vs]); q = filter(isfinite, [v.ess_bulk for v in vs])
+    (rhat = isempty(r) ? NaN : maximum(r), ess = isempty(q) ? NaN : minimum(q))
+end
+
+"""
+One unit: ensemble `e` (kernel draw e), replicate `r` (seed). Samples, then
+keeps what the posterior and the gates need -- not the chains, which stay in
+the run directory.
+"""
+function run_unit(b, sounding_id, e, r, pids)
+    prefix = unit_prefix(sounding_id, e, r)
     clear_tag(pwd(), prefix)
-    sd = seed_for(sounding_id * LABEL, e)
+    sd = unit_seed(sounding_id, e, r)
     @sync for p in pids
         @async remotecall_fetch(() -> (Random.seed!(sd + myid()); nothing), p)
     end
@@ -295,10 +381,10 @@ function run_ensemble(b, sounding_id, e, pids)
     S = hier(b)
     opt, optn = make_opts(prefix, b.zbnd)
     t = @elapsed transD_GP.main(opt, optn, S, pids;
-                                nsamples = NSAMPLES, nchainsatone = 1,
-                                Tmax = CFG.TMAX)
+                                nsamples = NSAMPLES, nchainsatone = NCHAINSATONE,
+                                Tmax = TMAX)
     set_run_filenames!(opt, optn)
-    inv = assert_one_chain_at_T1(opt.costs_filename, length(pids))
+    inv = assert_chains_at_T1(opt.costs_filename, length(pids), NCHAINSATONE)
     opt.xall[:] .= b.zbnd
     F = transD_GP.assembleTat1(opt, :fstar; temperaturenum = 1,
                                burninfrac = CFG.BURNINFRAC)
@@ -312,12 +398,32 @@ function run_ensemble(b, sounding_id, e, pids)
     end
     logs = size(nu, 1) == 0 ? Float64[] : vec(nu[:, end])
     h = nodes_at_T1(opt.costs_filename; burninfrac = CFG.BURNINFRAC)
-    @printf("      ensemble %d: %d draws, %.1f s, T=1 %s\n",
-            e, size(fstar, 2), t, inv.ok ? "ok" : inv.why)
-    (prefix = prefix, seed = sd, secs = t, fstar = fstar, logs = logs,
-     nodes = h.nodes, U = h.U, t1_ok = inv.ok)
+    st, slot, tp = t1_streams(opt, optn, b.zbnd)
+    ci = chainid_check(st, b.zbnd)
+    @printf("      ensemble %d replicate %d: %d draws, %.1f s, T=1 %s; T=1 draws by chain %s; swaps %.2f, round trips %s\n",
+            e, r, size(fstar, 2), t, inv.ok ? "ok" : inv.why,
+            join([size(x.fstar, 2) for x in st], "/"), tp.swap_rate, join(tp.round_trips, "/"))
+    (e = e, r = r, prefix = prefix, seed = sd, secs = t, fstar = fstar, logs = logs,
+     nodes = Float64.(h.nodes), U = h.U, t1_ok = inv.ok, slot = slot,
+     chainid_rhat = ci.rhat, chainid_ess = ci.ess,
+     swap_rate = tp.swap_rate, round_trips = collect(Int, tp.round_trips),
+     frac_at_T1 = collect(Float64, tp.frac_at_T1))
 end
 
+unit_file(dir, e, r) = joinpath(dir, "unit_e$(e)r$(r).jld2")
+save_unit(dir, u) = jldsave(unit_file(dir, u.e, u.r); pairs(u)...)
+function load_unit(dir, e, r)
+    d = load(unit_file(dir, e, r))
+    (; (Symbol(k) => v for (k, v) in d)...)
+end
+
+"""
+One site. With --ens and/or --rep only those units are sampled and saved,
+and the site is not combined: that is how a PBS job runs several units of one
+site at once, as separate processes. --combine samples nothing and gates
+whatever units are on disk. With neither, every unit is sampled in turn and
+then combined, as before.
+"""
 function run_site(field_id, filename, pids)
     r = udf_meta(field_id)
     path, fname = udf_matfile(field_id)
@@ -337,25 +443,48 @@ function run_site(field_id, filename, pids)
     @printf("    conductivity: %s\n", b.cond_source)
 
     dir = joinpath(RUNDIR, field_id * LABEL); mkpath(dir)
-    old = pwd(); cd(dir)
-    ens = Vector{Any}(undef, NENS)
-    try
-        for e in 1:NENS
-            # Stage 2: this ensemble's kernel is built on its own Stage-1 draw.
-            be = udf_kernel(b0, job, field_id, OUT; ens = e, occam = OCCAMK)
-            ens[e] = run_ensemble(be, job.sounding_id, e, pids)
+    want = [(e, rr) for e in 1:NENS for rr in 1:REPS]
+    partial = haskey(ARG, "ens") || haskey(ARG, "rep")
+    haskey(ARG, "ens") && (want = filter(u -> u[1] in parse.(Int, split(ARG["ens"], ",")), want))
+    haskey(ARG, "rep") && (want = filter(u -> u[2] in parse.(Int, split(ARG["rep"], ",")), want))
+    if !COMBINE_ONLY
+        isempty(want) && error("--ens/--rep select no unit (ensembles 1:$NENS, replicates 1:$REPS)")
+        old = pwd(); cd(dir)
+        try
+            for (e, rr) in want
+                # Stage 2: this ensemble's kernel is built on its own Stage-1 draw.
+                be = udf_kernel(b0, job, field_id, OUT; ens = e, occam = OCCAMK)
+                save_unit(dir, run_unit(be, job.sounding_id, e, rr, pids))
+            end
+        finally
+            cd(old)
         end
-    finally
-        cd(old)
+        if partial
+            println("    wrote $(length(want)) unit(s) to $dir; combine with --combine")
+            return
+        end
     end
 
-    G = apply_gates(b.zbnd, ens)
+    allu = [(e, rr) for e in 1:NENS for rr in 1:REPS]
+    missing_u = filter(u -> !isfile(unit_file(dir, u...)), allu)
+    isempty(missing_u) || error("$field_id: missing units " *
+        join(("e$(u[1])r$(u[2])" for u in missing_u), ", ") * " in $dir")
+    units = [load_unit(dir, u...) for u in allu]
+
+    G = apply_gates(b.zbnd, units)
     S = summarise(b, G.pooled)
-    @printf("    pooled %d draws; rhat_max %.3f, ess_bulk_min %.0f, gates %s\n",
-            S.ndraws, G.rhat_max, G.ess_bulk_min,
-            (G.rhat_max <= CFG.GATE_RHAT && G.ess_bulk_min >= CFG.GATE_MIN_ESS &&
-             G.stationary) ? "PASS" : "FAIL")
-    s_draws = vcat([e.logs for e in ens if !isempty(e.logs)]...)
+    @printf("    pooled %d draws over %d ensembles x %d replicates\n", S.ndraws, NENS, REPS)
+    @printf("    mixing: replicate rhat %.3f (ESS %.0f); chain-id rhat %.3f (diagnostic); kernel spread rhat %.3f\n",
+            G.rhat_replicate_max, G.ess_replicate, G.rhat_chainid_max, G.rhat_kernel_max)
+    if !isempty(G.rhat_replicate_by_scalar)
+        println("    replicate rhat by scalar (worst ensemble): " *
+                join((@sprintf("%s %.3f", k, G.rhat_replicate_by_scalar[k])
+                      for k in sort(collect(keys(G.rhat_replicate_by_scalar)))), ", "))
+    end
+    @printf("    ladder: %d chains (%d at T=1), Tmax %.3g; min round trips per unit %s; stationary %s; gates %s (%s)\n",
+            NCHAINS, NCHAINSATONE, TMAX, join(G.min_round_trips, "/"), G.stationary,
+            G.gates_pass ? "PASS" : "FAIL", G.gate_basis)
+    s_draws = vcat([u.logs for u in units if !isempty(u.logs)]...)
     @printf("    noise scale s: p05 %.2f p50 %.2f p95 %.2f  (x sigma-hat)\n",
             quantile(exp.(s_draws), .05), quantile(exp.(s_draws), .5),
             quantile(exp.(s_draws), .95))
@@ -368,19 +497,25 @@ function run_site(field_id, filename, pids)
         sigma_hat = b.σ̂, Be = b.Be, freq = b.freq,
         zbnd = collect(Float64, b.zbnd), znall = collect(Float64, b.znall),
         theta = G.pooled,              # intact draws, ncells x ndraws
-        log_s = s_draws, nodes = vcat([Float64.(e.nodes) for e in ens]...),
-        U = vcat([e.U for e in ens]...),
+        log_s = s_draws, nodes = vcat([u.nodes for u in units]...),
+        U = vcat([u.U for u in units]...),
         q05 = S.q05, q50 = S.q50, q95 = S.q95, ndraws = S.ndraws,
         doi_width = S.doi, doi_05 = S.doi_05, doi_07 = S.doi_07,
         rhat_max = G.rhat_max, ess_bulk_min = G.ess_bulk_min,
         ess_tail_min = G.ess_tail_min, stationary = G.stationary,
         splithalf_max = G.splithalf_max,
-        gates_pass = (G.rhat_max <= CFG.GATE_RHAT &&
-                      G.ess_bulk_min >= CFG.GATE_MIN_ESS && G.stationary),
+        gates_pass = G.gates_pass, gate_basis = G.gate_basis,
+        rhat_mixing_max = G.rhat_mixing_max, ess_mixing = G.ess_mixing,
+        rhat_replicate_max = G.rhat_replicate_max, ess_replicate = G.ess_replicate,
+        rhat_replicate_by_scalar = G.rhat_replicate_by_scalar,
+        rhat_chainid_max = G.rhat_chainid_max, ess_chainid = G.ess_chainid,
+        rhat_kernel_max = G.rhat_kernel_max, min_round_trips = G.min_round_trips,
+        swap_rate = G.swap_rate, frac_at_T1 = G.frac_at_T1,
+        nchainsatone = NCHAINSATONE, tmax = TMAX, nreplicates = REPS,
         cond_source = b.cond_source, n_kernel_draws = b.n_kernel_draws,
         nsamples = NSAMPLES, nensembles = NENS, nchains = NCHAINS, s_tau = S_TAU,
         flat_sigmahat = FLAT, supplied_conductivity = SUPPLIED,
-        seeds = [e.seed for e in ens], secs = sum(e.secs for e in ens),
+        seeds = [u.seed for u in units], secs = sum(u.secs for u in units),
         fbounds = CFG.FBOUNDS)
     println("    wrote smr_transd_$(field_id)$(LABEL).jld2")
 end
@@ -409,8 +544,11 @@ function main()
     end
     isempty(sites) && (sites = collect(keys(sel)))
     pids = workers()   # exactly NCHAINS, asserted at load
-    @printf("trans-D SNMR: %d sites, %d ensembles x %d chains, %d samples, s tau %.1f\n",
-            length(sites), NENS, length(pids), NSAMPLES, S_TAU)
+    (haskey(ARG, "ens") || haskey(ARG, "rep")) && length(sites) != 1 &&
+        error("--ens/--rep run units of ONE site; give --site")
+    @printf("trans-D SNMR: %d sites, %d ensembles x %d replicates x %d chains (%d at T=1, Tmax %.3g), %d samples, s tau %.1f%s\n",
+            length(sites), NENS, REPS, NCHAINS, NCHAINSATONE, TMAX, NSAMPLES, S_TAU,
+            COMBINE_ONLY ? "  [combine only]" : "")
     failed = String[]
     for s in sites
         try

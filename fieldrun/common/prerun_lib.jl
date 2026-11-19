@@ -15,7 +15,8 @@ using Statistics, Printf
 
 export norminvcdf, iat, ess_basic, rank_normalise, split_rhat, rhat_and_ess,
        stationary_trend, doi_from_width, kl_against_uniform, detection_flag,
-       interval_mean_max, set_run_filenames!, nodes_at_T1, assert_one_chain_at_T1
+       interval_mean_max, set_run_filenames!, nodes_at_T1, assert_one_chain_at_T1,
+       assert_chains_at_T1, t1_rows_by_chain, tempering_stats, t1_slot_order
 
 # ── Inverse normal CDF ──────────────────────────────────────────────────────
 const _A = (-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
@@ -61,14 +62,79 @@ function iat(x)
     τ
 end
 
-"ESS of a set of chains: total draws / mean IAT."
+"""
+Multi-chain ESS (Vehtari et al. 2021 §3.2), with Geyer's initial MONOTONE
+sequence.
+
+REPLACED 13 Nov 2026 (Neil, 04629f7 on sampler-convergence-test; ported
+to fieldrun 17 Nov 2026). The previous version computed an autocorrelation time
+within each chain, averaged those, and divided the total draw count by the
+result:
+
+    ntot / mean(iat(c) for c in chains)
+
+That never looks at the spread BETWEEN chains. Four chains that each mix
+briskly around four different values therefore each get a short IAT, and the
+function reports a large ESS for a sample that has not converged at all --
+exactly the case this gate exists to catch. Measured on the 2P production run
+it overstated by about 3x (per-depth theta: 42 against 8) and by 1.5x on the
+window quantity (65 against 43).
+
+The correct estimator folds the between-chain variance into the normaliser:
+
+    var_plus = ((n-1)/n) W + B/n
+    rho_t    = 1 - (W - s_t)/var_plus
+
+so a disagreement between chains inflates var_plus, drives rho_t towards 1,
+and lengthens the autocorrelation time, which is the behaviour wanted. Pairs
+are then summed (Geyer's Gamma_m = rho_2m + rho_2m+1), truncated at the first
+non-positive pair and forced monotone decreasing -- the paired rule is what
+stops a noisy single rho crossing zero early and truncating the sum far too
+soon, which was the other half of the old function's optimism.
+
+Validated against theory: iid normal 4x10000 -> 40000 (exact); AR(1) 0.90 ->
+2244 against 2105; 0.99 -> 190 against 201; 0.995 -> 206 against 200. On the
+window quantity of the 2P production run it returns 43, matching the
+reviewer's independent implementation exactly.
+
+Call it on chains that are already split and rank-normalised and it is
+Vehtari's bulk-ESS.
+"""
 function ess_basic(chains::Vector{<:AbstractVector})
-    good = [c for c in chains if length(c) >= 20 && var(c) > 0]
-    isempty(good) && return NaN
-    τs = filter(isfinite, [iat(c) for c in good])
-    isempty(τs) && return NaN
-    ntot = sum(length, good)
-    ntot / max(mean(τs), 1.0)
+    good = [collect(Float64, c) for c in chains if length(c) >= 20 && var(c) > 0]
+    m = length(good)
+    m < 2 && return isempty(good) ? NaN : NaN
+    n = minimum(length.(good))
+    n < 20 && return NaN
+    ch = [c[1:n] for c in good]
+    means = [mean(c) for c in ch]
+    W = mean([var(c) for c in ch])
+    B = n * var(means; corrected = true)
+    (W <= 0 || !isfinite(W)) && return NaN
+    varplus = ((n - 1) / n) * W + B / n
+    (varplus <= 0 || !isfinite(varplus)) && return NaN
+    cm = [mean(c) for c in ch]
+    maxlag = min(n - 2, 5000)
+    ρ = Vector{Float64}(undef, maxlag + 1); ρ[1] = 1.0
+    for t in 1:maxlag
+        s = 0.0
+        for (j, c) in enumerate(ch)
+            acc = 0.0
+            @inbounds for i in 1:(n - t); acc += (c[i] - cm[j]) * (c[i + t] - cm[j]); end
+            s += acc / (n - t)
+        end
+        ρ[t + 1] = 1 - (W - s / m) / varplus
+    end
+    Γ = Float64[]; k = 1
+    while 2k + 1 <= length(ρ)
+        g = ρ[2k] + ρ[2k + 1]
+        g <= 0 && break
+        push!(Γ, g); k += 1
+    end
+    isempty(Γ) && return Float64(m * n)
+    for i in 2:length(Γ); Γ[i] = min(Γ[i], Γ[i - 1]); end
+    τ = -1 + 2 * sum(Γ)
+    τ <= 0 ? Float64(m * n) : m * n / τ
 end
 
 # ── Rank normalisation and split-R̂ ──────────────────────────────────────────
@@ -325,13 +391,111 @@ RUNBOOK §1.5: exactly one chain holds T=1 per iteration, so the T=1 row count
 must be nrows/nchains. The chain *ids* rotating through that slot is tempering
 working correctly; the row count is the invariant to assert.
 """
-function assert_one_chain_at_T1(costs_filename, nchains; tol = 0.02)
+assert_one_chain_at_T1(costs_filename, nchains; tol = 0.02) =
+    assert_chains_at_T1(costs_filename, nchains, 1; tol = tol)
+
+"""
+The same invariant for a ladder with `nchainsatone` chains at T=1: HiQGA swaps
+temperatures, never adds them, so T=1 rows are nchainsatone/nchains of all rows.
+"""
+function assert_chains_at_T1(costs_filename, nchains, nchainsatone; tol = 0.02)
     h = nodes_at_T1(costs_filename; burninfrac = 0.0)
     h.nrows == 0 && return (ok = false, ratio = NaN, why = "no costs rows")
     ratio = h.nT1 / h.nrows
-    ok = abs(ratio - 1 / nchains) <= tol
+    want = nchainsatone / nchains
+    ok = abs(ratio - want) <= tol
     (ok = ok, ratio = ratio,
-     why = ok ? "" : "T=1 rows are $(round(ratio, digits=4)) of all rows, expected $(round(1/nchains, digits=4))")
+     why = ok ? "" : "T=1 rows are $(round(ratio, digits=4)) of all rows, expected $(round(want, digits=4))")
+end
+
+"""
+Which saved rows each chain id spent at T=1 after burn-in, from a multi-chain
+costs file (columns as nodes_at_T1). HiQGA swaps TEMPERATURES between chains;
+a chain's model state stays with its id. So chain i's rows at T=1 are draws
+from the T=1 posterior made by that chain, and the per-id split is what lets
+two T=1 streams be compared. Burn-in is applied per chain by row position,
+exactly as transD_GP.assembleTat1 does (start = round(n * burninfrac)).
+
+Returns, per chain id: `mask` over that chain's own rows (in file order, the
+same order `history(...; chain_idx = i)` returns), and the T trace.
+"""
+function t1_rows_by_chain(costs_filename; burninfrac = 0.5, Tcol = 10)
+    rows = [split(l) for l in readlines(costs_filename) if !isempty(strip(l))]
+    cid  = [parse(Int, r[1]) for r in rows]
+    T    = [parse(Float64, r[Tcol]) for r in rows]
+    out = []
+    for i in 1:maximum(cid)
+        Ti = T[cid .== i]
+        n = length(Ti)
+        start = round(Int, n * burninfrac); start == 0 && (start = 1)
+        m = isapprox.(Ti, 1.0; atol = 1e-12)
+        m[1:start-1] .= false
+        push!(out, (chain = i, mask = m, T = Ti))
+    end
+    out
+end
+
+"""
+The T=1 draws of one ladder IN ITERATION ORDER, across chain ids.
+
+`Ttraces[c]` is chain c's temperature at each saved step (every chain is saved
+at the same steps). Returns `(step, chain, k)` for every post-burn-in step at
+which chain c sat at T=1, sorted by step then chain; `k` indexes chain c's
+stored T=1 models (HiQGA stores a chain's model only while it is at T=1), so
+`F[chain][k]` is the draw. With several chains at T=1 the draws of one step are
+adjacent.
+
+This is the ordering a replicate comparison needs. Chain-id order -- all of
+chain 1's T=1 visits, then chain 2's -- puts state-selected, discontiguous
+visits side by side, and split-R-hat on it compares chain ids again.
+"""
+function t1_slot_order(Ttraces::Vector{<:AbstractVector}; burninfrac = 0.5)
+    out = NTuple{3,Int}[]
+    for (c, Ti) in enumerate(Ttraces)
+        n = length(Ti)
+        start = round(Int, n * burninfrac); start == 0 && (start = 1)
+        k = 0
+        for j in 1:n
+            isapprox(Ti[j], 1.0; atol = 1e-12) || continue
+            k += 1
+            j >= start && push!(out, (j, c, k))
+        end
+    end
+    sort!(out)
+end
+
+"""
+Is the ladder cycling? From the per-chain T traces (saved every save_freq
+iterations, so swaps between saves are not seen and the swap rate is a lower
+bound):
+
+  swap_rate    fraction of saved steps on which a chain's temperature changed
+  round_trips  per chain, completed T=1 -> Tmax -> T=1 cycles. A chain that
+               never reaches Tmax and comes back is not carrying states across
+               the hot end, which is the only thing the heated chains are for.
+  frac_at_T1   per chain, share of saved steps spent at T=1; with healthy
+               tempering each id's share is near nchainsatone/nchains.
+"""
+function tempering_stats(Ttraces::Vector{<:AbstractVector})
+    Tmax = maximum(maximum.(Ttraces))
+    rt = Int[]; sw = 0; nstep = 0; f1 = Float64[]
+    for Ti in Ttraces
+        nstep += length(Ti) - 1
+        sw += count(k -> Ti[k] != Ti[k-1], 2:length(Ti))
+        push!(f1, mean(isapprox.(Ti, 1.0; atol = 1e-12)))
+        trips = 0; state = :none           # :none -> seen T1 -> seen Tmax -> T1 again
+        for t in Ti
+            if isapprox(t, 1.0; atol = 1e-12)
+                state == :hot && (trips += 1)
+                state = :cold
+            elseif isapprox(t, Tmax; rtol = 1e-9) && state == :cold
+                state = :hot
+            end
+        end
+        push!(rt, trips)
+    end
+    (swap_rate = nstep == 0 ? NaN : sw / nstep, round_trips = rt,
+     frac_at_T1 = f1, Tmax = Tmax)
 end
 
 end # module

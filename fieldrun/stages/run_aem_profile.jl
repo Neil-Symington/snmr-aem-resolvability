@@ -99,7 +99,7 @@ function profile_site(field_id; grid = build_grid())
 
     g = load_gates(field_id)
     scale = A["noise_scale"]
-    aem = build_operator(g.d_lm, g.σ_lm, g.d_hm, g.σ_hm, A["height_m"];
+    aem = build_operator(g, A["height_m"];
                          grid = grid, calcjacobian = true, σ_scale = scale)
     n = length(aem.ρ) - grid.nfixed
     ndata = length(aem.res)

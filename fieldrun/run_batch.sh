@@ -54,10 +54,26 @@ echo "######## config: $CFG"
 
 has_stage() { echo ",$STAGES," | grep -q ",$1,"; }
 
+# Available RAM in GB, one decimal. Linux has `free`; macOS does not, and without it
+# avail came back empty, read as 0, and the loop waited forever. On macOS,
+# reclaimable = free + inactive + speculative + purgeable pages from vm_stat.
+mem_avail_gb() {
+    if command -v free >/dev/null 2>&1; then
+        free -g | awk 'NR==2{print $7}'
+    else
+        vm_stat | awk -v ps="$(sysctl -n hw.pagesize)" '
+            /Pages (free|inactive|speculative|purgeable)/ {gsub("\\.","",$NF); n+=$NF}
+            END {printf "%.1f\n", n*ps/1024^3}'
+    fi
+}
+
 wait_for_mem() {
     while :; do
-        avail=$(free -g | awk 'NR==2{print $7}')
-        [ "${avail:-0}" -ge "$MINFREE" ] && return 0
+        avail=$(mem_avail_gb)
+        # awk, not [ -ge ]: minfree_gb may be fractional (the schema allows
+        # it) and bash integer tests reject "1.0", which read as false and
+        # waited forever
+        awk -v a="${avail:-0}" -v m="$MINFREE" 'BEGIN{exit !(a >= m)}' && return 0
         echo "      (waiting for RAM: ${avail} GB free, need $MINFREE)"
         sleep 120
     done
