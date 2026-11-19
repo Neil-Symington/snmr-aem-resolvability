@@ -55,6 +55,12 @@ dzeff = copy(dzc); dzeff[fixidx] .= ov[fixidx]; thick = sum(dzeff[fixidx])
 const LAMS = parse.(Float64, split(arg("lam","0.01,0.1"), ","))
 const MAXREF = parse(Int, arg("maxrefine","6"))
 const TAG = arg("tag","col")
+# --edges upper|lower|both. `lower` re-runs one side from an existing solved
+# set without redoing the coarse profile.
+const EDGES = let e = lowercase(arg("edges","both"))
+    e == "both" ? ("upper", "lower") : e in ("upper","lower") ? (e,) :
+        error("--edges must be upper, lower or both; got $e")
+end
 
 function solve_at(C, l2, ms)
     m, chi, _, nf = occam(aem, ms, m0, R, ndata; fixidx=fixidx, fixval=C, mode=:map,
@@ -122,7 +128,10 @@ function seed_nodes(paths, m0)
     S = Dict{Float64,NamedTuple}(); cr = Inf
     for pth in paths
         PR = load(pth)
-        lt = PR["lt"]; ch = PR["min_chi2"]; ms = get(PR, "models", nothing)
+        # a profile stores min_chi2, an edges artefact stores chi2; both are
+        # "the lowest chi2 found at this node", so either may seed a re-run.
+        lt = PR["lt"]; ch = haskey(PR, "min_chi2") ? PR["min_chi2"] : PR["chi2"]
+        ms = get(PR, "models", nothing)
         cr = min(cr, PR["chiref"])
         for i in eachindex(lt)
             isfinite(ch[i]) || continue
@@ -150,7 +159,7 @@ function drive_edges!(S, RULES, thick, ndata)
         if isempty(acc)
             println("  no accepted node; nothing to bisect"); continue
         end
-        for ename in ("upper", "lower")
+        for ename in EDGES
             out = ename == "upper" ? filter(>(maximum(acc)), ks) : filter(<(minimum(acc)), ks)
             if isempty(out)
                 @printf("  %s edge: no rejected node beyond the grid -> OPEN, not bisected\n", ename)
@@ -161,7 +170,11 @@ function drive_edges!(S, RULES, thick, ndata)
             outer = ename == "upper" ? minimum(out) : maximum(out)
             @printf("  %s edge bracketed by %.4f (chi2 %.3f) and %.4f (chi2 %.3f)\n",
                     ename, inner, S[inner].chi, outer, S[outer].chi)
-            r = EF.bisect_edge(S, edge_solve, thr; maxref = MAXREF)
+            # EdgeFinder locates an UPPER crossing; `side` reflects for the
+            # lower one. Passing the unreflected set here re-refined the upper
+            # edge and reported it as the lower one (fixed 19 Nov 2026).
+            r = EF.bisect_edge(S, edge_solve, thr; maxref = MAXREF,
+                               side = ename == "upper" ? :upper : :lower)
             total += r.nsolves
             @printf("    %-9s %-10s %-10s %-10s %-9s %s\n",
                     "step dex","edge dex","chi2 lo","chi2 hi","move","dchi")

@@ -77,6 +77,36 @@ EF.bisect_edge(S4, mock, THR; maxref = 6)
 check("no stored node's chi2 increased",
       all(k -> S4[k].chi <= before[k] + 1e-9, collect(keys(before))))
 
+# ── 5. BOTH CROSSINGS: the lower edge must not be the upper one ───────────
+# The regression of 19 Nov 2026. `bracket` finds an upper crossing only, so a
+# caller that passes the unreflected solved set gets the upper edge back and
+# reports it as the lower one. On 3S the two came out 1.7957 S and 1.7963 S,
+# which is the same edge twice. A V-shaped chi2 has both crossings, so the two
+# must land a known distance apart.
+println("\n5. a V-shaped chi2 has two crossings, and they are different")
+const XC = -1.6
+const HALF = sqrt((THR - 25.0)/1000.0)         # f2 crosses at XC +/- HALF
+f2(x) = 25.0 + 1000.0 * (x - XC)^2
+mock2(x, from) = (chi = f2(x) + PEN * abs(x - from), m = x)
+
+S5 = Dict{Float64,NamedTuple}()
+for x in -2.2:0.1:-1.0; S5[x] = (chi = f2(x) + PEN*0.1, m = x); end
+ru = EF.bisect_edge(S5, mock2, THR; maxref = 10, side = :upper)
+rl = EF.bisect_edge(S5, mock2, THR; maxref = 10, side = :lower)
+@printf("   upper %.5f (truth %.5f)   lower %.5f (truth %.5f)\n",
+        ru.edge, XC + HALF, rl.edge, XC - HALF)
+check("upper edge near the upper crossing", abs(ru.edge - (XC + HALF)) < 0.02,
+      "got $(round(ru.edge,digits=5))")
+check("lower edge near the LOWER crossing", abs(rl.edge - (XC - HALF)) < 0.02,
+      "got $(round(rl.edge,digits=5))")
+check("the two edges are not the same edge", abs(ru.edge - rl.edge) > 0.5*2HALF,
+      "separation $(round(abs(ru.edge - rl.edge),digits=5)), expected $(round(2HALF,digits=5))")
+check("lower edge lies below the upper one", rl.edge < ru.edge)
+check("reflected solves came back with the caller's sign",
+      all(k -> k > -3.0 && k < 0.0, collect(keys(S5))),
+      "keys span $(round(minimum(keys(S5)),digits=3)) to $(round(maximum(keys(S5)),digits=3))")
+
+
 println()
 if nfail == 0
     println("ALL EDGE FINDER TESTS PASSED")

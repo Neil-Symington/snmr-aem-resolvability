@@ -18,6 +18,14 @@
 #     successive refinements -- but that is a DIFFERENT node each time, so the
 #     quantity measured the profile's slope and could never settle. A node is
 #     now compared only with itself.
+#  3. `bracket` locates an UPPER crossing only -- highest accepted node, lowest
+#     rejected node above it. A caller wanting the LOWER edge must reflect the
+#     abscissa, or it silently re-refines the upper edge and returns it.
+#     gate_check/edge_bisect.jl did exactly that until 19 Nov 2026: it printed
+#     the correct lower bracket, then called this module on the unreflected set.
+#     The reflection now lives here, behind `side = :lower`, so no caller has to
+#     remember it. stages/stage4_gate_v2.jl:433-441 reflects inline and is
+#     correct; it can be collapsed onto this path after the gate freeze.
 module EdgeFinder
 export bisect_edge
 
@@ -43,8 +51,25 @@ successive refinements: a valid bracket; the edge moving under `dex_tol`; and
 re-solving each bracket node warm from the newest midpoint changing THAT SAME
 node's chi2 by under `chi_tol`.
 """
-function bisect_edge(S, solvefn, thr; maxref = 8, dex_tol = 0.02, chi_tol = 0.5,
-                     extend_step = 0.1, max_extend = 6)
+function bisect_edge(S, solvefn, thr; side = :upper, kwargs...)
+    side === :upper && return bisect_upper!(S, solvefn, thr; kwargs...)
+    side === :lower || error("side must be :upper or :lower, got $side")
+    # reflect: a decreasing crossing becomes an increasing one
+    Sr = Dict(-k => v for (k, v) in S)
+    rr = bisect_upper!(Sr, (x, from) -> solvefn(-x, from), thr;
+                       xlabel = x -> -x, kwargs...)
+    for (k, v) in Sr                      # carry new solves back to the caller's set
+        (!haskey(S, -k) || v.chi < S[-k].chi) && (S[-k] = v)
+    end
+    (edge = isfinite(rr.edge) ? -rr.edge : NaN, converged = rr.converged,
+     state = rr.state, hist = [merge(h, (edge = -h.edge,)) for h in rr.hist],
+     nsolves = rr.nsolves, raised = rr.raised)
+end
+
+"The upper crossing. `xlabel` maps an abscissa back to the caller's sign for
+messages only; it never enters the arithmetic."
+function bisect_upper!(S, solvefn, thr; maxref = 8, dex_tol = 0.02, chi_tol = 0.5,
+                     extend_step = 0.1, max_extend = 6, xlabel = identity)
     hist = NamedTuple[]; nsolves = 0; streak = 0
     prev_edge = NaN; edge = NaN; state = "valid"; raised = String[]
     for it in 1:maxref
@@ -84,7 +109,7 @@ function bisect_edge(S, solvefn, thr; maxref = 8, dex_tol = 0.02, chi_tol = 0.5,
             if rq.chi < S[q].chi - 1e-12
                 S[q] = rq
             elseif rq.chi > S[q].chi + chi_tol
-                push!(raised, "node $(round(q,digits=4)): $(round(S[q].chi,digits=3)) -> $(round(rq.chi,digits=3))")
+                push!(raised, "node $(round(xlabel(q),digits=4)): $(round(S[q].chi,digits=3)) -> $(round(rq.chi,digits=3))")
             end
         end
         # re-establish and interpolate
