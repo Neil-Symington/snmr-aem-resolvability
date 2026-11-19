@@ -62,6 +62,17 @@ end
     @test refuses(c -> c["run"]["npar"] = -1)
     @test refuses(c -> c["detect"]["theta"] = 1.8)
     @test refuses(c -> c["mcmc"]["tmax"] = 1.0)                    # no ladder
+    # the SNMR ladder keys (2026-11-16)
+    @test refuses(c -> c["mcmc"]["tmax_snmr"] = 1.0)               # no ladder
+    @test refuses(c -> (c["mcmc"]["nchains_snmr"] = 4; c["mcmc"]["nchainsatone_snmr"] = 4))  # no heated chain
+    @test refuses(c -> c["mcmc"]["nchainsatone_snmr"] = 0)
+    @test refuses(c -> c["mcmc"]["nchains_snmr"] = 2.5)
+    @test !refuses(c -> (c["mcmc"]["nchains_snmr"] = 6; c["mcmc"]["nchainsatone_snmr"] = 2;
+                         c["mcmc"]["tmax_snmr"] = 10.0))
+    # replicate ladders (2026-11-18)
+    @test refuses(c -> c["mcmc"]["replicates_snmr"] = 0)
+    @test refuses(c -> c["mcmc"]["replicates_snmr"] = 1.5)
+    @test !refuses(c -> c["mcmc"]["replicates_snmr"] = 4)
     @test refuses(c -> c["mcmc"]["fbounds"] = [0.45, 0.001])       # reversed
     @test refuses(c -> c["aem"]["lm_gates"] = [26, 9])             # reversed
     @test refuses(c -> c["aem"]["lm_gates"] = [9.5, 26])           # fractional gate

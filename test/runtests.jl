@@ -84,6 +84,23 @@ end
     UDFSYSTEM_TEST == "" ||
         @testset "fieldrun SkyTEM system" begin include(UDFSYSTEM_TEST) end
 
+    # The T=1 slot in iteration order, which the replicate mixing gate is
+    # computed on. Pure function; no outputs needed.
+    @testset "fieldrun T=1 slot order" begin
+        isdefined(@__MODULE__, :PrerunLib) ||
+            Base.include(@__MODULE__, joinpath(FIELDRUN_DIR, "common", "prerun_lib.jl"))
+        # 3 chains, 2 at T=1, saved at 6 steps; burn-in 0.5 starts at step 3
+        T = [[1.0, 1.0, 2.0, 1.0, 1.0, 2.0],
+             [1.0, 2.0, 1.0, 1.0, 2.0, 1.0],
+             [2.0, 1.0, 1.0, 2.0, 1.0, 1.0]]
+        o = PrerunLib.t1_slot_order(T; burninfrac = 0.5)
+        @test o == [(3, 2, 2), (3, 3, 2), (4, 1, 3), (4, 2, 3),
+                    (5, 1, 4), (5, 3, 3), (6, 2, 4), (6, 3, 4)]
+        # two draws per step, every step from the burn-in start
+        @test length(o) == 2 * (6 - 3 + 1)
+        @test issorted(first.(o))
+    end
+
     # Each integration test names the FILES it needs, not a directory. The gate
     # used to be `isdir(ROOT/outputs)`, which is not what any of them read: as
     # soon as a pipeline run created outputs/, two of them fired and died on a

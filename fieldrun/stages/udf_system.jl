@@ -41,8 +41,10 @@ using ..FieldConfig
 
 export LM_times, HM_times, LM_ramp, HM_ramp, rTx, rRx, dzRx, lowpassfcs,
        LM_GATES, HM_GATES, LM_WINDOW_US, HM_WINDOW_US,
-       build_grid, build_operator, PV, MU0, DES, report_centres, describe
+       build_grid, build_operator, PV, MU0, DES, report_centres, describe,
+       SYSTEM, predicted, data_blocks, gate_times
 
+const SYSTEM = "skytem"
 const MU0 = 4π * 1e-7
 const PV  = 1e-12                 # delivered units: pV/(A.turns.m^4)
 
@@ -199,7 +201,7 @@ dB/dt in pV/(A.turns.m^4); `height` is the laser height of the Tx loop centre.
 """
 function build_operator(d_lm, σ_lm, d_hm, σ_hm, height::Real;
                         grid = build_grid(), calcjacobian = true,
-                        σ_scale::Real = 1.0, ρ_start::Real = 30.0)
+                        σ_scale::Real = 1.0, ρ_start::Real = 30.0, useML::Bool = false)
     zTx = -float(height)
     zRx = zTx + dzRx
     k = PV / MU0
@@ -215,8 +217,21 @@ function build_operator(d_lm, σ_lm, d_hm, σ_hm, height::Real;
         z = grid.z, ρ = ρ0,
         dlow = d_lm .* k, dhigh = d_hm .* k,
         σlow = σ_lm .* (σ_scale * k), σhigh = σ_hm .* (σ_scale * k),
-        lowpassfcs = lowpassfcs, calcjacobian = calcjacobian)
+        lowpassfcs = lowpassfcs, calcjacobian = calcjacobian, useML = useML)
 end
+
+# ── the system-independent API the stages call ─────────────────────────────
+# XCiteSystem (stages/xcite_system.jl) exports the same four names, so the AEM
+# stages are written once and [aem] system picks the module. Data order is LM
+# then HM throughout, which is the order SkyTEM1DInversion.dBzdt stacks them.
+build_operator(g::NamedTuple, height::Real; kw...) =
+    build_operator(g.d_lm, g.σ_lm, g.d_hm, g.σ_hm, height; kw...)
+"Forward response at the operator's current model, pV/(A.turns.m^4), LM then HM."
+predicted(aem) = vcat(aem.Flow.dBzdt[aem.selectlow], aem.Fhigh.dBzdt[aem.selecthigh]) .* (MU0 / PV)
+"Named index ranges of the data vector, for per-moment residual summaries."
+data_blocks(g) = [("LM", 1:length(g.d_lm)),
+                  ("HM", length(g.d_lm) .+ (1:length(g.d_hm)))]
+gate_times() = (LM_times = LM_times, HM_times = HM_times)
 
 "Print what was parsed, so the system can be eyeballed against the report."
 function describe()

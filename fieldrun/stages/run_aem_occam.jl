@@ -4,7 +4,8 @@
 # The control file first: support modules read it at load time.
 include(joinpath(@__DIR__, "..", "common", "stage_prelude.jl"))
 # run_aem_occam.jl — smooth AEM inversion of the nearest fiducial at each of the
-# four chosen UDF SMR sites, with a per-sounding noise calibration.
+# SMR sites, with a per-sounding noise calibration. System-independent: [aem]
+# system picks SkyTEM (UDF) or XCite (Birrindudu) through common/aem_lib.jl.
 #
 #   julia --project=. run_aem_occam.jl
 #
@@ -25,10 +26,7 @@ function main()
     grid = build_grid()
     @printf("AEM depth grid: %d cells, 0 to %.1f m (last cell %.1f m thick)\n",
             length(grid.zall), grid.zbnd[end], grid.zbnd[end] - grid.zbnd[end-1])
-    @printf("system: rTx %.2f m, rRx %.2f m, dzRx %.1f m, %d LM + %d HM gates\n",
-            rTx, rRx, dzRx, length(LM_times), length(HM_times))
-    @printf("        LM %.2f-%.1f us, HM %.1f-%.1f us\n\n",
-            LM_times[1]*1e6, LM_times[end]*1e6, HM_times[1]*1e6, HM_times[end]*1e6)
+    describe(); println()     # the system module says what it parsed
 
     rows = []
     for s in manifest()
@@ -50,25 +48,29 @@ function main()
         # the LAST candidate of the line search left there, not the accepted
         # model, so the forward is re-run at the accepted model first.
         chi2(f.aem, f.m)
-        nlm = length(g.d_lm)
         rn = (f.aem.W * f.aem.res)
-        @printf("    normalised residual rms: LM %.2f  HM %.2f\n\n",
-                sqrt(mean(rn[1:nlm].^2)), sqrt(mean(rn[nlm+1:end].^2)))
+        println("    normalised residual rms: ",
+                join([@sprintf("%s %.2f", b, sqrt(mean(rn[ix].^2))) for (b, ix) in data_blocks(g)], "  "), "\n")
+        pred = predicted(f.aem)
+        # SkyTEM's per-moment keys, kept so files written before the system
+        # switch and after it read the same way. XCite has one moment.
+        legacy = AEM_SYSTEM == "skytem" ?
+            (d_lm = g.d_lm, sigma_lm = g.σ_lm, g_lm = g.g_lm,
+             d_hm = g.d_hm, sigma_hm = g.σ_hm, g_hm = g.g_hm,
+             pred_lm = pred[1:length(g.d_lm)], pred_hm = pred[length(g.d_lm)+1:end]) : (;)
 
         jldsave(joinpath(OUT, "aem_occam_$(s.field_id).jld2");
             field_id = s.field_id, zall = grid.zall, zbnd = grid.zbnd,
             m_log10sigma = f.m, sigma = σz,
             chi2 = f.chi2, ndata = f.ndata, chi2n = f.chi2 / f.ndata,
-            noise_scale = cal.scale,
-            d_lm = g.d_lm, sigma_lm = g.σ_lm, g_lm = g.g_lm,
-            d_hm = g.d_hm, sigma_hm = g.σ_hm, g_hm = g.g_hm,
-            pred_lm = (f.aem.Flow.dBzdt[f.aem.selectlow]) .* (MU0 / PV),
-            pred_hm = (f.aem.Fhigh.dBzdt[f.aem.selecthigh]) .* (MU0 / PV),
+            noise_scale = cal.scale, aem_system = AEM_SYSTEM,
+            d = g.d, sigma_d = g.σ, gate = g.gate, moment = g.moment, pred = pred,
+            legacy...,
             height_m = s.height_m,
             line = s.line, fiducial = s.fiducial, sep_m = s.sep_m,
             easting = s.easting, northing = s.northing, dtm_m = s.dtm_m,
             plm = s.plm, bore = s.bore, bore_sep_m = s.bore_sep_m,
-            LM_times = LM_times, HM_times = HM_times)
+            gate_times()...)
         push!(rows, (s.field_id, cal.scale, f.chi2 / f.ndata, f.ndata,
                      unit_geomean(f.m, grid.zall, 0, 20),
                      unit_geomean(f.m, grid.zall, 20, 60),
