@@ -1,0 +1,3 @@
+Field_ID,area,easting,northing,bore,bore_sep_m,bore_td,nmr_top,aem_sep_m,aem_line,aem_fiducial,aem_frame_height,aem_powerline_monitor,aem_rec,has_snmr,report
+SMR_UD21,Louth,315059.0,6622676.711,GW036942.2.2,282.0,50.25,10.25,67.4,238201.0,50549965.0,35.78,0.65,771528,True,interbedded silt/clay with low mobile water; 'an aquifer with low effective porosity'
+SMR_UD24,SIS,371232.0,6654668.0,GW098204.1.1,499.0,65.69,8.69,73.4,320101.0,51338279.5,35.8,0.71,1474272,True,"salt interception scheme area, Figure 5.8"
