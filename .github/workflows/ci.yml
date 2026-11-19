@@ -153,13 +153,30 @@ jobs:
           rm -f data/cond_C2_typical2PT.jld2 ci_stale.log
           echo "shell drivers OK"
 
+      # A MANAGED python, and deliberately the last thing set up in this job.
+      # The runner's own python3 on macOS is Homebrew's, which marks itself
+      # externally managed (PEP 668) and refuses a system-wide `pip install`
+      # outright, so the self-test below has never once run on macOS -- every
+      # macOS job since the step was added on 12 Nov 2026 failed here, on main
+      # as well. setup-python supplies an interpreter pip may install into, on
+      # both platforms.
+      #
+      # It goes HERE, not at the top of the job, because it puts its own python
+      # ahead of everything on PATH. install.jl carries a conda PATH workaround
+      # and the suite above runs HiQGA's conda build; neither should be handed a
+      # different python than the one they were measured against. Every step
+      # that cares has already run by this point.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       # Pure Python and portable, but it is the only non-Julia tool shipped, so
       # it gets checked on both platforms. 18 assertions against a built-in
       # fixture; no delivery files needed.
       - name: ASEG-GDF converter self-test
         run: |
-          python3 -m pip install --quiet --disable-pip-version-check pyarrow numpy
-          python3 util/aseg_to_geoparquet.py --selftest
+          python -m pip install --quiet --disable-pip-version-check pyarrow numpy
+          python util/aseg_to_geoparquet.py --selftest
 
   reject-old-julia:
     name: install.jl refuses Julia 1.11
