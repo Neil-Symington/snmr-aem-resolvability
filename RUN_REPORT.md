@@ -93,6 +93,64 @@ and phi.
 Nothing in the run depends on closing that gap, but it is the one provenance
 link in the chain that is asserted rather than verified.
 
+
+### The lower band edge was the upper edge, 19 Nov
+
+`gate_check/edge_bisect.jl` reported the lower band edge wrongly from the day it
+was written until commit 54512a1 (tag `edge-lower-reflect-20261119`).
+`EdgeFinder.bracket` locates an UPPER crossing only — highest accepted node, and
+the lowest rejected node above it. The tool computed the correct lower bracket,
+printed it, and then called the module on the UNREFLECTED solved set, so the
+"lower edge" search re-refined the upper edge and returned it.
+
+On 3S the two sides came out 1.7957 S and 1.7963 S (absolute rule), and 1.6641 S
+and 1.6654 S (relative rule): the same edge twice, against a printed lower
+bracket of −1.50 dex (chi2 28.687) to −1.75 dex (chi2 48.209).
+
+**Blast radius: 3S only.** Every other tag short-circuits to `state = "open"`
+before the call, having no rejected node below the accepted range — 3P,
+3P_sed2, 2S and the three smokes. 2P never went through this tool.
+`stages/stage4_gate_v2.jl:433-441` reflects inline and is CORRECT, so the
+release path was never affected; it is left untouched with the freeze pending.
+
+The reflection now lives in `EdgeFinder` behind `side = :lower`.
+`test/test_edgefinder.jl` case 5 puts a V-shaped chi2 with both crossings to it:
+against the old code the lower search returns −1.45629, the upper crossing;
+the fix returns −1.74371 against a truth of −1.74436.
+
+### 3S upper edge, absolute rule: NOT CONVERGED, 19 Nov
+
+Reported from the solved nodes, not re-run (Neil's ruling, 19 Nov). Window
+thickness 16.0000 m, threshold chi2 ≤ 45.840.
+
+| | dex | chi2 | C |
+|---|---|---|---|
+| highest accepted | −0.950195 | 45.414 | **1.7944 S** |
+| lowest rejected | −0.949707 | 45.860 | **1.7964 S** |
+
+The bracket is 0.0005 dex wide, so the edge is pinned to about 0.1%. The
+NOT CONVERGED verdict is from the third convergence criterion — a bracket node's
+chi2 must not move by more than 0.5 when re-solved warm from the newest midpoint
+— and not from bracket width.
+
+The relative-rule upper edge CONVERGED at **1.6641 S** (state `located`).
+
+Five warnings were raised during that search, where re-solving a node warm from
+a nearer start RAISED its chi2, which continuation should make impossible:
+
+```
+node -1.0:     27.645   -> 28.574
+node -0.75:  1427.356   -> 2122.094
+node -1.0:     27.645   -> 40.697
+node -1.0:     27.645   -> 35.472
+node -0.9375:  62.516   -> 64.603
+```
+
+Node −1.0 is the accepted bracket node and moved three times, once by 13.05.
+The stored minimum is never overwritten by a worse solve, so the reported edge
+is unaffected; what the warnings show is that the Occam solve at a forced
+conductance is not a deterministic function of its start. Not chased.
+
 ## What is current
 
 | stage | 3P | 2P | 3S | 2S |
