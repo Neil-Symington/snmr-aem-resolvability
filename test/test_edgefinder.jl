@@ -107,6 +107,31 @@ check("reflected solves came back with the caller's sign",
       "keys span $(round(minimum(keys(S5)),digits=3)) to $(round(maximum(keys(S5)),digits=3))")
 
 
+# ── 6. the solver may return MORE fields than the seeds carry ─────────────
+# The production solver returns (chi, m, nbound, lam); a seeded node carries
+# (chi, m, nbound). Building the reflected set with an inferred value type
+# froze it to the seeds' shape and the first new solve could not convert.
+# This is the shape the real tool has, so the test now has it too.
+println("\n6. the solver returns more fields than the seeds carry")
+S6 = Dict{Float64,NamedTuple}()
+for x in -2.2:0.1:-1.0; S6[x] = (chi = f2(x) + PEN*0.1, m = x, nbound = 0); end
+mock3(x, from) = (chi = f2(x) + PEN * abs(x - from.m), m = (; m = x), nbound = 1, lam = 0.01)
+wide(x, from) = (r = mock3(x, from isa NamedTuple ? from : (; m = from));
+                 (chi = r.chi, m = r.m.m, nbound = r.nbound, lam = r.lam))
+ok6 = true
+try
+    global rl6 = EF.bisect_edge(S6, wide, THR; maxref = 8, side = :lower)
+catch e
+    global ok6 = false
+    println("   threw: ", sprint(showerror, e)[1:min(end,110)])
+end
+check("lower edge runs when the solver adds fields", ok6)
+ok6 && check("and still lands on the lower crossing",
+             abs(rl6.edge - (XC - HALF)) < 0.02, "got $(round(rl6.edge,digits=5))")
+ok6 && check("the extra field survives in the caller's set",
+             any(v -> haskey(v, :lam), values(S6)))
+
+
 println()
 if nfail == 0
     println("ALL EDGE FINDER TESTS PASSED")

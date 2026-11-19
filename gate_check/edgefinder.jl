@@ -55,7 +55,12 @@ function bisect_edge(S, solvefn, thr; side = :upper, kwargs...)
     side === :upper && return bisect_upper!(S, solvefn, thr; kwargs...)
     side === :lower || error("side must be :upper or :lower, got $side")
     # reflect: a decreasing crossing becomes an increasing one
-    Sr = Dict(-k => v for (k, v) in S)
+    # The value type must stay ABSTRACT. `Dict(-k => v for ...)` infers a
+    # concrete NamedTuple type from the seeds, and the real solver returns MORE
+    # fields than a seeded node carries (chi, m, nbound, lam against chi, m,
+    # nbound), so the first new solve fails to convert. Found on the 3S lower
+    # edge, 19 Nov 2026.
+    Sr = Dict{Float64,NamedTuple}(-k => v for (k, v) in S)
     rr = bisect_upper!(Sr, (x, from) -> solvefn(-x, from), thr;
                        xlabel = x -> -x, kwargs...)
     for (k, v) in Sr                      # carry new solves back to the caller's set
