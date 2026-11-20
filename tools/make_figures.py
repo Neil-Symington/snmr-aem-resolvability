@@ -277,8 +277,8 @@ def fig_misfit(DS, out):
         ax.plot(C[seq], chi[seq], mk + "-", color=col, ms=3.4, lw=1.0, label=lab,
                 zorder=5, clip_on=True)
         tc = D.get("truthC_fine", D["truthC"])
-        ax.plot([tc], [D["chibest"]], "*", color=WHITE, ms=10,
-                markeredgecolor="#000", markeredgewidth=0.6, zorder=8)
+        ax.plot([tc], [D["chibest"]], "*", color=col, ms=11,
+                markeredgecolor="#000", markeredgewidth=0.7, zorder=8)
 
     ax.set_xscale("log")
     ax.set_ylim(ymin, ymax)
@@ -308,8 +308,9 @@ def fig_misfit(DS, out):
 
     panel_box(ax, letter="a")
     handles, labs = ax.get_legend_handles_labels()
-    handles.append(Line2D([], [], marker="*", color="none", markerfacecolor=WHITE,
-                          markeredgecolor="#000", markeredgewidth=0.6, markersize=10))
+    # the star now takes each column's own colour, so the key shows it unfilled
+    handles.append(Line2D([], [], marker="*", color="none", markerfacecolor="none",
+                          markeredgecolor=INK, markeredgewidth=0.9, markersize=11))
     labs.append("true value")
     # lower left: centre-left carried the legend until 20 Nov, and 3S's rising
     # limb now runs through it. Below the flat part of the curves is clear.
@@ -417,12 +418,15 @@ def fig_ceiling(DS, out):
          Line2D([], [], color=WHITE, lw=2.2)]
     l = ["ceiling at the upper edge", "lower edge", "edge open, not located",
          "true pore water"]
-    leg = ax.legend(h, l, loc="upper left", frameon=True, facecolor=PANEL,
-                    edgecolor=RULE, framealpha=0.95, handlelength=1.9)
+    # OUTSIDE the axes. Inside, it covered the top of test two's bar wherever it
+    # was put: the bars span three decades and the panel has no clear corner.
+    leg = fig.legend(h, l, loc="lower center", ncol=4, frameon=False,
+                     bbox_to_anchor=(0.5, -0.045), handlelength=1.9,
+                     columnspacing=1.6)
     for t in leg.get_texts():
         t.set_color(INK); t.set_fontsize(7.0)
 
-    panel_box(ax, letter="b", title="Salinity ceiling")
+    panel_box(ax, letter="b")      # no title; the y-axis label carries it
     save(fig, out)
 
 def save(fig, out):
