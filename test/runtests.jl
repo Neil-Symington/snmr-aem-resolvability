@@ -77,7 +77,8 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
             # in this suite would have noticed, because the pooling test
             # exercises pooled_sigma without loading the stage.
             ("stage scripts load", "test_stage_loads.jl",      String[]),
-            ("run folders",       "test_run_folders.jl",      String[]))
+            ("run folders",       "test_run_folders.jl",      String[]),
+            ("refinement merge",  "test_refine_merge.jl",     String[]))
         f = joinpath(@__DIR__, script)
         missing_inputs = [n for n in needs if !isfile(joinpath(ROOT, n))]
         if !isfile(f)

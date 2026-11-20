@@ -74,6 +74,13 @@ const NPTSC_OVERRIDE = parse(Int, get(ARG, "nptsc", "0"))
 # chain over-reports chi2 near the edge, which the file's own measurement already
 # showed (47.878 at 0.1 dex against 42.943 at 0.05 dex, across the threshold).
 const DEXFINE = parse(Float64, get(ARG, "dexfine", "0"))
+# A FULL 0.05 dex grid over a 1.5 dex reachable range is 32 nodes against 15,
+# and 3P's own timings put that near 22 h for one column before two contend.
+# Ruled 21 Nov: keep the 15-node grid and refine to --refinedex only within
+# --refinehalf of each edge the first bisection finds, then bisect again on the
+# enriched set. Both default off, so nothing changes unless they are passed.
+const REFINEDEX  = parse(Float64, get(ARG, "refinedex", "0"))
+const REFINEHALF = parse(Float64, get(ARG, "refinehalf", "0.3"))
 # A SMOKE MUST NAME ITS OWN OUTPUT DIRECTORY, under a scratch path. On 20 Nov a
 # three-node smoke launched with --config configs/synth_2P.toml inherited that
 # config's output directory and, finishing after the production run, overwrote
@@ -413,6 +420,60 @@ function main()
     end
     SWMIN = reduce(best_of, [SW[l2] for l2 in LAM_SET])
 
+    # ---- refine the grid near each edge ---------------------------------
+    # A provisional edge is a sign change in admissibility along the solved
+    # grid. Around each one, nodes are inserted at REFINEDEX spacing out to
+    # REFINEHALF either side, swept at every lambda2 in both directions like
+    # the rest, and merged in. The bisection that follows then starts from a
+    # fine grid where it matters and a coarse one where it does not, which is
+    # the whole reason the edge moved between gate_check and the release path.
+    refine_added = 0; refine_nodes = Float64[]
+    if REFINEDEX > 0
+        gd = SWMIN.good
+        cross = Float64[]
+        for i in 1:(length(gd)-1)
+            gd[i] != gd[i+1] && push!(cross, (lt[i] + lt[i+1]) / 2)
+        end
+        want = Float64[]
+        for xc in cross, x in (xc - REFINEHALF):REFINEDEX:(xc + REFINEHALF)
+            (x >= lt[1] - 1e-9 && x <= lt[end] + 1e-9) || continue
+            any(abs(x - e) < REFINEDEX/2 for e in vcat(lt, want)) && continue
+            push!(want, x)
+        end
+        sort!(want)
+        @printf("\n  REFINEMENT: %d provisional edge(s) at %s dex; %d new nodes at %.4f dex spacing, +/- %.2f dex\n",
+                length(cross), isempty(cross) ? "none" :
+                join([@sprintf("%.4f", c) for c in cross], ", "), length(want), REFINEDEX, REFINEHALF)
+        if !isempty(want)
+            Cw = (10 .^ want) .* thick
+            SWR = Dict{Float64,Any}()
+            for l2 in LAM_SET
+                f = sweep(l2, want, Cw; tag = "refine fwd ")
+                b = sweep(l2, reverse(want), reverse(Cw); laplace = false, tag = "refine bwd ")
+                SWR[l2] = best_of(f, revsw(b))
+            end
+            RMIN = reduce(best_of, [SWR[l2] for l2 in LAM_SET])
+            # merge, keeping the grid sorted in lt
+            allt = vcat(lt, want); ord = sortperm(allt)
+            mrg(a, b) = vcat(a, b)[ord]   # NOT `cat`: that is Base's, and shadowing it here
+                                          # would reach every later call in this scope
+            SWMIN = (chi2 = mrg(SWMIN.chi2, RMIN.chi2), phi = mrg(SWMIN.phi, RMIN.phi),
+                     ldH = mrg(SWMIN.ldH, RMIN.ldH), ldP = mrg(SWMIN.ldP, RMIN.ldP),
+                     nbound = mrg(SWMIN.nbound, RMIN.nbound), good = mrg(SWMIN.good, RMIN.good),
+                     conres = mrg(SWMIN.conres, RMIN.conres), models = mrg(SWMIN.models, RMIN.models))
+            for l2 in LAM_SET
+                A, B = SW[l2], SWR[l2]
+                SW[l2] = (chi2 = mrg(A.chi2, B.chi2), phi = mrg(A.phi, B.phi),
+                          ldH = mrg(A.ldH, B.ldH), ldP = mrg(A.ldP, B.ldP),
+                          nbound = mrg(A.nbound, B.nbound), good = mrg(A.good, B.good),
+                          conres = mrg(A.conres, B.conres), models = mrg(A.models, B.models))
+            end
+            lt = allt[ord]; Cg = (10 .^ lt) .* thick
+            refine_added = length(want); refine_nodes = want
+            @printf("  grid now %d nodes, %.4f to %.4f dex\n", length(lt), lt[1], lt[end])
+        end
+    end
+
     # ---- band edges by TRUE BISECTION ----------------------------------
     # Each step solves the constrained problem at a new C rather than
     # interpolating between grid nodes. That is what lets the fine grid drop to
@@ -569,6 +630,8 @@ function main()
         node_nbound_solver = SWMIN.nbound,
         m_prior = collect(info.m_prior), sigma_bounds = sb,
         grid_mode = mode, coarse_step_dex = coarse_step,
+        refine_dex = REFINEDEX, refine_halfwidth = REFINEHALF,
+        refine_added = refine_added, refine_nodes = refine_nodes,
         edge_lo_dex = elo, edge_hi_dex = ehi, edge_lo_open = open_lo, edge_hi_open = open_hi,
         edge_lo_C = isfinite(elo) ? 10^elo*thick : NaN,
         edge_hi_C = isfinite(ehi) ? 10^ehi*thick : NaN,
