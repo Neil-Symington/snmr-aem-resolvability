@@ -44,7 +44,9 @@ die()    { status "PAIR FAILED: $*"; exit 1; }
 
 # kept identical to tools/m4_run.sh; duplicated rather than sourced because that
 # script executes a run when sourced.
-column_tag() { case "$1" in 1) echo 3P;; 2) echo 2P;; 3) echo 3S;; 4) echo 2S;; *) echo "";; esac; }
+# 5 and 6 are test two v2, wired 21 Nov; see tools/m4_run.sh for what they are.
+column_tag() { case "$1" in 1) echo 3P;; 2) echo 2P;; 3) echo 3S;; 4) echo 2S;;
+                            5) echo 2Pv2;; 6) echo 2Sv2;; *) echo "";; esac; }
 
 check_stage1() {
     local d="$1" f ok=0
