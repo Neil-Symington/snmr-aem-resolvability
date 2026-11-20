@@ -45,3 +45,13 @@ include(joinpath(ROOT, "src", "runout.jl")); using .RunOut
     many = [RunOut.run_dir(base, "stageY", "col") for _ in 1:3]
     @test length(unique(many)) == 3
 end
+
+@testset "Stage 2 refuses to run without --tag" begin
+    # Six data/stage2/x_<kind>_<stamp> folders accumulated from launches with no
+    # --tag, each an early death that could not be traced to a column.
+    src = read(joinpath(ROOT, "stages", "stage2_snmr.jl"), String)
+    @test occursin("--tag is required", src)
+    # and the run directory is named from TAG, with no "x" default left anywhere
+    @test occursin("\"stage2\", \"\$(TAG)_\$(KIND)_\$(STAMP)\"", src)
+    @test !occursin("get(ARG, \"tag\", \"x\")", src)
+end

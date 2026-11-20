@@ -58,7 +58,17 @@ const TRUEKERNEL = haskey(ARG, "truekernel")
 const TIER   = get(ARG, "tier", "typical")
 # --tag 2 switches to the two-aquifer column and its Occam-derived SMR data,
 # and writes cond_<C>_<tier>2.jld2 so the two experiments never collide.
-const TAG    = get(ARG, "tag", "")
+# --tag is REQUIRED. The run directory is named from it, so a launch without
+# one wrote to data/stage2/x_<kind>_<stamp>; six such folders accumulated
+# before anyone noticed, each an early death with no way to tell which column
+# it belonged to. Ruled 21 Nov 2026.
+const TAG    = let t = get(ARG, "tag", "")
+    isempty(t) && error("""
+        --tag is required: the Stage 2 run directory is named from it.
+        Without it the run lands in data/stage2/x_<kind>_<stamp> and cannot be
+        traced to a column. Pass --tag <COLUMN>T, e.g. --tag 2Pv2T.""")
+    t
+end
 # The "T" suffix selects the trans-D SMR data and output, but the TRUTH column
 # is the same two-aquifer one either way — truth_murray2.jld2, not 2T.
 const TTAG   = replace(TAG, "T" => "")
@@ -108,7 +118,7 @@ const OUT  = joinpath(HERE, "..", "data")
 # passed over a full-length result.
 const STAMP  = Dates.format(Dates.now(), "yyyymmdd-HHMMSS")
 const KIND   = haskey(ARG, "truekernel") ? "truekernel" : "pooled"
-const RUNDIR = joinpath(OUT, "stage2", "$(get(ARG, "tag", "x"))_$(KIND)_$(STAMP)")
+const RUNDIR = joinpath(OUT, "stage2", "$(TAG)_$(KIND)_$(STAMP)")
 const RUN    = joinpath(RUNDIR, "chains"); mkpath(RUN)
 # Vendored into src/. This include used to point at ../ek_prerun/, which is
 # outside the repository and was never shipped, so Stage 2 -- and therefore

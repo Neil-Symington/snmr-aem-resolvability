@@ -67,6 +67,13 @@ const NPTS_OVERRIDE = parse(Int, get(ARG, "npts", "0"))
 # its fine node count for both passes; it needs a coarse grid fine enough to
 # land inside the reachable range. Added 20 Nov after that smoke failed.
 const NPTSC_OVERRIDE = parse(Int, get(ARG, "nptsc", "0"))
+# --dexfine sets the FINE grid's spacing directly, in dex, instead of leaving it
+# to fall out of a node count across a reachable range whose width is not known
+# until PASS 1 has run. Asked for on 21 Nov, after 3P's release run put its edge
+# at 0.3399 S against gate_check's 0.4320 S on a 0.1100 dex grid: a coarser warm
+# chain over-reports chi2 near the edge, which the file's own measurement already
+# showed (47.878 at 0.1 dex against 42.943 at 0.05 dex, across the threshold).
+const DEXFINE = parse(Float64, get(ARG, "dexfine", "0"))
 # A SMOKE MUST NAME ITS OWN OUTPUT DIRECTORY, under a scratch path. On 20 Nov a
 # three-node smoke launched with --config configs/synth_2P.toml inherited that
 # config's output directory and, finishing after the production run, overwrote
@@ -338,6 +345,12 @@ function main()
             the model bounds, or the coarse grid is too sparse to land inside the
             reachable range -- raise [gate].n_nodes_coarse and re-run.""")
         lo_i, hi_i = first(reach), last(reach)
+        if DEXFINE > 0
+            span = ltc[hi_i] - ltc[lo_i]
+            NF = max(3, round(Int, span / DEXFINE) + 1)
+            @printf("\n  --dexfine %.4f over a %.4f dex reachable range -> %d fine nodes\n",
+                    DEXFINE, span, NF)
+        end
         lt = collect(range(ltc[lo_i], ltc[hi_i], length = NF))
         Cg = (10 .^ lt) .* thick
         coarse_info = (ltc = ltc, chi2 = SC.chi2, nbound = SC.nbound,

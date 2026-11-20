@@ -84,7 +84,13 @@ end
             @info "skipped: checks for a prior stage's output at load" script = basename(p)
             continue
         end
-        err = load_error(p; args = ["--config", CFG])
+        # Stage 2 refuses to load without --tag, by design: its run directory is
+        # named from it and six untagged runs once landed in data/stage2/x_*.
+        # The load test supplies one, because what it tests is that the file
+        # EVALUATES, not that the argument check works -- that has its own test.
+        a = ["--config", CFG]
+        basename(p) == "stage2_snmr.jl" && append!(a, ["--tag", "loadtest"])
+        err = load_error(p; args = a)
         err === nothing || @info "load failure" script = basename(p) error = first(split(err, "\n"))
         @test err === nothing
     end
