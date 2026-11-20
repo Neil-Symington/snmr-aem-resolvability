@@ -162,6 +162,42 @@ The stored minimum is never overwritten by a worse solve, so the reported edge
 is unaffected; what the warnings show is that the Occam solve at a forced
 conductance is not a deterministic function of its start. Not chased.
 
+### The 2P production gate was overwritten by a smoke, 21 Nov
+
+The third artefact lost to an overwrite, after Stage 2 run A and the control
+nuisance files.
+
+The 2P release Stage 4 run landed at 17:07 on 20 Nov after 11 h 48 m. A
+three-node two-pass smoke, launched at 14:28 with `--config configs/synth_2P.toml`,
+took its output directory from that config -- Stage 4 read `odir` from
+`out["dir"]` and nothing else -- and finished at 00:12 on 21 Nov, writing
+`outputs/synth_2P/stage4_synth_2P.jld2` over the production artefact. The
+per-sweep checkpoint shares that directory and went the same way.
+
+**The production artefact and its checkpoint are gone. The numbers below are
+FROM THE LOG (`logs/stage4_2P_fixedlam.log`); the artefact is lost.** The
+models, per-node arrays and sweep records cannot be recovered.
+
+| | value | source |
+|---|---|---|
+| absolute upper edge | **7.0292 S** | from log, artefact lost |
+| lower edge | **0.0299 S**, `bracket lost, extended`, capped at 14 solves | from log, artefact lost |
+| fine grid | 13/15 admissible, 3 on a bound | from log, artefact lost |
+| end-node assertion | FAILS at the low end: first NO, last yes | from log, artefact lost |
+| verified | false | from log, artefact lost |
+
+The acceptance test was run against the production artefact before it was
+overwritten and 2P passed 11 of 11, with the upper edge inside the expected
+6.3697-7.1469 S bracket. That result stands as an observation but cannot be
+reproduced from disk.
+
+Fixed in commit 5fde62d, not by guarding this path but by removing the class:
+every stage now writes a timestamped run folder, the flat path became a
+pointer, `RunOut.save_result` refuses to write where something already is,
+there is no `--force`, and a smoke must name an `--outdir` under a scratch
+path or it will not start.
+
+
 ## What is current
 
 | stage | 3P | 2P | 3S | 2S |
