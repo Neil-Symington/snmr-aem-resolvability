@@ -1,0 +1,31 @@
+# ---------------------------------------------------------------------
+#  synth_2Sv2.toml  --  synthetic column 2Sv2
+#  test two v2, brackish partner, tier S
+#  Role: primary   Priority: primary
+# ---------------------------------------------------------------------
+# Inherits every key, and every explanatory comment, from ../config.toml.
+# Only what differs for this column is restated here, so a reviewer can
+# see the whole difference between two columns on one screen.
+extends = "../config.toml"
+
+name  = "synth_2Sv2"
+label = "test two v2, brackish partner, tier S"
+
+[data]
+truth  = "data/truth_murray2Sv2.jld2"
+column = "2Sv2"
+parent = "2Pv2"         # brackish partner of 2Pv2; differs only in the aquifer's pore water
+role   = "saline_control"
+snmr_ensemble = ""        # Stage 2 has not run for this column yet
+# Stage 1 has not run for this column yet; set after it does.
+stage1_draws = ""
+
+[data.loop]
+side       = 100.0
+area_check = 10000.0
+
+[data.snmr]
+noise_tier = "typical"
+
+[output]
+dir = "outputs/synth_2Sv2"

@@ -8,6 +8,14 @@
 #   2 = 2P  test two, fresh      configs/synth_2P.toml
 #   3 = 3S  test one, brackish   configs/synth_3S.toml
 #   4 = 2S  test two, brackish   configs/synth_2S.toml
+#   5 = 2Pv2 test two v2, fresh    configs/synth_2Pv2.toml
+#   6 = 2Sv2 test two v2, brackish configs/synth_2Sv2.toml
+#
+# Columns 5 and 6 wired 21 Nov. They are test two rebuilt with TEST ONE'S
+# [variability] -- jitter logit, corr_length 1.0, log_sd_phi 0.35,
+# log_sd_clay 0.45, log_sd_sigma_w 0.25 -- so the two grounds differ in
+# geometry and confinement and no longer also in roughness. Same units, depths,
+# water and window as v1. Their windows are v1's, 17.5-33.5 m.
 #
 # Columns 3 and 4 wired 17 Nov on the second machine, their truth columns having
 # been built from paper_3P_brackish.toml and confined_aquifer_brackish.toml.
@@ -56,9 +64,11 @@ mkdir -p "$ROOTOUT"
 status() { echo "- $(date '+%Y-%m-%d %H:%M') $*" | tee -a "$STATUS"; }
 die()    { status "FAILED: $*"; exit 1; }
 
-column_tag() { case "$1" in 1) echo 3P;; 2) echo 2P;; 3) echo 3S;; 4) echo 2S;; *) echo "";; esac; }
+column_tag() { case "$1" in 1) echo 3P;; 2) echo 2P;; 3) echo 3S;; 4) echo 2S;;
+                            5) echo 2Pv2;; 6) echo 2Sv2;; *) echo "";; esac; }
 column_win() { case "$1" in 1) echo "7.5 23.5 6.0 40.0";; 2) echo "17.5 33.5 4.0 34.0";;
-                                3) echo "7.5 23.5 6.0 40.0";; 4) echo "17.5 33.5 4.0 34.0";; esac; }
+                                3) echo "7.5 23.5 6.0 40.0";; 4) echo "17.5 33.5 4.0 34.0";;
+                                5) echo "17.5 33.5 4.0 34.0";; 6) echo "17.5 33.5 4.0 34.0";; esac; }
 
 # every file in a Stage 1 directory must exist and be non-empty
 check_stage1() {
