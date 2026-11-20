@@ -60,6 +60,12 @@ end
 const CFGPATH = get(ARG, "config", "")
 isempty(CFGPATH) && error("usage: stage4_gate_v2.jl --config <path>")
 const NPTS_OVERRIDE = parse(Int, get(ARG, "npts", "0"))
+# --nptsc sizes the COARSE pass on its own. The coarse pass has to find at least
+# two reachable nodes or the fine grid cannot be bracketed, and three nodes
+# spanning 0.001-2 S/m found exactly one on 2P. So a two_pass smoke cannot take
+# its fine node count for both passes; it needs a coarse grid fine enough to
+# land inside the reachable range. Added 20 Nov after that smoke failed.
+const NPTSC_OVERRIDE = parse(Int, get(ARG, "nptsc", "0"))
 
 # THE RELEASE LAMBDA-SQUARED SET IS FIXED, both sweep directions. Decided during
 # validation and in the record; it is NOT a ladder built around lambda-hat.
@@ -290,8 +296,9 @@ function main()
         # Until 20 Nov the override applied to single_pass only, every smoke
         # therefore ran single_pass, and the two_pass save path was never
         # exercised -- which is how SW[lhat] survived to kill two production runs.
-        NC = NPTS_OVERRIDE > 0 ? NPTS_OVERRIDE : Int(g["n_nodes_coarse"])
-        NF = NPTS_OVERRIDE > 0 ? NPTS_OVERRIDE : Int(g["n_nodes_fine"])
+        NC = NPTSC_OVERRIDE > 0 ? NPTSC_OVERRIDE :
+             NPTS_OVERRIDE  > 0 ? NPTS_OVERRIDE  : Int(g["n_nodes_coarse"])
+        NF = NPTS_OVERRIDE  > 0 ? NPTS_OVERRIDE  : Int(g["n_nodes_fine"])
         ltc = collect(range(log10(sb[1]), log10(sb[2]), length = NC))
         Cgc = (10 .^ ltc) .* thick
         coarse_step = ltc[2] - ltc[1]

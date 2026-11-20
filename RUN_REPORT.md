@@ -146,7 +146,18 @@ node -1.0:     27.645   -> 35.472
 node -0.9375:  62.516   -> 64.603
 ```
 
-Node −1.0 is the accepted bracket node and moved three times, once by 13.05.
+Three more came from the lower-edge run of 20 Nov, on the same column:
+
+```
+absolute rule
+  node -1.75:    48.209   -> 48.993
+relative rule
+  node -1.625:   37.786   -> 38.559
+  node -1.5:     27.922   -> 28.440
+```
+
+Eight in total on 3S. Node −1.0 is the accepted bracket node of the upper edge
+and moved three times, once by 13.05.
 The stored minimum is never overwritten by a worse solve, so the reported edge
 is unaffected; what the warnings show is that the Occam solve at a forced
 conductance is not a deterministic function of its start. Not chased.
