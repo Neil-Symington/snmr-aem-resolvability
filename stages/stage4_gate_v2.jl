@@ -42,6 +42,7 @@ using JLD2, Statistics, Printf, LinearAlgebra, Random, TOML, SparseArrays
 const HERE = @__DIR__
 const ROOT = normpath(joinpath(HERE, ".."))
 include(joinpath(ROOT, "src", "config.jl")); using .SiteConfig
+include(joinpath(ROOT, "src", "runout.jl")); using .RunOut
 include(joinpath(ROOT, "src", "aem_setup.jl"))
 include(joinpath(ROOT, "src", "occam_core.jl")); using .OccamCore
 # The validated edge search, unit-tested against an injected mock solver in
@@ -66,6 +67,20 @@ const NPTS_OVERRIDE = parse(Int, get(ARG, "npts", "0"))
 # its fine node count for both passes; it needs a coarse grid fine enough to
 # land inside the reachable range. Added 20 Nov after that smoke failed.
 const NPTSC_OVERRIDE = parse(Int, get(ARG, "nptsc", "0"))
+# A SMOKE MUST NAME ITS OWN OUTPUT DIRECTORY, under a scratch path. On 20 Nov a
+# three-node smoke launched with --config configs/synth_2P.toml inherited that
+# config's output directory and, finishing after the production run, overwrote
+# an eleven-hour result. Node counts are what make a run a smoke, so they are
+# what triggers the requirement.
+const OUTDIR_OVERRIDE = get(ARG, "outdir", "")
+if (NPTS_OVERRIDE > 0 || NPTSC_OVERRIDE > 0)
+    isempty(OUTDIR_OVERRIDE) && error("""
+        --npts/--nptsc make this a SMOKE, and a smoke must not write where a
+        production run writes. Pass --outdir <path containing "scratch">.""")
+    occursin("scratch", OUTDIR_OVERRIDE) || error("""
+        --outdir must be under a scratch path, got: $OUTDIR_OVERRIDE
+        A smoke's output never belongs beside a result.""")
+end
 
 # THE RELEASE LAMBDA-SQUARED SET IS FIXED, both sweep directions. Decided during
 # validation and in the record; it is NOT a ladder built around lambda-hat.
@@ -116,7 +131,12 @@ function main()
     cfg  = SiteConfig.resolve(CFGPATH)
     info = SiteConfig.assertvalid(cfg; root = ROOT)
     d, g, pr, hy, out = cfg["data"], cfg["gate"], cfg["priors"], cfg["hypothesis"], cfg["output"]
-    odir = joinpath(ROOT, out["dir"])
+    # Every run gets its own folder and nothing is overwritten; the flat
+    # path below becomes a pointer to the newest run. Ruling of 21 Nov 2026.
+    obase = isempty(OUTDIR_OVERRIDE) ? joinpath(ROOT, out["dir"]) :
+            (isabspath(OUTDIR_OVERRIDE) ? OUTDIR_OVERRIDE : joinpath(ROOT, OUTDIR_OVERRIDE))
+    mkpath(obase)
+    odir  = RunOut.run_dir(obase, "stage4", cfg["name"])
 
     @printf("Stage 4 -- gate.  site %s  (%s)\n", cfg["name"], cfg["label"])
     @printf("  lineage: column %s, parent %s, role %s\n",
@@ -509,7 +529,8 @@ function main()
     # a day of solving. `verified` is written twice: false here, and the real
     # outcome immediately after the checks run.
     function writeout(verified, note)
-        jldsave(joinpath(odir, "stage4_$(cfg["name"]).jld2");
+        RunOut.save_result(joinpath(odir, "stage4_$(cfg["name"]).jld2")) do _p
+        jldsave(_p;
         column = d["column"], parent = get(d,"parent",""), role = info.role,
         window = (top = wtop, base = wbot), thick = thick,
         window_source = wsrc,
@@ -555,12 +576,9 @@ function main()
                       "nbound"=>coarse_info.nbound, "good"=>coarse_info.good,
                       "reach_lo"=>coarse_info.reach_lo, "reach_hi"=>coarse_info.reach_hi),
         verified = verified, verify_note = note)
+        end
         nothing
     end
-
-    writeout(false, "assertions not yet run")
-    println("\nwrote ", relpath(joinpath(odir, "stage4_$(cfg["name"]).jld2"), ROOT),
-            " (unverified)")
 
     # ---- assert the fine grid's end nodes are interior -----------------
     # The fine grid was bracketed by coarse nodes already shown to be interior,
@@ -585,7 +603,18 @@ function main()
             treat its band edges as OPEN and widen n_nodes_coarse. The artefact is
             kept and marked unverified."""
     end
+    # ONE write, after the check. Until 21 Nov the artefact was written twice --
+    # verified = false, then the outcome -- so that an assertion that THREW could
+    # not lose the run. The assertions no longer throw: they set `ok` and `note`,
+    # which is pure arithmetic on values already in memory. A single write
+    # therefore loses nothing and keeps the rule that a result file is written
+    # once and never over. The sweeps are on disk in the checkpoint regardless.
     writeout(ok, note)
-    println("re-wrote with verified = ", ok, ok ? "" : "  [$note]")
+    println("\nwrote ", relpath(joinpath(odir, "stage4_$(cfg["name"]).jld2"), ROOT),
+            "  verified = ", ok, ok ? "" : "  [$note]")
+    links = RunOut.publish_run(obase, odir)
+    println("  run folder ", relpath(odir, ROOT), " -- ",
+            length(links), " pointer(s) updated in ", relpath(obase, ROOT))
 end
+
 main()

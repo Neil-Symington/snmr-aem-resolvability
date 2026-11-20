@@ -76,7 +76,8 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
             # Added 18 Nov: stage2_snmr.jl could not load for a day and nothing
             # in this suite would have noticed, because the pooling test
             # exercises pooled_sigma without loading the stage.
-            ("stage scripts load", "test_stage_loads.jl",      String[]))
+            ("stage scripts load", "test_stage_loads.jl",      String[]),
+            ("run folders",       "test_run_folders.jl",      String[]))
         f = joinpath(@__DIR__, script)
         missing_inputs = [n for n in needs if !isfile(joinpath(ROOT, n))]
         if !isfile(f)

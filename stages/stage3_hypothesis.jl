@@ -76,6 +76,7 @@ using JLD2, Statistics, Printf, TOML
 const HERE = @__DIR__
 include(joinpath(HERE, "..", "src", "config.jl")); using .SiteConfig
 
+include(joinpath(HERE, "..", "src", "runout.jl")); using .RunOut
 const ARG = Dict{String,String}()
 let i = 1
     while i <= length(ARGS)
@@ -394,7 +395,10 @@ function main()
     @printf("  lies inside a primary interval: %s\n", inside ? "YES" : "NO")
     inside || println("  WARNING: Stages 4 and 5 ran on a window no reported interval contains.")
 
-    odir = joinpath(ROOT, out["dir"]); mkpath(odir)
+    # Every run gets its own folder and nothing is overwritten; the flat
+    # path below becomes a pointer to the newest run. Ruling of 21 Nov 2026.
+    obase = joinpath(ROOT, out["dir"]); mkpath(obase)
+    odir  = RunOut.run_dir(obase, "stage3", cfg["name"])
     jldsave(joinpath(odir, "stage3_$(cfg["name"]).jld2");
         column = d["column"], parent = get(d, "parent", ""), role = info.role,
         config_source = cfg["_source"], ensemble = basename(epath),
@@ -415,6 +419,9 @@ function main()
         W5_min_any_window = Wmin_any, W5_max_any_window = Wmax_any,
         length_at_Lmax = frac_at_max, length_at_Lmin = frac_at_min)
     println("\nwrote ", joinpath(out["dir"], "stage3_$(cfg["name"]).jld2"))
+    links = RunOut.publish_run(obase, odir)
+    println("  run folder ", relpath(odir, ROOT), " -- ",
+            length(links), " pointer(s) updated in ", relpath(obase, ROOT))
 end
 
 main()

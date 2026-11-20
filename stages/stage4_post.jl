@@ -31,6 +31,7 @@ using JLD2, Statistics, Printf, LinearAlgebra, Random
 const HERE = @__DIR__; const ROOT = normpath(joinpath(HERE, ".."))
 include(joinpath(ROOT, "src", "config.jl")); using .SiteConfig
 
+include(joinpath(ROOT, "src", "runout.jl")); using .RunOut
 const ARG = Dict{String,String}()
 let i = 1
     while i <= length(ARGS)
@@ -94,7 +95,10 @@ function main()
     cfg  = SiteConfig.resolve(CFGPATH)
     info = SiteConfig.assertvalid(cfg; root = ROOT)
     d, g, pr, hy, out = cfg["data"], cfg["gate"], cfg["priors"], cfg["hypothesis"], cfg["output"]
-    odir = joinpath(ROOT, out["dir"])
+    # Every run gets its own folder and nothing is overwritten; the flat
+    # path below becomes a pointer to the newest run. Ruling of 21 Nov 2026.
+    obase = joinpath(ROOT, out["dir"]); mkpath(obase)
+    odir  = RunOut.run_dir(obase, "stage4post", cfg["name"])
     G  = load(joinpath(odir, "stage4_$(cfg["name"]).jld2"))
     S3 = load(joinpath(odir, "stage3_$(cfg["name"]).jld2"))
     A  = load(joinpath(odir, "stage0_$(cfg["name"]).jld2"))
@@ -307,5 +311,9 @@ function main()
         K_theta_m = (p50 = median(K), p5 = quantile(K,.05), p95 = quantile(K,.95)),
         m_prior = collect(info.m_prior), X_limit = Xlim, mg_per_sm = MGL)
     println("\nwrote ", relpath(joinpath(odir, "stage4post_$(cfg["name"]).jld2"), ROOT))
+    links = RunOut.publish_run(obase, odir)
+    println("  run folder ", relpath(odir, ROOT), " -- ",
+            length(links), " pointer(s) updated in ", relpath(obase, ROOT))
 end
+
 main()

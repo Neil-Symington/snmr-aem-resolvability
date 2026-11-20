@@ -27,6 +27,7 @@
 using JLD2, Statistics, Printf, TOML
 const HERE = @__DIR__; const ROOT = normpath(joinpath(HERE,".."))
 include(joinpath(ROOT,"src","config.jl")); using .SiteConfig
+include(joinpath(ROOT,"src","runout.jl")); using .RunOut
 const SYN = joinpath(HERE, "..", "data")
 const OUT = joinpath(ROOT,"outputs")
 const MGL = 6400.0
@@ -124,11 +125,13 @@ function main(tags)
                 "", r.Xlim, sbfloor, r.phi_max, r.m_used,
                 sb >= sbfloor ? "this column clears that" : "this column CANNOT, at any clay ceiling")
     end
-    mkpath(joinpath(ROOT,"outputs","stage4_floor"))
-    jldopen(joinpath(ROOT,"outputs","stage4_floor","floor.jld2"),"w") do f
+    # own run folder, like every other stage (ruling of 21 Nov 2026)
+    obase = joinpath(ROOT, "outputs", "stage4_floor"); mkpath(obase)
+    odir  = RunOut.run_dir(obase, "stage4floor", "floor")
+    jldopen(joinpath(odir,"floor.jld2"),"w") do f
         for r in rows; f[r.tag] = r; end
     end
-    open(joinpath(ROOT,"outputs","stage4_floor","floor.csv"),"w") do f
+    open(joinpath(odir,"floor.csv"),"w") do f
         println(f, "column,C_lo_S,edge_lo_status,theta_snmr,clay_ceiling_S_per_m,floor_tds_mg_per_L,verdict")
         for r in rows
             @printf(f, "\"%s\",%.6g,\"%s\",%.6g,%.6g,%.6g,\"%s\"\n",
@@ -136,6 +139,7 @@ function main(tags)
                     r.floor_tds, r.verdict)
         end
     end
-    println("\nwrote outputs/stage4_floor/floor.{jld2,csv}")
+    RunOut.publish_run(obase, odir)
+    println("\nwrote ", relpath(odir, ROOT), "/floor.{jld2,csv}; pointers updated")
 end
 main(isempty(ARGS) ? ["3P","2P","3S","2S"] : ARGS)

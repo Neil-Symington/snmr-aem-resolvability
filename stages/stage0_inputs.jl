@@ -28,6 +28,7 @@ const HERE = @__DIR__
 const ROOT = normpath(joinpath(HERE, ".."))
 include(joinpath(ROOT, "src", "config.jl")); using .SiteConfig
 include(joinpath(ROOT, "src", "aem_setup.jl"))
+include(joinpath(@__DIR__, "..", "src", "runout.jl")); using .RunOut
 include(joinpath(ROOT, "src", "aem_jac.jl"))
 
 const ARG = Dict{String,String}()
@@ -202,7 +203,10 @@ function main()
                                  k) && k != "truth_file_sha", collect(keys(A)))
     isempty(banned) || error("Stage 0 artefact contains truth-like keys: " * join(banned, ", "))
 
-    odir = joinpath(ROOT, out["dir"]); mkpath(odir)
+    # Every run gets its own folder and nothing is overwritten; the flat
+    # path below becomes a pointer to the newest run. Ruling of 21 Nov 2026.
+    obase = joinpath(ROOT, out["dir"]); mkpath(obase)
+    odir  = RunOut.run_dir(obase, "stage0", cfg["name"])
     opath = joinpath(odir, "stage0_$(cfg["name"]).jld2")
     jldopen(opath, "w") do f
         for (k, v) in A; f[k] = v; end
@@ -213,6 +217,9 @@ function main()
     @printf("    truth identity recorded as a hash (%s...), never its values\n",
             A["truth_file_sha"][1:12])
     println("  wrote ", relpath(opath, ROOT))
+    links = RunOut.publish_run(obase, odir)
+    println("  run folder ", relpath(odir, ROOT), " -- ",
+            length(links), " pointer(s) updated in ", relpath(obase, ROOT))
 end
 
 now_str() = Libc.strftime("%Y-%m-%dT%H:%M:%S", time())

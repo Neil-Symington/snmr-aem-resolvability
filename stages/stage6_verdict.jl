@@ -25,6 +25,7 @@ using JLD2, Statistics, Printf, Dates
 const HERE = @__DIR__; const ROOT = normpath(joinpath(HERE, ".."))
 include(joinpath(ROOT, "src", "config.jl")); using .SiteConfig
 
+include(joinpath(ROOT, "src", "runout.jl")); using .RunOut
 const ARG = Dict{String,String}()
 let i = 1
     while i <= length(ARGS)
@@ -42,7 +43,10 @@ function main()
     cfg  = SiteConfig.resolve(CFGPATH)
     info = SiteConfig.assertvalid(cfg; root = ROOT)
     d, hy, out, pr = cfg["data"], cfg["hypothesis"], cfg["output"], cfg["priors"]
-    odir = joinpath(ROOT, out["dir"])
+    # Every run gets its own folder and nothing is overwritten; the flat
+    # path below becomes a pointer to the newest run. Ruling of 21 Nov 2026.
+    obase = joinpath(ROOT, out["dir"]); mkpath(obase)
+    odir  = RunOut.run_dir(obase, "stage6", cfg["name"])
     S3 = load(joinpath(odir, "stage3_$(cfg["name"]).jld2"))
     P4 = load(joinpath(odir, "stage4post_$(cfg["name"]).jld2"))
     S5 = load(joinpath(odir, "stage5_$(cfg["name"]).jld2"))
@@ -313,6 +317,9 @@ function main()
         for (r,v,nt) in rows; println(f, "| ", r, " | ", v, " | ", nt, " |"); end
     end
     println("wrote verdict_$(cfg["name"]).{csv,json,md} in ", out["dir"])
+    links = RunOut.publish_run(obase, odir)
+    println("  run folder ", relpath(odir, ROOT), " -- ",
+            length(links), " pointer(s) updated in ", relpath(obase, ROOT))
 
     # ---------- scoring against truth, AFTER the verdicts are fixed ----
     if get(out, "score_against_truth", false) && haskey(d, "truth")
@@ -349,4 +356,5 @@ function main()
         end
     end
 end
+
 main()
