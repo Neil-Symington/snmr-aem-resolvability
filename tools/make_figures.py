@@ -311,7 +311,9 @@ def fig_misfit(DS, out):
     handles.append(Line2D([], [], marker="*", color="none", markerfacecolor=WHITE,
                           markeredgecolor="#000", markeredgewidth=0.6, markersize=10))
     labs.append("true value")
-    leg = ax.legend(handles, labs, loc="center left", frameon=True, facecolor=PANEL,
+    # lower left: centre-left carried the legend until 20 Nov, and 3S's rising
+    # limb now runs through it. Below the flat part of the curves is clear.
+    leg = ax.legend(handles, labs, loc="lower left", frameon=True, facecolor=PANEL,
                     edgecolor=RULE, framealpha=0.95, handlelength=1.9)
     for t in leg.get_texts():
         t.set_color(INK); t.set_fontsize(7.5)
@@ -325,9 +327,19 @@ def ceiling(C, thick, phi, m, mgl):
 
 
 def fig_ceiling(DS, out):
-    """One bar a column, least cautious to most cautious, dot at the central
-    rock properties. No numbers on the plot."""
+    """One column each: the clay-free salinity ceiling at the band's upper edge,
+    as a bar over the petrophysical range with a dot at the central properties,
+    and the band's lower edge beneath it.
+
+    AN OPEN EDGE IS AN ARROW, NOT A BAR. Openness is read from the admissibility
+    flags: if the first (last) node of the solved grid is admissible, no rejected
+    node exists below (above) it and that edge is not located -- the grid simply
+    ran out. Drawing the end node as though it were an edge, which this figure
+    did until 20 Nov, turns "unbounded" into a number. 2S is open at both ends
+    and must read that way. Edges follow the ABSOLUTE rule throughout, that being
+    the rule the admissibility flags carry."""
     from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
 
     fig, ax = plt.subplots(figsize=(W_COL * 1.6, 84 * MM))
     LO, HI = 1e2, 1e5
@@ -336,44 +348,82 @@ def fig_ceiling(DS, out):
     for v, _ in CLASS_LINES:
         ax.axhline(v, color=RULE, lw=0.9, ls=(0, (3, 3)), zorder=1)
 
+    def spread(C, pet, thick):
+        plo, phi_ = pet["phi"]; mlo, mhi = pet["m"]; mgl = pet["mgl"]
+        return (ceiling(C, thick, phi_, mlo, mgl),                       # least cautious
+                ceiling(C, thick, 0.5*(plo+phi_), 0.5*(mlo+mhi), mgl),   # central
+                ceiling(C, thick, plo, mhi, mgl))                        # most cautious
+
     xs, labels = [], []
     for i, (tag, D) in enumerate(DS.items()):
         col, mk, lab = COLS[tag]
         pet = D["pet"]; thick = D["thick"]
-        plo, phi_ = pet["phi"]; mlo, mhi = pet["m"]; mgl = pet["mgl"]
         C = np.asarray(D["gate"]["C"], float)
         adm = np.asarray(D["gate"]["adm"], int).astype(bool)
-        Chi = C[adm].max()
-        hi_v = ceiling(Chi, thick, plo, mhi, mgl)                       # cautious
-        mid  = ceiling(Chi, thick, 0.5*(plo+phi_), 0.5*(mlo+mhi), mgl)  # central
-        lo_v = ceiling(Chi, thick, phi_, mlo, mgl)                      # least cautious
-        ax.plot([i, i], [lo_v, hi_v], color=col, lw=5, solid_capstyle="butt",
-                zorder=4, alpha=0.9)
-        ax.plot([i], [mid], "o", color=col, ms=6, markeredgecolor="#000",
-                markeredgewidth=0.5, zorder=5)
-        t = D["claytrue"]["tds"]
-        ax.plot([i - 0.17, i + 0.17], [t, t], color=WHITE, lw=1.8, zorder=6)
+        open_lo, open_hi = bool(adm[0]), bool(adm[-1])
+        Chi, Clo = C[adm].max(), C[adm].min()
+
+        hlo, hmid, hhi = spread(Chi, pet, thick)
+        llo, lmid, lhi = spread(Clo, pet, thick)
+
+        if open_hi and open_lo:
+            # unbounded both ways: ONE double-headed arrow across the panel.
+            # Nothing here is a ceiling, so nothing is drawn as one.
+            ax.annotate("", xy=(i, HI*0.80), xytext=(i, LO*1.25),
+                        arrowprops=dict(arrowstyle="<|-|>", color=col, lw=2.2,
+                                        mutation_scale=13), zorder=4)
+        else:
+            if open_hi:
+                ax.annotate("", xy=(i, HI*0.80), xytext=(i, hmid),
+                            arrowprops=dict(arrowstyle="-|>", color=col, lw=2.2,
+                                            mutation_scale=13), zorder=4)
+            else:
+                ax.plot([i, i], [hlo, hhi], color=col, lw=5, solid_capstyle="butt",
+                        zorder=4, alpha=0.9)
+                ax.plot([i], [hmid], "o", color=col, ms=6, markeredgecolor="#000",
+                        markeredgewidth=0.6, zorder=6)
+            if open_lo:
+                # from the foot of the ceiling bar, off the bottom of the panel
+                ax.annotate("", xy=(i, LO*1.15), xytext=(i, hlo),
+                            arrowprops=dict(arrowstyle="-|>", color=col, lw=2.2,
+                                            mutation_scale=13, alpha=0.75), zorder=3)
+            else:
+                # a located lower edge: the same spread, drawn narrower so the
+                # upper edge stays the figure's subject
+                ax.plot([i, i], [llo, lhi], color=col, lw=2.4, solid_capstyle="butt",
+                        zorder=4, alpha=0.65)
+                ax.plot([i], [lmid], "_", color=col, ms=11, markeredgewidth=2.0, zorder=6)
+                ax.plot([i, i], [lhi, hlo], color=col, lw=0.8, ls=(0, (2, 2)),
+                        alpha=0.55, zorder=3)
+
         xs.append(i); labels.append(lab)
 
-    ax.set_yscale("log")
-    ax.set_ylim(LO, HI)
+    # the true pore-water salinity of each column, as a short rule
+    for i, (tag, D) in enumerate(DS.items()):
+        t = D["claytrue"]["tds"]
+        ax.plot([i-0.22, i+0.22], [t, t], color=WHITE, lw=2.2, solid_capstyle="butt",
+                zorder=7)
+
+    ax.set_yscale("log"); ax.set_ylim(LO, HI)
+    ax.set_xlim(-0.6, len(DS) - 0.4)
     ax.set_xticks(xs); ax.set_xticklabels(labels, color=INK)
-    ax.set_xlim(-0.6, len(xs) - 0.4)
     ax.set_ylabel("salinity ceiling with no clay term  (mg/L)", color=INK)
-    for b0, b1, nm, cc in ((LO, 1500.0, "fresh", CYAN),
-                           (1500.0, 3000.0, "brackish", AMBER),
-                           (3000.0, HI, "saline", "#dd7d60")):
-        ax.text(0.988, np.sqrt(b0 * b1), nm, transform=ax.get_yaxis_transform(),
-                color=cc, fontsize=7, va="center", ha="right", alpha=0.95)
+    for v, nm in ((700.0, "fresh"), (2100.0, "brackish"), (2.2e4, "saline")):
+        ax.text(len(DS) - 0.45, v, nm, color=MUTE, fontsize=7.2, ha="right", va="center")
+
+    h = [Line2D([], [], color=MUTE, lw=5),
+         Line2D([], [], color=MUTE, lw=2.4, alpha=0.65),
+         Line2D([], [], color=MUTE, lw=2.2, marker=">", ms=6, markevery=[1]),
+         Line2D([], [], color=WHITE, lw=2.2)]
+    l = ["ceiling at the upper edge", "lower edge", "edge open, not located",
+         "true pore water"]
+    leg = ax.legend(h, l, loc="upper left", frameon=True, facecolor=PANEL,
+                    edgecolor=RULE, framealpha=0.95, handlelength=1.9)
+    for t in leg.get_texts():
+        t.set_color(INK); t.set_fontsize(7.0)
 
     panel_box(ax, letter="b", title="Salinity ceiling")
-    leg = ax.legend([Line2D([], [], color=WHITE, lw=1.8)], ["true salinity"],
-                    loc="lower left", frameon=True, facecolor=PANEL, edgecolor=RULE,
-                    framealpha=0.95, handlelength=1.9)
-    for t in leg.get_texts():
-        t.set_color(INK); t.set_fontsize(7.5)
     save(fig, out)
-
 
 def save(fig, out):
     base = os.path.splitext(out)[0]
