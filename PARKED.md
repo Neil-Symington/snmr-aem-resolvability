@@ -20,3 +20,20 @@ Out of scope for the production re-run. One line each; no work until unparked.
 - **The JSON data file for the interactive page.** Schema supplied 17 Nov, recorded at DECISIONS.md commit `9c2a5a2`. Needs the smoothest-passing model per node (not stored; about 1.5 h of new solves), a stated mapping from the stores' `located`/`open` edge states to `data|limit|search`, and the classes work.
 - **Ten-draw coverage test.** About 2.1 h a draw: 21 h serial, roughly 7 h three-up, under STATED.
 - **Noise-consistency follow-up on the SNMR misfit.** The check itself was already run before this was parked and is recorded in DECISIONS.md under 18 Nov: the true water content forwarded through the true kernel gives **chi2/N = 0.806** against the noisy data on all four columns, consistent with 1 at -0.67 sigma, so sigma-hat does not understate the added noise and the inversions' chi2/N of 1.0-3.0 is the sampler failing to reach an achievable fit. What is parked is the follow-up Neil asked for conditionally on a value near 2 -- documenting how sigma-hat is derived and how the per-moment noise shape and the typical/poor tiers are drawn. Not needed: the value is near 1.
+
+## Release tidy: the role label "saline_control" on a brackish column
+
+Parked 21 Nov 2026, to rename after the paper.
+
+`src/config.jl:210` accepts `[data].role` of `primary|saline_control` only, so
+the brackish columns -- 3S, 2S and now 2Sv2 -- all carry `saline_control`.
+That label is wrong twice over. The partner columns are BRACKISH, not saline;
+and they are not controls of the fresh columns, they are the other arm of a
+paired comparison. `role = "variant"` was tried on 2Sv2 and rejected by the
+validator.
+
+The rename touches the validator's allowed set, the five site configs that use
+it, and anything that reads `role` downstream (Stage 0 seals it, so every
+stage0 artefact carries the string). It is cosmetic and it is not worth doing
+while runs are in flight.
+
