@@ -83,6 +83,45 @@ over 60 LAYERS whose bottoms are `zsmr`, the first running 0 to 1.0 m. Reading
 0.2786.
 
 
+
+## tools/naive_probability.jl -- the standard-practice contrast
+
+Added 22 Nov 2026. **Discussion only. Not a workflow stage** -- nothing reads
+its output and no stage depends on it.
+
+It shows what the usual approach -- invert the AEM, assume rock properties,
+divide Archie out -- would have concluded from the conductance alone, so the
+paper can say what the joint method adds. It is read-only: it assembles
+existing Stage 1 draws and runs no inversion.
+
+    julia --project=. tools/naive_probability.jl --cols 3P,3S,2P,2S
+    julia --project=. tools/naive_probability.jl --cols 2Pv2,2Sv2 --sampling both
+
+`--sampling` is `loguniform` (the configured prior, the default), `uniform`,
+or `both`; `--scales` multiplies the clay upper limit, default 0.5, 1, 2.
+
+Results of record, log-uniform clay prior, pooled over four runs:
+
+| column | fresh | brackish | saline | median |
+|---|---|---|---|---|
+| 3P | 100.0% | 0.0% | 0.0% | 0 mg/L |
+| 3S | 38.8% | 39.1% | 22.1% | 2,033 mg/L |
+| 2P | 36.6% | 14.0% | 49.3% | 2,938 mg/L |
+| 2S | 30.8% | 11.5% | 57.6% | 3,818 mg/L |
+
+Two things the discussion draws from it. **2P's saline share runs from 38.7%
+to 63.1% across four identical runs**, which is the Stage 1 convergence failure
+showing through (window conductance R-hat 1.195, ESS 23); a single AEM run
+would have landed anywhere in that range. And the fresh and brackish partners
+are barely separated -- 30% apart in median salinity where the true pore waters
+differ by 14x and 5x.
+
+**If a figure is wanted**, the natural one is a stacked bar per column with the
+three class shares, the per-run spread as an overlay on 2P, and the uniform
+result beside it as the contrast. The numbers above are all it needs; the
+script prints them for any column that has Stage 1 draws on disk.
+
+
 ## Files
 
 - `data/truth_murray2Pv2.jld2`
