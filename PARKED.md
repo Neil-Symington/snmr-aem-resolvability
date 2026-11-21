@@ -52,3 +52,27 @@ To do: replace that single value with a list of class boundaries under
 the report pages read them from the config. No result changes -- nothing in
 Stages 0-6 reads CLASS_LINES, and the gate's own threshold is unrelated.
 
+## Apply the SNMR water content as a lower limit on porosity in Stage 5
+
+Parked 22 Nov 2026, to do after the rebuild and the gate runs land.
+
+`stages/stage5_quality.jl:98` reads `plo, phi_ = Float64.(pr["porosity_range"])`
+and draws theta_total ~ U(0.25, 0.40) from `config.toml:213`. Nothing in that
+file refers to theta_SMR, so the salinity ceilings are computed over porosities
+the SNMR data already exclude: the pooled SNMR p05 over the window is 0.2726 on
+3P, 0.2634 on 2P and 0.2602 on 3S, all above the 0.25 floor.
+
+To do: set the lower limit to `max(config value, pooled SNMR p05 over the
+window)`. The most cautious ceiling falls 5-13%, and the direction is right --
+if the rock holds more water than 0.25, less of the window's conductance need
+be attributed to salt. The least cautious ceiling is unchanged, being computed
+at phi = 0.40.
+
+## State the temperature convention beside mg_per_sm
+
+Same date, same batch. `config.toml:190` gives `mg_per_sm = 6400.0` with no
+reference temperature anywhere in the repository, and the conversion is a bare
+multiplication (`stage5_quality.jl:95`, `make_figures.py:324`). 6,400 mg/L per
+S/m is the usual 25 C figure, but the code does not say so and a reviewer asked.
+Add the convention as a comment beside the key.
+
