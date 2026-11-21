@@ -26,7 +26,14 @@ out  = joinpath(outdir, "$(name)_truth.jld2")
 # built here is a drop-in for the stages. See smr_acquisition's docstring for
 # why it is this grid and not [smr]'s uniform one.
 include(joinpath(@__DIR__, "..", "..", "src", "prerun_config.jl"))
-zsmr = PrerunConfig.grid()[3]        # cell BOUNDARIES, 1.0 -> 147.438 m
+zsmr = PrerunConfig.grid()[3]        # LAYER BOTTOMS, 1.0 -> 147.438 m. Sixty
+                                     # of them, one per layer, and the FIRST
+                                     # layer runs 0 to 1.0 m. They are not cell
+                                     # boundaries: reading them as 60 boundaries
+                                     # gives 59 layers, drops the 0-1.0 m layer
+                                     # and moves the 3P window mean from 0.2811
+                                     # to 0.2786. SNMRForward takes this same
+                                     # vector as the layer specification.
 
 save_column(col, out; zsmr = zsmr)
 println("\nwrote ", out)

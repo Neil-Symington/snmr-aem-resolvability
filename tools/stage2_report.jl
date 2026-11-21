@@ -58,17 +58,11 @@ const WIN = Dict("3P" => (7.5, 23.5), "3S" => (7.5, 23.5),
 const WTOP = parse(Float64, arg("top",  string(WIN[TAG][1])))
 const WBOT = parse(Float64, arg("base", string(WIN[TAG][2])))
 
-"Integral of theta over [a,b] on the SNMR cell grid, by cell overlap."
-function window_integral(θ, zsmr, a, b)
-    top = vcat(0.0, zsmr[1:end-1]); bot = zsmr
-    ov = [max(0.0, min(bot[i], b) - max(top[i], a)) for i in eachindex(zsmr)]
-    (sum(θ .* ov), sum(ov))
-end
-
-"Mean theta over the window, per draw."
-window_mean(Θ, zsmr, a, b) =
-    (w = window_integral(ones(length(zsmr)), zsmr, a, b)[2];
-     [window_integral(Θ[:, k], zsmr, a, b)[1] / w for k in axes(Θ, 2)])
+# The window convention now lives in src/window.jl and is shared by every
+# caller. It was defined here and nowhere else until 22 Nov 2026, which let
+# three different readings of `zsmr` coexist in the repository.
+include(joinpath(@__DIR__, "..", "src", "window.jl")); using .Window
+window_mean(Θ, zsmr, a, b) = Window.window_mean_draws(Θ, zsmr, a, b)
 
 """
 s samples for one ensemble at T = 1, as a FACTOR on sigma-hat.

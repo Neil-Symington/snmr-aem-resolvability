@@ -118,8 +118,12 @@ const OUT  = joinpath(HERE, "..", "data")
 # passed over a full-length result.
 const STAMP  = Dates.format(Dates.now(), "yyyymmdd-HHMMSS")
 const KIND   = haskey(ARG, "truekernel") ? "truekernel" : "pooled"
+# The PATH is a constant; the DIRECTORY is made in main(). Creating it here
+# meant merely LOADING this file left a run folder behind, which is how four
+# empty loadtest_pooled_* folders appeared once the load test started passing
+# --tag (22 Nov 2026), and six x_pooled_* ones before that.
 const RUNDIR = joinpath(OUT, "stage2", "$(TAG)_$(KIND)_$(STAMP)")
-const RUN    = joinpath(RUNDIR, "chains"); mkpath(RUN)
+const RUN    = joinpath(RUNDIR, "chains")   # made in main(), not at load
 # Vendored into src/. This include used to point at ../ek_prerun/, which is
 # outside the repository and was never shipped, so Stage 2 -- and therefore
 # every stage after it -- could not start from a clone at all.
@@ -273,6 +277,7 @@ inputsig(cond, islog, V, σ̂, σref, zA, zsmr, R, ϕ, Be, qgrid, kernelfile, dr
           V, σ̂, σref, zA, zsmr, R, ϕ, Be, qgrid, draws))
 
 function main()
+    mkpath(RUN)          # the run folder exists only once a run actually starts
     T = load(joinpath(OUT, "truth_murray$(TTAG).jld2"))
     dpath = joinpath(OUT, "smr_data_murray$(TAG).jld2")
     isfile(dpath) || error("""
