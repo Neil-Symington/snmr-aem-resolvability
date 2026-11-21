@@ -227,6 +227,35 @@ Fixed in two parts:
    the lock refuses the duplicate.
 
 
+### Eighteen empty Stage 2 run folders removed, 22 Nov
+
+`stage2_snmr.jl` named its run directory from `--tag`, defaulting to `"x"`, and
+created it at LOAD time rather than when a run started. Any launch that died
+early -- and every evaluation of the file by `test_stage_loads.jl` -- therefore
+left a folder behind. Four more appeared on 21 Nov named `loadtest_*`, once the
+load test began supplying a tag.
+
+All eighteen held **zero files** between them, confirmed folder by folder
+before removal. Removed:
+
+```
+x_pooled_20261118-131841   x_pooled_20261121-055819
+x_pooled_20261119-202244   x_pooled_20261121-055912
+x_pooled_20261120-050619   x_pooled_20261121-055958
+x_pooled_20261120-050656   x_pooled_20261121-060103
+x_pooled_20261120-050749   x_pooled_20261121-060144
+x_pooled_20261120-142758   x_pooled_20261121-060429
+                           x_pooled_20261121-060943
+                           x_pooled_20261121-061311
+loadtest_pooled_20261121-070050   loadtest_pooled_20261121-092700
+loadtest_pooled_20261121-070148   loadtest_pooled_20261121-093049
+```
+
+Fixed at the source in commit e603317: `--tag` is required (21 Nov), and the
+chains directory is now made inside `main()`, so loading the file leaves
+nothing. Verified: re-running the load test creates no folder.
+
+
 ## What is current
 
 | stage | 3P | 2P | 3S | 2S |

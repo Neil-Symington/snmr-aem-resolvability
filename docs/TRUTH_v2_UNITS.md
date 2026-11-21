@@ -47,6 +47,42 @@ which covers seven of the eight units. It is called `unweathered bedrock` here,
 beneath `saprock`, by the same logic as `weathered bedrock` above it. Confirm
 or replace it.
 
+
+## For the ceiling figures: apply the SNMR lower limit on porosity
+
+Added 22 Nov 2026, on Neil's instruction.
+
+The salinity ceilings as published draw porosity from `[priors].porosity_range`
+in `config.toml`, which is `[0.25, 0.40]`. `stages/stage5_quality.jl:98` reads
+that range directly and nothing in the file refers to the SNMR water content,
+so the ceilings are computed over porosities the SNMR data already exclude.
+
+**The ceiling figures need the lower limit applied.** Porosity then runs from
+
+    max(0.25, pooled SNMR p05 over the window)   to   0.40
+
+The upper end does not change, so the least cautious ceiling is unchanged; the
+central and most cautious ones fall. Values of record, on the shared window
+convention in `src/window.jl`:
+
+| column | pooled SNMR p05 | lower limit | most cautious ceiling, before -> after |
+|---|---|---|---|
+| 3P | 0.2760 | 0.2760 | 2,406 -> **1,994** mg/L |
+| 3S | 0.2601 | 0.2601 | 9,998 -> **9,273** mg/L |
+| 2S | 0.2332 | 0.25 (the config floor wins) | unchanged |
+
+2S is left out of the ceiling table entirely: both its band edges are open, so
+its "upper" figure is the top of the solved grid and a bound, not a ceiling.
+
+2Pv2 and 2Sv2 follow the same rule once their Stage 2 runs land; their numbers
+will be added here.
+
+The window mean itself must use `src/window.jl`: theta is piecewise-constant
+over 60 LAYERS whose bottoms are `zsmr`, the first running 0 to 1.0 m. Reading
+`zsmr` as 60 cell boundaries instead moves the 3P window mean from 0.2811 to
+0.2786.
+
+
 ## Files
 
 - `data/truth_murray2Pv2.jld2`

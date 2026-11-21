@@ -76,3 +76,24 @@ multiplication (`stage5_quality.jl:95`, `make_figures.py:324`). 6,400 mg/L per
 S/m is the usual 25 C figure, but the code does not say so and a reviewer asked.
 Add the convention as a comment beside the key.
 
+## Stage 3 still reads zsmr as layer centres
+
+Parked 22 Nov 2026. Do after the chain lands, in one go.
+
+`stages/stage3_hypothesis.jl:91-96` builds cells from `zsmr` as layer CENTRES,
+edges at the midpoints, first top 0, last bottom extrapolated by half the final
+spacing. The forward model treats `zsmr` as layer BOTTOMS with the first layer
+from 0 to 1.0 m, which is the convention now in `src/window.jl` and used by
+`tools/stage2_report.jl`.
+
+The difference on the truth window mean is -0.47% on test one and +1.22% on
+test two. That is enough to move p_pass and the tie-break window, so it is a
+RESULT CHANGE, not a tidy-up, and it must not happen while columns are being
+run through the stage as it stands.
+
+To do, in one pass over every column: switch Stage 3 to `Window.window_mean`,
+re-run Stage 3 on 3P, 2P, 3S, 2S, 2Pv2 and 2Sv2, and report the passing
+intervals and the tie-break window BEFORE and AFTER for each. Stages 4 and 5
+have already run on the current tie-break windows, so any column whose window
+moves needs its downstream outputs re-examined before the change is adopted.
+
