@@ -37,3 +37,18 @@ it, and anything that reads `role` downstream (Stage 0 seals it, so every
 stage0 artefact carries the string). It is cosmetic and it is not worth doing
 while runs are in flight.
 
+## Salinity class limits live in the figure code, not the config
+
+Parked 21 Nov 2026, to do after the rebuild and the gate runs land.
+
+`tools/make_figures.py:63` holds `CLASS_LINES = [(1500.0, "1,500 mg/L"),
+(3000.0, "3,000 mg/L")]`. Those boundaries appear on the misfit and ceiling
+figures and on the report pages as though they were study parameters, but they
+are in the plotting code and in no config. `config.toml:322-324`
+`[hypothesis.salinity]` carries a single `value = 1000.0` instead.
+
+To do: replace that single value with a list of class boundaries under
+`[hypothesis.salinity]`, 1500 and 3000 mg/L for now, and have the figures and
+the report pages read them from the config. No result changes -- nothing in
+Stages 0-6 reads CLASS_LINES, and the gate's own threshold is unrelated.
+
