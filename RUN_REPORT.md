@@ -198,6 +198,35 @@ there is no `--force`, and a smoke must name an `--outdir` under a scratch
 path or it will not start.
 
 
+### 22 hours idle behind a dead watcher, 21-22 Nov
+
+Stage 1 for the v2 columns was launched at 06:34 on 21 Nov as four pairs of
+ensembles, two at a time. Pair 1 completed on schedule at 09:40, 185 minutes
+against a 184-minute estimate, with both ensembles intact. **Pairs 2, 3 and 4
+never started.** The chain that was to launch them was a session-bound
+background job; it died without printing anything after its wait loop, and
+nothing noticed. The machine was idle from 09:40 on 21 Nov to 07:45 on 22 Nov.
+
+Nothing was lost but time: `data/aem2Pv2_m4c5e1` and `e2` are complete and
+verified against the five-file check.
+
+Cause: the chain ran inside the session rather than detached from it, and had
+no liveness signal, so its death was indistinguishable from slow progress.
+
+Fixed in two parts:
+
+1. `tools/pipeline_v2b.sh` -- the whole v2 sequence as 18 steps from Stage 1
+   through the release gate. Every step writes a marker in `logs/chain_state/`
+   when it succeeds and is skipped if the marker exists, so relaunching is free
+   and resumes where it stopped. Launched with `setsid nohup`, so it outlives
+   the session that started it. A `flock` lock prevents two copies.
+2. `tools/pipeline_watchdog.sh` in cron every 15 minutes. The pipeline touches
+   `logs/chain_state/heartbeat` every 5 minutes; anything older than 15 means
+   it died, and the watchdog relaunches it. Verified both ways: with a fresh
+   heartbeat it does nothing; with one backdated 40 minutes it relaunches, and
+   the lock refuses the duplicate.
+
+
 ## What is current
 
 | stage | 3P | 2P | 3S | 2S |
