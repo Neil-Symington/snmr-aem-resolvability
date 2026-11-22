@@ -130,3 +130,33 @@ NOT a speed-up in the sense the sweep-splitting is: splitting changes no
 number, this changes every solve. Order: validate splitting first, then this,
 then the stopping rule and Jacobian reuse.
 
+## The edge finder reports OPEN when it should report UNRESOLVED
+
+Parked 23 Nov 2026. Fix WITH the active-set work, which is what makes the
+distinction decidable.
+
+`EdgeFinder.bracket` looks for the lowest REJECTED node above the highest
+admissible one. A node that could not be solved at all -- the constrained
+optimiser never reached the constraint, so chi2 is Inf -- is not rejected, so
+it is not a bracket, and the edge is reported OPEN. "Open" means the data
+admit arbitrarily large conductance. It is the wrong word for "the solver
+stopped working here", and the two are reported identically.
+
+MEASURED, on 2Pv2. The profile's grid runs 5.0596 S (admissible, chi2 27.79),
+then 8.9975 S (Inf), 16.0 S (Inf), 28.45 S (Inf). Both edges came back OPEN.
+A hand probe at 6.50 S, lambda2 0.01, solved cleanly -- conres 1.4e-16, no cell
+on the 2 S/m ceiling -- at chi2 49.43, which is REJECTED against 45.84. So a
+real upper edge exists between 5.0596 and 6.50 S and the column was reported
+unconstrained when it is not. 2Sv2 has the same shape (five unsolved nodes) and
+is under the same suspicion.
+
+WHAT IT SHOULD DO. When the node beyond the last admissible one is unsolved,
+probe INWARD from it -- halving toward the admissible node -- until it either
+brackets or runs out of room, and report `unresolved` if it still cannot. Never
+`open` on the strength of an unsolved node.
+
+Note the lower end is a different case and is correct as it stands: the lowest
+grid node is 0.0160 S on both columns, which is exactly the stated floor
+0.001 S/m times the 16 m window, so nothing below it exists to solve. That end
+is set by the stated limit, and saying so is accurate.
+
