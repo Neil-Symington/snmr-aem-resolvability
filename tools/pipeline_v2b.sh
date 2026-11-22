@@ -68,12 +68,18 @@ step pair_c6_e34  bash tools/m4_pair.sh 6 3 4
 # ---- Stage 2, pooled and true-kernel, eight ensembles each ----------------
 step stage2_2Pv2_pooled      $J stages/stage2_snmr.jl --tier typical --conds C2 \
                                 --tag 2Pv2T --nens 8 --pool "$POOL5"
+# --truekernel builds the kernel from the TRUE conductivity, so --pool is
+# not just unnecessary, it is refused: the two are alternatives
+# (stage2_snmr.jl:318). The ensemble count is set by --nens either way.
 step stage2_2Pv2_truekernel  $J stages/stage2_snmr.jl --tier typical --conds C2 \
-                                --tag 2Pv2T --nens 8 --pool "$POOL5" --truekernel
+                                --truekernel --tag 2Pv2T --nens 8
 step stage2_2Sv2_pooled      $J stages/stage2_snmr.jl --tier typical --conds C2 \
                                 --tag 2Sv2T --nens 8 --pool "$POOL6"
+# --truekernel builds the kernel from the TRUE conductivity, so --pool is
+# not just unnecessary, it is refused: the two are alternatives
+# (stage2_snmr.jl:318). The ensemble count is set by --nens either way.
 step stage2_2Sv2_truekernel  $J stages/stage2_snmr.jl --tier typical --conds C2 \
-                                --tag 2Sv2T --nens 8 --pool "$POOL6" --truekernel
+                                --truekernel --tag 2Sv2T --nens 8
 
 # ---- point each config at the Stage 2 run that just finished ------------
 # The run folder carries a timestamp, so it cannot be written into the config
