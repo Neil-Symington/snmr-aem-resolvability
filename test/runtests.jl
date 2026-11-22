@@ -79,7 +79,8 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
             ("stage scripts load", "test_stage_loads.jl",      String[]),
             ("run folders",       "test_run_folders.jl",      String[]),
             ("refinement merge",  "test_refine_merge.jl",     String[]),
-            ("window convention", "test_window_convention.jl", String[]))
+            ("window convention", "test_window_convention.jl", String[]),
+            ("stage 2 run folder", "test_stage2_rundir.jl",    String[]))
         f = joinpath(@__DIR__, script)
         missing_inputs = [n for n in needs if !isfile(joinpath(ROOT, n))]
         if !isfile(f)

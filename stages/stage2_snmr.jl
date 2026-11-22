@@ -128,7 +128,12 @@ const KIND   = haskey(ARG, "truekernel") ? "truekernel" : "pooled"
 # meant merely LOADING this file left a run folder behind, which is how four
 # empty loadtest_pooled_* folders appeared once the load test started passing
 # --tag (22 Nov 2026), and six x_pooled_* ones before that.
-const RUNDIR = joinpath(OUT, "stage2", "$(TAG)_$(KIND)_$(STAMP)")
+# LABEL goes in the folder name. It already carries its own leading
+# underscore, and it is "" unless --label is given, so a run without one is
+# named exactly as before. Without this a spliced-kernel run -- which reaches
+# the default kernel path through --label -- lands in a folder called
+# <tag>_pooled_<stamp>, indistinguishable from a genuine pooled run.
+const RUNDIR = joinpath(OUT, "stage2", "$(TAG)_$(KIND)$(LABEL)_$(STAMP)")
 const RUN    = joinpath(RUNDIR, "chains")   # made in main(), not at load
 # Vendored into src/. This include used to point at ../ek_prerun/, which is
 # outside the repository and was never shipped, so Stage 2 -- and therefore
