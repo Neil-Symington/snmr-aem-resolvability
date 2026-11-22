@@ -97,3 +97,36 @@ intervals and the tie-break window BEFORE and AFTER for each. Stages 4 and 5
 have already run on the current tie-break windows, so any column whose window
 moves needs its downstream outputs re-examined before the change is adopted.
 
+## Active-set treatment of the parameter bounds in occam_core.jl
+
+Parked 23 Nov 2026, BEHIND the sweep-splitting validation. It changes solves,
+so it needs the full check against `gate-of-record-20261119`: every node's
+min chi2 to 1e-6 and every edge unchanged.
+
+THE PROBLEM. The Gauss-Newton step is computed with no knowledge of the
+parameter bounds; `clampm!` then pushes the iterate back inside them, which
+breaks the conductance constraint the step had just been projected onto.
+`projcond!` (`src/occam_core.jl:187-197`) re-projects exactly -- scaling every
+window cell by a common factor is closed-form -- but it cannot fix a cell
+pinned at the 2 S/m ceiling, and it gives up after 12 attempts.
+
+TWO SYMPTOMS, BOTH MEASURED.
+
+  * Solves run ~90-150 accepted steps. The traced solve at C = 0.8997 S,
+    lambda2 0.1, took 118 steps and 968 forward calls, 88.5% of it Jacobian
+    evaluation, and chi2 stopped moving by more than 0.01 at step 88.
+  * At C = 8.9975 S on 2Pv2 the constraint is LOST: conres 4.2e-3 at
+    lambda2 0.01 and 1.5e-4 at 0.1, even from a seed rescaled to meet the
+    constraint exactly and even at a step cap of 400. A model meeting that
+    conductance within the bounds demonstrably exists -- the seed is one -- so
+    this is the optimiser losing the constraint, not infeasibility. It is why
+    2Pv2's upper edge reads OPEN.
+
+THE CANDIDATE. Hold the clamped cells fixed, and solve and project over the
+free cells only, which is what the seed-builder in the node-12 check already
+does. That should both keep the constraint and cut the step count.
+
+NOT a speed-up in the sense the sweep-splitting is: splitting changes no
+number, this changes every solve. Order: validate splitting first, then this,
+then the stopping rule and Jacobian reuse.
+
