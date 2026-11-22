@@ -31,7 +31,13 @@ const ARG = Dict{String,String}()
 # AFTER them. `--force --tier typical` would otherwise store force="--tier" and
 # then skip "typical", silently running the default tier -- the same shape of
 # defect as everything else in this file's history.
-const FLAGS = ("--force",)
+# EVERY bare flag must be listed here. One that is not falls through to the
+# "--key value" branch, and if it is the LAST argument that branch's
+# `i < length(ARGS)` guard is false, so it is skipped WITHOUT A WORD. On
+# 22 Nov 2026 `--truekernel` sat last on two pipeline commands and was
+# dropped: both control runs came back as duplicate pooled runs, 36 minutes
+# of compute, and only the run folder's name gave it away.
+const FLAGS = ("--force", "--truekernel")
 let i = 1
     while i <= length(ARGS)
         if ARGS[i] in FLAGS

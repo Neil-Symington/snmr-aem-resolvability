@@ -50,3 +50,20 @@ const TRU3P = joinpath(ROOT, "data", "truth_murray3P.jld2")
         @info "skipped: the 3P Stage 2 run of record is not on disk" run = RUN3P
     end
 end
+
+@testset "every bare flag is in FLAGS" begin
+    # A bare flag missing from FLAGS falls through to the "--key value" branch.
+    # If it is the LAST argument that branch is skipped and the flag vanishes
+    # without a word: --truekernel did exactly that on 22 Nov 2026 and both
+    # control runs came back as duplicate pooled runs.
+    src = read(joinpath(ROOT, "stages", "stage2_snmr.jl"), String)
+    m = match(r"const FLAGS = \(([^)]*)\)", src)
+    @test m !== nothing
+    listed = Set(strip.(replace.(split(m[1], ","), '"' => ""), Ref(' ')))
+    # every --flag the file tests for with haskey(ARG, ...) and no value
+    for f in ("truekernel", "force")
+        @test "--$f" in listed
+    end
+    # and the file really does branch on them
+    @test occursin("haskey(ARG, \"truekernel\")", src)
+end
