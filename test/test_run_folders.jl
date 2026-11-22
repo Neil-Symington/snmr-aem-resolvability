@@ -52,6 +52,8 @@ end
     src = read(joinpath(ROOT, "stages", "stage2_snmr.jl"), String)
     @test occursin("--tag is required", src)
     # and the run directory is named from TAG, with no "x" default left anywhere
-    @test occursin("\"stage2\", \"\$(TAG)_\$(KIND)_\$(STAMP)\"", src)
+    # named from TAG, KIND and LABEL -- the label added 23 Nov so a spliced-
+    # kernel run is not mistaken for a pooled one; no "x" default remains
+    @test occursin("\"stage2\", \"\$(TAG)_\$(KIND)\$(LABEL)_\$(STAMP)\"", src)
     @test !occursin("get(ARG, \"tag\", \"x\")", src)
 end
