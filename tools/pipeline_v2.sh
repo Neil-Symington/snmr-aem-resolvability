@@ -29,7 +29,11 @@ exec 9>"$LOCK"
 flock -n 9 || { say "another copy holds the lock; exiting"; exit 0; }
 
 touch "$HB"
-( while kill -0 $$ 2>/dev/null; do touch "$HB"; sleep 300; done ) &
+# 9>&- so the heartbeat does NOT inherit the lock file descriptor. Without it
+# the subshell keeps the lock after the pipeline exits -- its `sleep` holds it
+# for up to five minutes -- and the next launch is refused with "another copy
+# holds the lock". Seen 22 Nov 2026.
+( while kill -0 $$ 2>/dev/null; do touch "$HB"; sleep 300; done ) 9>&- &
 HBPID=$!
 trap 'kill $HBPID 2>/dev/null' EXIT
 
