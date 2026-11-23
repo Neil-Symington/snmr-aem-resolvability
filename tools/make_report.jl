@@ -422,9 +422,22 @@ end
 const SMOOTH = if isfile(SMOOTHF)
     S = load(SMOOTHF)
     Cx = haskey(S, "conductance") ? S["conductance"] : (10 .^ S["lt"]) .* S["thick"]
-    d = Dict(round(Float64(Cx[i]), digits = 6) => collect(Float64, S["models"][i])
-             for i in eachindex(Cx) if solved(collect(Float64, S["models"][i])))
-    @printf("\nSmoothest models: %s, %d nodes\n", basename(SMOOTHF), length(d))
+    fb = haskey(S, "fellback") ? S["fellback"] : falses(length(Cx))
+    ch = haskey(S, "chi2") ? S["chi2"] : fill(NaN, length(Cx))
+    d = Dict{Float64,NamedTuple}()
+    for i in eachindex(Cx)
+        m = collect(Float64, S["models"][i])
+        solved(m) || continue                       # rejected nodes carry no model
+        d[round(Float64(Cx[i]), digits = 6)] =
+            (model = m, chi2 = Float64(ch[i]), fellback = Bool(fb[i]))
+    end
+    nfb = count(v -> v.fellback, values(d))
+    @printf("\nSmoothest models: %s, %d nodes, %d of them fell back to min-chi2\n",
+            basename(SMOOTHF), length(d), nfb)
+    for c in sort(collect(keys(d)))
+        v = d[c]
+        v.fellback && @printf("    fell back at C = %.4f S (chi2 %.3f)\n", c, v.chi2)
+    end
     d
 else
     @printf("\nNo smoothest-model store at %s; the toggle is greyed.\n", SMOOTHF)
@@ -577,11 +590,12 @@ function js_payload()
           ",m:[", join([jarr(m) for m in gate_models], ","), "]",
           ",ob:[", join([jiarr(v .- 1) for v in gate_ob], ","), "]",
           ",ms:", SMOOTH === nothing ? "null" :
-              (all(haskey(SMOOTH, c) for c in adm) ?
-                  string("[", join([haskey(SMOOTH, c) ? jarr(SMOOTH[c]) : "null" for c in Cs], ","), "]") :
-                  "null"),
-          ",msn:", SMOOTH === nothing ? 0 : count(c -> haskey(SMOOTH, c), adm),
-          ",msneed:", length(adm),
+              string("[", join([haskey(SMOOTH, c) ? jarr(SMOOTH[c].model) : "null" for c in Cs], ","), "]"),
+          ",mschi2:", SMOOTH === nothing ? "null" :
+              string("[", join([haskey(SMOOTH, c) ? jnum(SMOOTH[c].chi2) : "null" for c in Cs], ","), "]"),
+          ",fb:", SMOOTH === nothing ? "null" :
+              string("[", join([haskey(SMOOTH, c) && SMOOTH[c].fellback ? "1" : "0" for c in Cs], ","), "]"),
+          ",msn:", SMOOTH === nothing ? 0 : length(SMOOTH),
           ",src:", jstr(join(basename.(GATEF), " + ")), "},")
     # BOTH: the truth on the inversion grid, which is what a model can represent,
     # and the truth on ITS OWN 0.25 m grid, which is the true window conductance.
@@ -882,6 +896,10 @@ const C_P50='#00e5ff', C_PTL='rgba(0,229,255,.72)', C_TRUE='#ffffff',
         // line keep the eye on the truth and the selected model.
         C_FAM='rgba(255,255,255,.12)', C_BEST='#ffb703',
       C_SEL='#4ade80', C_LIM='#ffffff', C_GRID='rgba(255,255,255,.13)',
+      // magenta: a node where no smoother model fits, so the min-chi2 model
+      // stands. Kept well away from amber, which is the lowest-misfit
+      // reference and would otherwise be confused with it in this panel.
+      C_FB='#f25fd0', C_FB_FAINT='rgba(242,95,208,.26)',
       C_HALO='rgba(0,0,0,.6)';
 
 function setup(cv){
@@ -1169,18 +1187,20 @@ function drawGate(){
   const A=frame(g,w,h,'conductivity S/m',LOGT,xof,'depth m');
   const X=sxLog(A);
   band(g,A);
-  const MS = (useSmooth && D.gate.ms) ? D.gate.ms : D.gate.m;
   for(const k of admIdx){
     if(k===sel) continue;
-    steps(g,A,X,MS[k].map(v=>Math.pow(10,v)),aemTop,aemBot,C_FAM,0.8);
+    // a node that fell back is still drawn, in magenta, rather than passed off
+    // as a smoothest model
+    steps(g,A,X,modelOf(k).map(v=>Math.pow(10,v)),aemTop,aemBot,
+          (useSmooth&&fellback(k))?C_FB_FAINT:C_FAM,0.8);
   }
   const bi=D.gate.C.indexOf(D.gate.best);
   if(bi>=0 && bi!==sel)
     // the best fit is the default selection now, so the amber line would sit
     // under the green one; draw it only when the reader has moved off it
-    steps(g,A,X,MS[bi].map(v=>Math.pow(10,v)),aemTop,aemBot,C_BEST,1.4,[5,3]);
+    steps(g,A,X,modelOf(bi).map(v=>Math.pow(10,v)),aemTop,aemBot,C_BEST,1.4,[5,3]);
   smooth(g,A,X,D.aem.truth,aemTop,aemBot,C_TRUE,2,null,true);
-  const m=MS[sel].map(v=>Math.pow(10,v));
+  const m=modelOf(sel).map(v=>Math.pow(10,v));
   steps(g,A,X,m,aemTop,aemBot,C_SEL,3.2,null,true);
   for(const i of obOf(sel)){
     if(aemTop[i]>D.zmax) continue;
@@ -1193,6 +1213,11 @@ function drawGate(){
   // does not draw; at a 100 m axis it would otherwise dim test one below
   // 84.6 m with no line to explain why
   if(!FIGMODE) veil(g,A);
+  if(useSmooth && fellback(sel)){
+    g.save(); g.fillStyle=C_FB; g.font='9.5px ui-monospace,monospace';
+    g.textAlign='left'; g.textBaseline='top';
+    g.fillText('no smoother model fits', A.x0+4, A.y0+4); g.restore();
+  }
   g.strokeStyle=css('--line'); g.lineWidth=1;
   g.strokeRect(A.x0,A.y0,A.x1-A.x0,A.y1-A.y0);
 }
@@ -1201,7 +1226,7 @@ function drawChi(){
   const C=D.gate.C, lC=C.map(Math.log10);
   const lo=Math.min(...lC)-0.08, hi=Math.max(...lC)+0.08;
   const y0=8,y1=h-26,x0=40,x1=w-8;
-  const chis=D.gate.chi2.filter(isFinite);
+  const chis=D.gate.C.map((c,i)=>chiOf(i)).filter(isFinite);
   // The three rejected nodes reach chi2 49, 234 and 932. Scaling to them
   // flattens everything that matters; CLAMPING them to the top -- which this
   // did -- draws three different misfits as one horizontal line at a value
@@ -1239,24 +1264,31 @@ function drawChi(){
   g.textAlign='center'; g.textBaseline='middle'; g.fillText('min '+String.fromCharCode(967)+String.fromCharCode(178),0,0); g.restore();
   g.save(); g.beginPath(); g.rect(x0,y0-2,x1-x0,y1-y0+2); g.clip();
   g.strokeStyle=css('--acc'); g.lineWidth=1.8; g.beginPath();
-  C.forEach((c,i)=>{const px=X(c),py=Y(D.gate.chi2[i]); i?g.lineTo(px,py):g.moveTo(px,py);});
+  C.forEach((c,i)=>{const px=X(c),py=Y(chiOf(i)); i?g.lineTo(px,py):g.moveTo(px,py);});
   g.stroke();
-  C.forEach((c,i)=>{ if(D.gate.chi2[i]>cmax) return;
-    g.beginPath();g.arc(X(c),Y(D.gate.chi2[i]),2.6,0,6.284);
-    g.fillStyle=D.gate.adm[i]?css('--acc'):css('--mute');g.fill();});
+  C.forEach((c,i)=>{ if(chiOf(i)>cmax) return;
+    const px=X(c), py=Y(chiOf(i));
+    if(useSmooth && fellback(i)){            // marked, not silently substituted
+      g.beginPath(); g.moveTo(px,py-4); g.lineTo(px+4,py); g.lineTo(px,py+4); g.lineTo(px-4,py);
+      g.closePath(); g.fillStyle=C_FB; g.fill();
+      g.lineWidth=1; g.strokeStyle=css('--panel'); g.stroke();
+    } else {
+      g.beginPath();g.arc(px,py,2.6,0,6.284);
+      g.fillStyle=D.gate.adm[i]?css('--acc'):css('--mute');g.fill();
+    }});
   g.restore();
   // nodes off the top, each with its own value
   g.fillStyle=css('--mute'); g.font='9px ui-monospace,monospace';
   g.textAlign='center'; g.textBaseline='top';
-  C.forEach((c,i)=>{ if(D.gate.chi2[i]<=cmax) return;
+  C.forEach((c,i)=>{ if(chiOf(i)<=cmax) return;
     const px=X(c);
     g.beginPath(); g.moveTo(px,y0+1); g.lineTo(px-3.4,y0+6); g.lineTo(px+3.4,y0+6);
     g.closePath(); g.fill();
-    g.fillText(String(Math.round(D.gate.chi2[i])),px,y0+7);});
+    g.fillText(String(Math.round(chiOf(i))),px,y0+7);});
   g.strokeStyle=css('--hot'); g.lineWidth=1.3; g.setLineDash([2,2]); g.beginPath();
   g.moveTo(X(D.truthC),y0); g.lineTo(X(D.truthC),y1); g.stroke(); g.setLineDash([]);
   // the slider's position, as a marker that moves along the curve
-  const sc=D.gate.C[sel], sy=Y(D.gate.chi2[sel]), sx=X(sc);
+  const sc=D.gate.C[sel], sy=Y(chiOf(sel)), sx=X(sc);
   g.strokeStyle=css('--ink'); g.globalAlpha=.45; g.lineWidth=1.2;
   g.beginPath(); g.moveTo(sx,y0); g.lineTo(sx,y1); g.stroke();
   g.beginPath(); g.moveTo(x0,sy); g.lineTo(sx,sy); g.stroke(); g.globalAlpha=1;
@@ -1267,7 +1299,7 @@ function drawChi(){
   g.font='10px ui-monospace,monospace'; g.fillStyle=css('--ink');
   g.textAlign = sx>(x0+x1)/2 ? 'right' : 'left';
   g.textBaseline='bottom';
-  g.fillText(String.fromCharCode(967)+String.fromCharCode(178)+' '+F(D.gate.chi2[sel],2),
+  g.fillText(String.fromCharCode(967)+String.fromCharCode(178)+' '+F(chiOf(sel),2),
              sx+(sx>(x0+x1)/2?-13:13), sy+4);
 }
 
@@ -1280,9 +1312,17 @@ function cond(m,a,b){let s=0;
 
 const admIdx = D.gate.C.map((c,i)=>i).filter(i=>D.gate.adm[i]);
 let useSmooth=false;
+// A node whose smoothest search fell back carries the min-chi2 model and is
+// MARKED, not quietly substituted: the fan would otherwise mix two kinds of
+// model with nothing to say which is which.
+const fellback = k => !!(D.gate.fb && D.gate.fb[k]);
+const hasSm    = k => !!(D.gate.ms && D.gate.ms[k] && !fellback(k));
+const modelOf  = k => (useSmooth && hasSm(k)) ? D.gate.ms[k] : D.gate.m[k];
+const chiOf    = k => (useSmooth && hasSm(k) && D.gate.mschi2 && D.gate.mschi2[k]!==null)
+  ? D.gate.mschi2[k] : D.gate.chi2[k];
 // the stored `ob` lists belong to the min-chi2 models; for the smoothest ones
 // recompute with the same predicate the gate uses
-const obOf = k => (useSmooth && D.gate.ms)
+const obOf = k => (useSmooth && hasSm(k))
   ? D.gate.ms[k].map((v,i)=>[v,i]).filter(([v])=>v<=D.mb[0]+1e-9||v>=D.mb[1]-1e-9).map(([,i])=>i)
   : D.gate.ob[k];
 // OPEN ON THE LOWEST-MISFIT ADMISSIBLE NODE. Chosen 19 Nov after the previous
@@ -1304,16 +1344,14 @@ let sel = admIdx.reduce((a,b)=> D.gate.chi2[b] < D.gate.chi2[a] ? b : a, admIdx[
 // per node rather than shown, so the table stays still.
 const ZB=Math.min(D.zmax,80.7);
 function ratios(k){
-  const SRC=(useSmooth && D.gate.ms)?D.gate.ms:D.gate.m;
   const bi=D.gate.C.indexOf(D.gate.best);
-  const mk=SRC[k].map(v=>Math.pow(10,v)), bm=SRC[bi].map(v=>Math.pow(10,v));
+  const mk=modelOf(k).map(v=>Math.pow(10,v)), bm=modelOf(bi).map(v=>Math.pow(10,v));
   return [cond(mk,0,D.win[0])/cond(bm,0,D.win[0]),
           cond(mk,D.win[1],ZB)/cond(bm,D.win[1],ZB)];
 }
 function say(){
-  const C=D.gate.C[sel], chi=D.gate.chi2[sel];
-  const SRC=(useSmooth && D.gate.ms)?D.gate.ms:D.gate.m;
-  const mm=SRC[sel].map(v=>Math.pow(10,v));
+  const C=D.gate.C[sel], chi=chiOf(sel);
+  const mm=modelOf(sel).map(v=>Math.pow(10,v));
   const th=+document.getElementById('sP').value, ex=+document.getElementById('sM').value;
   const kf=+document.getElementById('sK').value/100;
   const sigb=C/D.thick, clay=kf*sigb;
@@ -1330,7 +1368,8 @@ function say(){
     '<colgroup><col class="k"><col class="v"><col class="t"></colgroup>'+
     '<thead><tr><th class="k"></th><th>selected</th><th>true</th></tr></thead><tbody>'+
     row('window conductance', F(C,4)+' S', F(D.truthC,4)+' S')+
-    row('misfit', String.fromCharCode(967)+String.fromCharCode(178)+' '+F(chi,2))+
+    row('misfit', String.fromCharCode(967)+String.fromCharCode(178)+' '+F(chi,2)+
+        (useSmooth&&fellback(sel)?' <em>no smoother model fits</em>':''))+
     row('on a limit', ob.length===0 ? '0 <em>of '+mm.length+'</em>'
         : ob.length+' <em>of '+mm.length+', from '+F(aemTop[ob[0]],1)+' m</em>')+
     row('clay term', F(clay,4)+' S/m <em>'+Math.round(kf*100)+'%'+
@@ -1387,16 +1426,18 @@ for(const id of ['sP','sM','sK']) document.getElementById(id).addEventListener('
 (function(){
   const b=document.getElementById('bM'), h=document.getElementById('hM');
   const have=!!D.gate.ms;
+  const nfb=have?D.gate.fb.reduce((a,b)=>a+b,0):0;
   b.textContent='lowest misfit';
   b.disabled=!have;
-  if(have){ h.textContent='';
+  if(have){
     b.addEventListener('click',()=>{
       useSmooth=!useSmooth; b.setAttribute('aria-pressed',String(useSmooth));
       b.textContent=useSmooth?'smoothest passing':'lowest misfit';
-      drawGate(); say();});
+      h.textContent=useSmooth&&nfb ? nfb+' fell back' : '';
+      drawGate(); drawChi(); say();});
   } else {
     b.title='the smoothest admissible model per node is not stored yet';
-    h.textContent=D.gate.msn>0 ? D.gate.msn+'/'+D.gate.msneed+' nodes' : 'not stored yet';
+    h.textContent='not stored yet';
   }
 })();
 

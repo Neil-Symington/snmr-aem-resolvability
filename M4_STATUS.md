@@ -23,3 +23,31 @@
 - 2026-11-18 02:38 column 4 e4 start (concurrent), seed 20261521 -> data/aem2S_m4c4e4
 - 2026-11-18 05:42 column 4  PAIR done: ensembles 3 4 in 184 min wall clock at concurrency 2
 - 2026-11-18 05:42 column 4 finished at concurrency: pair
+- 2026-11-21 06:32 column 5 (2Pv2)  start
+- 2026-11-21 06:33 column 5 Stage 0 done: data/m4/5/stage0_m4_2Pv2.jld2
+- 2026-11-21 06:33 column 5 (2Pv2) Stage 0 only, as asked; ensembles not started here
+- 2026-11-21 06:33 column 6 (2Sv2)  start
+- 2026-11-21 06:33 column 6 Stage 0 done: data/m4/6/stage0_m4_2Sv2.jld2
+- 2026-11-21 06:33 column 6 (2Sv2) Stage 0 only, as asked; ensembles not started here
+- 2026-11-21 06:33 m4_run.sh  finished: columns 5 6
+- 2026-11-21 06:34 PAIR FAILED: column 5 is not wired
+- 2026-11-21 06:34 column 5 (2Pv2)  PAIR start, ensembles: 1 2
+- 2026-11-21 06:34 column 5 e1 start (concurrent), seed 20261618 -> data/aem2Pv2_m4c5e1
+- 2026-11-21 06:34 column 5 e2 start (concurrent), seed 20261619 -> data/aem2Pv2_m4c5e2
+- 2026-11-21 09:40 column 5  PAIR done: ensembles 1 2 in 185 min wall clock at concurrency 2
+- 2026-11-22 07:45 column 5 (2Pv2)  PAIR start, ensembles: 3 4
+- 2026-11-22 07:45 column 5 e3 start (concurrent), seed 20261620 -> data/aem2Pv2_m4c5e3
+- 2026-11-22 07:45 column 5 e4 start (concurrent), seed 20261621 -> data/aem2Pv2_m4c5e4
+- 2026-11-22 07:52 PAIR FAILED: column 5 e3: empty or missing output in data/aem2Pv2_m4c5e3
+- 2026-11-22 07:53 column 5 (2Pv2)  PAIR start, ensembles: 3 4
+- 2026-11-22 07:53 column 5 e3 start (concurrent), seed 20261620 -> data/aem2Pv2_m4c5e3
+- 2026-11-22 07:53 column 5 e4 start (concurrent), seed 20261621 -> data/aem2Pv2_m4c5e4
+- 2026-11-22 11:04 column 5  PAIR done: ensembles 3 4 in 191 min wall clock at concurrency 2
+- 2026-11-22 11:04 column 6 (2Sv2)  PAIR start, ensembles: 1 2
+- 2026-11-22 11:04 column 6 e1 start (concurrent), seed 20261718 -> data/aem2Sv2_m4c6e1
+- 2026-11-22 11:04 column 6 e2 start (concurrent), seed 20261719 -> data/aem2Sv2_m4c6e2
+- 2026-11-22 14:09 column 6  PAIR done: ensembles 1 2 in 185 min wall clock at concurrency 2
+- 2026-11-22 14:09 column 6 (2Sv2)  PAIR start, ensembles: 3 4
+- 2026-11-22 14:09 column 6 e3 start (concurrent), seed 20261720 -> data/aem2Sv2_m4c6e3
+- 2026-11-22 14:09 column 6 e4 start (concurrent), seed 20261721 -> data/aem2Sv2_m4c6e4
+- 2026-11-22 17:14 column 6  PAIR done: ensembles 3 4 in 184 min wall clock at concurrency 2

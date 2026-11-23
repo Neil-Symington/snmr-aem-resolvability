@@ -16,7 +16,7 @@ truth  = "data/truth_murray2Pv2.jld2"
 column = "2Pv2"
 parent = ""             # a primary column, not derived
 role   = "primary"
-snmr_ensemble = ""        # Stage 2 has not run for this column yet
+snmr_ensemble = "data/stage2/2Pv2T_pooled_20261122-173135/cond_C2_typical2Pv2T.jld2"
 # Stage 1 has not run for this column yet; set after it does.
 stage1_draws = ""
 
