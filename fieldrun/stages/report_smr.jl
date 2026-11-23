@@ -36,7 +36,8 @@ include(joinpath(@__DIR__, "..", "common", "stage_prelude.jl"))
 include(joinpath(COMMON, "prerun_data.jl"))
 include(joinpath(COMMON, "prerun_lib.jl"))
 include(joinpath(COMMON, "udf_smr.jl"))
-using .PrerunLib
+include(joinpath(COMMON, "smr_marginal.jl"))
+using .PrerunLib, .SMRMarginal
 using HiQGA.transD_GP, JLD2, Statistics, SMRPInversion, DelimitedFiles, PyPlot
 include(joinpath(COMMON, "smr_setup.jl"))
 
@@ -159,8 +160,12 @@ function report_site(fid)
             gcf().suptitle("$fid ensemble $e", fontsize = 9)
             savefig(joinpath(od, "misfit", "$(fid)_e$(e)_misfit_chi2.png"), dpi = 150)
             close("all")
-            SMRPInversion.plot_model_field(S, opt, optn; decfactor = 10, lcolor = "k",
-                                           modelalpha = 0.08, burninfrac = BURNIN)
+            # with s integrated out there is no nuisance file to read
+            optn === nothing ?
+                SMRPInversion.plot_model_field(S, opt; decfactor = 10, lcolor = "k",
+                                               modelalpha = 0.08, burninfrac = BURNIN) :
+                SMRPInversion.plot_model_field(S, opt, optn; decfactor = 10, lcolor = "k",
+                                               modelalpha = 0.08, burninfrac = BURNIN)
             gcf().suptitle("$fid ensemble $e  ($(be.cond_source))", fontsize = 9)
             savefig(joinpath(od, "swarm", "$(fid)_e$(e)_swarm.png"), dpi = 150)
             close("all")

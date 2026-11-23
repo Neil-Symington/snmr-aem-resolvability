@@ -73,6 +73,10 @@ end
     @test refuses(c -> c["mcmc"]["replicates_snmr"] = 0)
     @test refuses(c -> c["mcmc"]["replicates_snmr"] = 1.5)
     @test !refuses(c -> c["mcmc"]["replicates_snmr"] = 4)
+    @test refuses(c -> c["noise"]["s_treatment"] = "integrated")   # not a choice
+    @test refuses(c -> c["noise"]["s_treatment"] = 1)
+    @test !refuses(c -> c["noise"]["s_treatment"] = "marginal")
+    @test !refuses(c -> c["noise"]["s_treatment"] = "sampled")
     @test refuses(c -> c["mcmc"]["fbounds"] = [0.45, 0.001])       # reversed
     @test refuses(c -> c["aem"]["lm_gates"] = [26, 9])             # reversed
     @test refuses(c -> c["aem"]["lm_gates"] = [9.5, 26])           # fractional gate

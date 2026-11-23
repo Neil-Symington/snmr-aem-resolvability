@@ -84,7 +84,9 @@ const KNOWN = Dict(
                       "seed_base", "nmin", "nmax", "lambda_gp",
                       "delta", "fbounds", "smoke"],
     "noise"       => ["sigma_hat_branch", "s_prior_center", "s_prior_tau",
-                      "s_sdev", "s_bounds_log10"],
+                      "s_sdev", "s_bounds_log10",
+                      # "sampled" (default) or "marginal": s integrated out
+                      "s_treatment"],
     "kernel"      => ["n_draws"],
     "occam"       => ["regtype", "w0", "lam2_log10", "beta2", "uncertainty"],
     "detect"      => ["theta", "min_thick_m", "occam_chi2_max", "doi_widthfrac",
@@ -179,7 +181,8 @@ function check_values(c::Dict, path)
     # MethodError: isless(::Int64, ::String) from the ordering checks.
     for (sec, k) in (("run","name"), ("run","mode"), ("snmr","loop_shape"), ("aem","system"),
                      ("detect","metric"), ("occam","regtype"), ("occam","uncertainty"),
-                     ("noise","sigma_hat_branch"), ("paths","outputs"), ("paths","logs"))
+                     ("noise","sigma_hat_branch"), ("noise","s_treatment"),
+                     ("paths","outputs"), ("paths","logs"))
         haskey(c, sec) && haskey(c[sec], k) || continue
         c[sec][k] isa AbstractString ||
             chk(false, "[$sec] $k must be a string, got $(repr(c[sec][k]))")
@@ -366,7 +369,8 @@ function check_values(c::Dict, path)
     end
     ENUMS = (("occam","regtype", ("R1","R2")),
              ("occam","uncertainty", ("laplace","bootstrap")),
-             ("noise","sigma_hat_branch", ("fid_residual_per_q","fid_residual_pooled")))
+             ("noise","sigma_hat_branch", ("fid_residual_per_q","fid_residual_pooled")),
+             ("noise","s_treatment", ("sampled","marginal")))
     for (sec, k, allowed) in ENUMS
         haskey(c, sec) && haskey(c[sec], k) && chk(c[sec][k] in allowed,
             "[$sec] $k must be one of $(join(allowed, ", ")), got \"$(c[sec][k])\"")

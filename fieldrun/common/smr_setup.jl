@@ -7,7 +7,8 @@
 # run_smr_transd.jl verbatim rather than copied.
 #
 # Needs, already loaded: stage_prelude.jl (OUT, FCFG, NSAMPLES_SNMR,
-# NCHAINS_CFG), prerun_data.jl (CFG), HiQGA.transD_GP, SMRPInversion, Statistics.
+# NCHAINS_CFG), prerun_data.jl (CFG), HiQGA.transD_GP, SMRPInversion, Statistics,
+# and smr_marginal.jl (module SMRMarginal) on every process.
 
 const ARG = Dict{String,String}()
 let i = 1
@@ -73,6 +74,13 @@ const SBOUNDS  = let b = Float64.(FCFG["noise"]["s_bounds_log10"])
 end
 const S_SDEV   = Float64.(FCFG["noise"]["s_sdev"])
 const S_PRIOR_CENTER = Float64(FCFG["noise"]["s_prior_center"])
+# HOW s IS HANDLED ([noise] s_treatment). "sampled" (the default): HiQGA samples
+# u = log s as a nuisance, every run before 2026-11-23. "marginal": s is
+# integrated out of the likelihood (common/smr_marginal.jl), the same posterior
+# on w with one coordinate fewer to sample; s is drawn after the run. The prior
+# (centre, tau) and bounds are the same in both.
+const S_TREATMENT = String(get(FCFG["noise"], "s_treatment", "sampled"))
+const MARGINAL    = S_TREATMENT == "marginal"
 # --supplied: use the operator's resistivity profile instead of the AEM model,
 # as a kernel-sensitivity control.
 const SUPPLIED = false   # no operator profile exists for UDF
@@ -100,6 +108,8 @@ function make_opts(prefix, zbnd)
         sdev_pos  = [0.05 * nz],
         sdev_dc   = 0.008 * diff(CFG.FBOUNDS, dims = 2)[:],
         save_freq = CFG.SAVE_FREQ, quasimultid = false, K = CFG.GP_KERNEL)
+    # with s integrated out there is no nuisance to sample: optn is nothing
+    MARGINAL && return opt, nothing
     optn = transD_GP.OptionsNuisance(opt;
         sdev = copy(S_SDEV), bounds = copy(SBOUNDS),
         nsamples = NSAMPLES, updatenuisances = true)
@@ -107,9 +117,15 @@ function make_opts(prefix, zbnd)
     opt, optn
 end
 
-"Hierarchical sounding with the widened s prior."
+"""
+The SNMR sounding: hierarchical (s sampled) or marginal (s integrated out),
+with the same noise shape, prior and bounds either way.
+"""
 function hier(b)
     σ̂ = FLAT ? fill(median(b.σ̂), length(b.σ̂)) : b.σ̂
+    MARGINAL && return SMRMarginal.newSMRSoundingMarginal(b.V0, b.ϕ, b.F;
+        σ̂_V0 = σ̂, s_prior_center = S_PRIOR_CENTER, s_prior_logwidth = S_TAU,
+        s_bounds_ln = (SBOUNDS[1], SBOUNDS[2]), linearsat = true)
     SMRPInversion.newSMRSoundingHierarchical(b.V0, b.ϕ, b.F;
         σ̂_V0 = σ̂, s_prior_center = S_PRIOR_CENTER,
         s_prior_logwidth = S_TAU, s_init = CFG.S_INIT,
