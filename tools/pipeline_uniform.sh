@@ -51,6 +51,10 @@ for col in 3P 3S 2Pv2 2Sv2; do
     for k in $(seq 0 $((NSHARD-1))); do
         cs=$(shard "$NODES" "$NSHARD" "$k")
         [ -z "$cs" ] && continue
+        # shard-level resume: a finished shard is not redone on a relaunch
+        if [ -s "$OUT/shard_${col}_${k}.jld2" ]; then
+            say "  shard $col/$k already written, skipping"; continue
+        fi
         julia --project=. gate_check/uniform_gate.jl --col "$col" --cs "$cs" \
               --out "$OUT" --shard "$k" > "logs/ug_${col}_$k.log" 2>&1 &
         pids+=($!)

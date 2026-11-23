@@ -84,10 +84,27 @@ for C in CS, st in 1:NSTART
     prev = Inf; tot = 0.0; abandoned = false
     for l2 in LADDER
         t0 = time()
-        m, chi, _, nf = occam(aem, m, m0, R, ndata; fixidx=fixidx, fixval=v,
-                              mode=:map, ctype=:uniform, dz=dzeff, lambda2=l2,
-                              beta2=0.01, withH=false, info=true,
-                              nsteps=400, chistall=0.01)
+        # A SOLVE THAT THROWS MUST NOT TAKE THE SHARD WITH IT. 2Pv2 at 7.5 and
+        # 8.9975 S died with "matrix contains Infs or NaNs" under the
+        # constrained solver, and these node lists go to 28.45 S. The failure
+        # is recorded as a status and the shard carries on; losing one value
+        # is a data point, losing fourteen is an outage.
+        local m2, chi, nf
+        try
+            m2, chi, _, nf = occam(aem, m, m0, R, ndata; fixidx=fixidx, fixval=v,
+                                   mode=:map, ctype=:uniform, dz=dzeff, lambda2=l2,
+                                   beta2=0.01, withH=false, info=true,
+                                   nsteps=400, chistall=0.01)
+            m = m2
+        catch e
+            el = time()-t0; tot += el
+            msg = first(sprint(showerror, e), 60)
+            @printf("  C=%-10.6g l2=%-6.2f SOLVE THREW: %s\n", C, l2, msg); flush(stdout)
+            push!(rows, (C=C, start=st, lambda2=l2, chi2=NaN, steps=0, nfev=0,
+                         converged=false, stalled=false, nbound=0, secs=el,
+                         status="threw"))
+            abandoned = true; break
+        end
         el = time()-t0; tot += el
         nb = count(j -> m[j] >= HI-1e-9 || m[j] <= LO+1e-9, 1:n)
         stat = nf.converged ? "converged" : get(nf,:stalled,false) ? "stall" :
