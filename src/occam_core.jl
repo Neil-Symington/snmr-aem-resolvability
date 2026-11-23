@@ -161,7 +161,8 @@ and lets the shape vary — the proper profile for "this unit's conductivity".
 """
 function occam(aem, mstart, m0, R, ndata; fixidx=Int[], fixval=0.0, mode=:minimise,
                ctype=:uniform, nsteps=NSTEPS, verbose=false,
-               lambda2=nothing, beta2=Β2, withH=false, dz=nothing, info=false)
+               lambda2=nothing, beta2=Β2, withH=false, dz=nothing, info=false,
+               chistall=0.0, chistall_n=3)
     mode === :map && (nsteps = max(nsteps, NSTEPS_MAP))
     n = length(m0)
     meanmode = (ctype === :mean) && !isempty(fixidx)
@@ -258,6 +259,14 @@ function occam(aem, mstart, m0, R, ndata; fixidx=Int[], fixval=0.0, mode=:minimi
         Φcur = χcur + pen(m)
         nacc = 0; gnorm = NaN; exhausted = false; nj = 0; nfev = 0
         converged = false; budget = false
+        # OFF BY DEFAULT (chistall = 0): with it zero this block cannot fire and
+        # the solve is bit-for-bit what it was. With chistall > 0 the solve also
+        # stops once chi2 has moved less than that over the last chistall_n
+        # ACCEPTED steps -- the measured tail is 30 of 118 steps spent moving
+        # chi2 by under 0.01 while PHI_CONV grinds toward 1e-7. Added 23 Nov
+        # 2026 for the lambda2 continuation; no record run passes it.
+        stalled = false
+        chihist = Float64[]
         for step in 1:nsteps
             χcur = chi2(aem, m; computeJ = true); nj += 1; nfev += 1
             Φcur = χcur + pen(m)
@@ -304,6 +313,14 @@ function occam(aem, mstart, m0, R, ndata; fixidx=Int[], fixval=0.0, mode=:minimi
                             m = mn; χcur = χn; Φcur = Φn
                             μ = max(μ*MU_DOWN, MU_MIN); accepted = true; nacc += 1
                             rel < PHI_CONV && (converged = true)
+                            if chistall > 0
+                                push!(chihist, χn)
+                                length(chihist) > chistall_n + 1 && popfirst!(chihist)
+                                if length(chihist) == chistall_n + 1 &&
+                                   (maximum(chihist) - minimum(chihist)) < chistall
+                                    stalled = true
+                                end
+                            end
                             verbose && @printf("   step %2d  chi2 %.3f  phi %.3f  mu %.2g  t %.3g  rel %.2g\n",
                                                step, χn/ndata, Φn, μ, t, rel)
                             break
@@ -319,7 +336,7 @@ function occam(aem, mstart, m0, R, ndata; fixidx=Int[], fixval=0.0, mode=:minimi
             # Stop on genuine convergence, on the work budget, or when damping
             # was exhausted without an accepted step. Only the last of those is
             # the old `accepted || break`, and it now means what it says.
-            (accepted && !converged && !budget) || break
+            (accepted && !converged && !budget && !stalled) || break
         end
         if withH || info
             chi2(aem, m; computeJ = true)
@@ -346,6 +363,7 @@ function occam(aem, mstart, m0, R, ndata; fixidx=Int[], fixval=0.0, mode=:minimi
                        n_global = n_global, n_stated = n_stated, boundkind = bk,
                        conres = cres, nacc = nacc, njac = nj, nfev = nfev,
                        mu = μ, exhausted = exhausted, converged = converged,
+                       stalled = stalled,
                        budget = budget, nsteps = nsteps, capped = (nj >= nsteps),
                        # A legitimate stop is either the relative-Phi test
                        # firing, or no descent direction being found at any mu
