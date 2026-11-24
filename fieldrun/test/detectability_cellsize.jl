@@ -3,6 +3,7 @@
 #   julia --project=. fieldrun/test/detectability_cellsize.jl --config <toml> \
 #         [--truth 3P=data/truth_murray3P.jld2,3S=...] [--sites Mulan31,Mulan32] \
 #         [--levels 25,50,100] [--kcache <dir>] [--save <file.jld2>]
+#         [--zmax 100,120,200,300]
 #
 # Rebuilds each SMR kernel on the SNMR depth grid as it stands and with every
 # cell split into 2 and into 4, and evaluates on each:
@@ -15,6 +16,11 @@
 #   blkP     detectability_projected  blk10 with the kernel projected onto the response
 #                                     phase at w_ref = 0.05, as sdoiC does: blk10 minus
 #                                     its no-cancellation |sum K̃|
+#
+# --zmax repeats the test with the cells held fixed and the MODEL BOTTOM moved:
+# the grid is truncated at, or extended at its last spacing to, each zmax and
+# the kernel rebuilt. A rule that measures the data does not move with zmax
+# once zmax is below the sensitive depth.
 #
 # A rule that measures the data gives the same depth at every refinement. The
 # functions are lifted from detect_aquifer.jl by name, not copied, so this tests
@@ -57,6 +63,37 @@ end
 "Split every interval of the node grid into k equal parts."
 refine(z, k) = k == 1 ? collect(Float64, z) :
     vcat([collect(range(z[i], z[i+1], length = k + 1))[1:end-1] for i in 1:length(z)-1]..., z[end])
+
+"The node grid with its bottom moved to zmax: truncated, or extended at the last spacing."
+function rebottom(z, zmax)
+    z = collect(Float64, z)
+    zmax <= z[end] && return z[z .<= zmax + 1e-9]
+    dz = z[end] - z[end-1]
+    vcat(z, collect(z[end] + dz:dz:zmax + 1e-9))
+end
+const ZMAX = [parse(Float64, x) for x in split(get(ARGN, "zmax", ""), ",") if !isempty(x)]
+
+"""
+Cells fixed, bottom moved: build(z) returns K̃ on node grid z. One row per zmax,
+the stored bottom first.
+"""
+function zmax_report(title, build, z0, noises)
+    isempty(ZMAX) && return nothing
+    println("\n", title, "  -- MODEL BOTTOM MOVED, cells fixed")
+    @printf("  %-22s %7s %4s | %8s %8s %8s %8s %8s\n", "noise", "zmax", "nz", "cell", "blk10", "blkP", "sdoi", "sdoiC")
+    Ks = [(z = rebottom(z0, zb); (z, build(z))) for zb in vcat(z0[end], ZMAX)]
+    out = []
+    for (lab, σ) in noises, (n, (z, K̃)) in enumerate(Ks)
+        r = (noise = lab, zmax = z[end], nz = length(z),
+             cell = detectability(K̃, σ, z).zlim, blk10 = detectability_block(K̃, σ, z; Lmin = 10.0).zlim,
+             blkP = detectability_projected(K̃, σ, z; Lmin = 10.0).zlim,
+             sdoi = sens_doi(K̃, σ, z, 0.05).doi, sdoiC = sens_doi_coherent(K̃, σ, z, 0.05).doi)
+        @printf("  %-22s %7.1f %4d | %8.1f %8.1f %8.1f %8.1f %8.1f%s\n", n == 1 ? lab : "", r.zmax, r.nz,
+                r.cell, r.blk10, r.blkP, r.sdoi, r.sdoiC, n == 1 ? "  (stored bottom)" : "")
+        push!(out, r)
+    end
+    out
+end
 
 "K̃ exactly as SMRPInversion.SMRDetOperator forms it: trapezoidal weights times the kernel."
 function ktilde(F)
@@ -163,6 +200,10 @@ if haskey(ARGN, "truth")
         end
         report("SYNTHETIC $col  (truth sigma_bulk kernel, loop $(T["LOOP_SIDE"]) m, inc $(T["INC_DEG"]))", rows)
         ALL[String(col)] = rows
+        zr = zmax_report("SYNTHETIC $col",
+            z -> ktilde(SMRPInversion.MRSForward_square(R, z, QGRID, ϕ, 0.0, Be, cm)),
+            T["zsmr"], [("$tier $(round(level*1e9, digits=2)) nV", sigma_shape(length(QGRID), level)) for (tier, level) in TIERS])
+        zr === nothing || (ALL["zmax_$(col)"] = zr)
     end
 end
 
@@ -191,6 +232,10 @@ if haskey(ARGN, "sites")
         end
         report("FIELD $fid  ($(D["cond_source"]), sigma-hat median $(round(median(σ̂)*1e9, digits=2)) nV)", rows)
         ALL[fid] = rows
+        zr = zmax_report("FIELD $fid",
+            z -> ktilde(SMRPInversion.MRSForward_square(r.loop_side / 2, z, b.q, deg2rad(r.inc_deg), 0.0, b.Be, cm)),
+            b.zbnd, [("sigma-hat (s = 1)", σ̂), (@sprintf("inferred, s50 %.0f", s50), sqrt(s50) .* σ̂)])
+        zr === nothing || (ALL["zmax_$(fid)"] = zr)
     end
 end
 
