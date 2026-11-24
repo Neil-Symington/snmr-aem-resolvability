@@ -12,6 +12,9 @@
 #   blk5     detectability_block()    a 5 m block, [detect] min_thick_m in the BDU files
 #   sdoi     sens_doi(w_ref = 0.05)   the cumulative DOI the stage reports (quadrature)
 #   sdoiC    sens_doi_coherent        the same, section summed coherently over depth
+#   blkP     detectability_projected  blk10 with the kernel projected onto the response
+#                                     phase at w_ref = 0.05, as sdoiC does: blk10 minus
+#                                     its no-cancellation |sum K̃|
 #
 # A rule that measures the data gives the same depth at every refinement. The
 # functions are lifted from detect_aquifer.jl by name, not copied, so this tests
@@ -80,6 +83,18 @@ function sigma_shape(nq, level; rise = 2.5, cv = 0.60, seed = 20261012)
     s .* (level / median(s))
 end
 
+"""
+detectability_block with sens_doi_coherent's phase convention: the block's data
+change is the component along the current response, real(conj(u) .* K̃) summed
+over the block, so depths whose contributions are out of phase cancel. Only the
+projection differs from blk10; the block, threshold and base are the same.
+"""
+function detectability_projected(K̃, σ, z; w_ref = 0.05, θdetect = THETA_DETECT, Lmin = THICK_MIN)
+    zc = K̃ * fill(w_ref, size(K̃, 2))
+    u = conj.(zc) ./ max.(abs.(zc), eps())
+    detectability_block(real.(u .* K̃), σ, z; θdetect = θdetect, Lmin = Lmin)
+end
+
 "fig04_snmr_posteriors.jl's sensitivity DOI (m1): the cell rule, on the same K̃."
 fig04_doi(K̃, σ, z) = detectability(K̃, σ, z).zlim
 
@@ -89,21 +104,22 @@ row(label, f, K̃, σ, z) = (label = label, z = z,
     blk10 = detectability_block(K̃, σ, z; Lmin = 10.0).zlim,
     blk5 = detectability_block(K̃, σ, z; Lmin = 5.0).zlim,
     sdoi = sens_doi(K̃, σ, z, 0.05).doi,
-    sdoiC = sens_doi_coherent(K̃, σ, z, 0.05).doi)
+    sdoiC = sens_doi_coherent(K̃, σ, z, 0.05).doi,
+    blkP = detectability_projected(K̃, σ, z; Lmin = 10.0).zlim)
 
 function report(title, rows)
     println("\n", title)
-    @printf("  %-22s %6s %5s | %8s %8s %8s %8s %8s\n", "noise", "refine", "dz0", "cell", "blk10", "blk5", "sdoi", "sdoiC")
+    @printf("  %-22s %6s %5s | %8s %8s %8s %8s %8s %8s\n", "noise", "refine", "dz0", "cell", "blk10", "blk5", "sdoi", "sdoiC", "blkP")
     for (lab, rs) in rows, (k, r) in zip(REFINE, rs)
-        @printf("  %-22s %6s %5.2f | %8.1f %8.1f %8.1f %8.1f %8.1f\n", k == 1 ? lab : "",
-                "x$k", r.z[2] - r.z[1], r.cell, r.blk10, r.blk5, r.sdoi, r.sdoiC)
+        @printf("  %-22s %6s %5.2f | %8.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n", k == 1 ? lab : "",
+                "x$k", r.z[2] - r.z[1], r.cell, r.blk10, r.blk5, r.sdoi, r.sdoiC, r.blkP)
     end
     for (lab, rs) in rows
         a, b = rs[1], rs[2]
         ratio(x, y) = x == 0 ? (y == 0 ? "0->0" : "0->>0") : @sprintf("%.3f", y / x)
-        @printf("  %-22s half/current: cell %s  blk10 %s  blk5 %s  sdoi %s  sdoiC %s\n", lab,
+        @printf("  %-22s half/current: cell %s  blk10 %s  blk5 %s  sdoi %s  sdoiC %s  blkP %s\n", lab,
                 ratio(a.cell, b.cell), ratio(a.blk10, b.blk10), ratio(a.blk5, b.blk5),
-                ratio(a.sdoi, b.sdoi), ratio(a.sdoiC, b.sdoiC))
+                ratio(a.sdoi, b.sdoi), ratio(a.sdoiC, b.sdoiC), ratio(a.blkP, b.blkP))
     end
 end
 
