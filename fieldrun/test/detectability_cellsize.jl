@@ -10,7 +10,8 @@
 #   cell     detectability()          one cell perturbed alone (the current rule)
 #   blk10    detectability_block()    a 10 m block, THICK_MIN
 #   blk5     detectability_block()    a 5 m block, [detect] min_thick_m in the BDU files
-#   sdoi     sens_doi(w_ref = 0.05)   the cumulative DOI the stage reports
+#   sdoi     sens_doi(w_ref = 0.05)   the cumulative DOI the stage reports (quadrature)
+#   sdoiC    sens_doi_coherent        the same, section summed coherently over depth
 #
 # A rule that measures the data gives the same depth at every refinement. The
 # functions are lifted from detect_aquifer.jl by name, not copied, so this tests
@@ -33,7 +34,7 @@ include(joinpath(COMMON, "udf_smr.jl"))
 
 # ── the functions under test, taken from the stage by name ──────────────────
 const DETECT_SRC = joinpath(@__DIR__, "..", "stages", "detect_aquifer.jl")
-let want = Set([:cellsof, :detectability, :detectability_block, :sens_doi,
+let want = Set([:cellsof, :detectability, :detectability_block, :sens_doi, :sens_doi_coherent,
                 :THICK_MIN, :THETA_DETECT])
     ex = Meta.parseall(read(DETECT_SRC, String))
     name(e) = e isa Expr && e.head === :macrocall ? name(e.args[end]) :
@@ -87,21 +88,22 @@ row(label, f, K̃, σ, z) = (label = label, z = z,
     cell = detectability(K̃, σ, z).zlim,
     blk10 = detectability_block(K̃, σ, z; Lmin = 10.0).zlim,
     blk5 = detectability_block(K̃, σ, z; Lmin = 5.0).zlim,
-    sdoi = sens_doi(K̃, σ, z, 0.05).doi)
+    sdoi = sens_doi(K̃, σ, z, 0.05).doi,
+    sdoiC = sens_doi_coherent(K̃, σ, z, 0.05).doi)
 
 function report(title, rows)
     println("\n", title)
-    @printf("  %-22s %6s %5s | %8s %8s %8s %8s\n", "noise", "refine", "dz0", "cell", "blk10", "blk5", "sdoi")
+    @printf("  %-22s %6s %5s | %8s %8s %8s %8s %8s\n", "noise", "refine", "dz0", "cell", "blk10", "blk5", "sdoi", "sdoiC")
     for (lab, rs) in rows, (k, r) in zip(REFINE, rs)
-        @printf("  %-22s %6s %5.2f | %8.1f %8.1f %8.1f %8.1f\n", k == 1 ? lab : "",
-                "x$k", r.z[2] - r.z[1], r.cell, r.blk10, r.blk5, r.sdoi)
+        @printf("  %-22s %6s %5.2f | %8.1f %8.1f %8.1f %8.1f %8.1f\n", k == 1 ? lab : "",
+                "x$k", r.z[2] - r.z[1], r.cell, r.blk10, r.blk5, r.sdoi, r.sdoiC)
     end
     for (lab, rs) in rows
         a, b = rs[1], rs[2]
         ratio(x, y) = x == 0 ? (y == 0 ? "0->0" : "0->>0") : @sprintf("%.3f", y / x)
-        @printf("  %-22s half/current: cell %s  blk10 %s  blk5 %s  sdoi %s\n", lab,
+        @printf("  %-22s half/current: cell %s  blk10 %s  blk5 %s  sdoi %s  sdoiC %s\n", lab,
                 ratio(a.cell, b.cell), ratio(a.blk10, b.blk10), ratio(a.blk5, b.blk5),
-                ratio(a.sdoi, b.sdoi))
+                ratio(a.sdoi, b.sdoi), ratio(a.sdoiC, b.sdoiC))
     end
 end
 

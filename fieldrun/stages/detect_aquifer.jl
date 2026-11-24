@@ -226,6 +226,30 @@ function sens_doi(K̃, σ, z, w_ref; Δw = 0.05)
 end
 
 """
+`sens_doi` with the section below cell j perturbed COHERENTLY.
+
+`sens_doi` squares each cell's response and adds the cells in quadrature,
+which is right for independent perturbations and wrong for this question: the
+whole section changing water content together moves the data by the SUM of the
+Jacobian columns. With cell thickness folded into K̃, halving the cells halves
+each column, so the quadrature sum shrinks by sqrt(2) per halving and the DOI
+rises with refinement (Mulan32, inferred noise: 56.6, 42.7, 19.0 m at 1, 0.5,
+0.25 m). Here the columns are summed over depth first and the squares taken
+over the pulse moments only, where the noise is independent. Same phase
+projection, same Δw, same crossing rule.
+"""
+function sens_doi_coherent(K̃, σ, z, w_ref; Δw = 0.05)
+    nz = size(K̃, 2)
+    zc = K̃ * fill(w_ref, nz)
+    u = conj.(zc) ./ max.(abs.(zc), eps())
+    J = real.(u .* K̃)
+    Jcum = reverse(cumsum(reverse(J .* Δw ./ σ, dims = 2), dims = 2), dims = 2)
+    C = vec(sqrt.(sum(Jcum .^ 2, dims = 1)))
+    idx = findfirst(<(1.0), C)
+    (C = C, doi = idx === nothing ? Float64(z[end]) : (idx == 1 ? 0.0 : Float64(z[idx-1])))
+end
+
+"""
 Rebuild the SMR kernel for a site from the stored sounding inputs.
 
 The kernel must use the SAME conductivity the inversion was sampled under.
@@ -320,6 +344,7 @@ function analyse(field_id)
     # criteria see less column here than they do on a synthetic.
     det_hat = constraint_limit(K̃, σ̂, z)
     sd = [sens_doi(K̃, σ_eff, z, wr).doi for wr in (0.02, 0.05, 0.10)]
+    sdc = [sens_doi_coherent(K̃, σ_eff, z, wr).doi for wr in (0.02, 0.05, 0.10)]
 
     println("="^100)
     @printf("%s — %d draws, %d pulse moments, sigma_eff median %.2f nV (s p50 %.2f)\n",
@@ -331,6 +356,7 @@ function analyse(field_id)
     @printf("      noise, %.1f m at sigma-hat alone (s = 1, the synthetics' convention)\n",
             det_hat.zlim)
     @printf("  sensitivity DOI at w_ref 0.02/0.05/0.10: %.1f / %.1f / %.1f m\n", sd...)
+    @printf("  coherent sensitivity DOI (section summed, not in quadrature): %.1f / %.1f / %.1f m\n", sdc...)
     @printf("  posterior-width DOI (NOT quoted alone): %.1f m\n", D["doi_width"])
     @printf("  convergence: rhat_max %.3f, ess_bulk_min %.0f, gates %s\n",
             D["rhat_max"], D["ess_bulk_min"], D["gates_pass"] ? "PASS" : "FAIL")
@@ -590,6 +616,7 @@ function analyse(field_id)
         field_id = field_id, z = z, dz = g.dz, ztop = g.top, zbot = g.bot,
         zlim = zlim, dmin = det.dmin, doi_sens = sd[2],
         doi_sens_lo = sd[1], doi_sens_hi = sd[3], doi_width = D["doi_width"],
+        doi_sens_coherent = sdc,
         occ = occ, P1 = P1, P2 = P2, nunits = nun,
         have_consensus = have_cons,
         win = [za, zb], win_source = wsrc, win_idx = ix,
