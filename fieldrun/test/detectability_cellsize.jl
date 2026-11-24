@@ -115,9 +115,15 @@ if haskey(ARGN, "truth")
         col, path = split(spec, "=")
         T = load(path)
         zt = collect(Float64, T["z"]); σt = collect(Float64, T["σ_bulk"])
-        # the truth is on 0.25 m cells; one conductivity model serves every grid
-        bnd = vcat(zt .- (zt[2] - zt[1]) / 2, zt[end] + (zt[2] - zt[1]) / 2)
-        cm = SNMRForward.ConductivityModel(σt, diff(bnd)[1:end-1])
+        # One conductivity model serves every grid: the truth's 0.25 m sigma_bulk,
+        # geometric-meaned onto 2 m layers. NOT the 0.25 m layers themselves:
+        # SNMRForward overflows silently on a fine stack -- 800 x 0.25 m gave
+        # |kernel| ~ 1e55 and V0 ~ 1e62 nV, 200 x 1 m ~ 1e11 nV -- while 2 m
+        # and 5 m layers agree (3P: V0 356-2920 nV). Every grid passed every
+        # rule on the broken kernel, so check V0 below before trusting a row.
+        bnd = collect(0.0:2.0:zt[end] + (zt[2] - zt[1]) / 2)
+        σl = [exp(mean(log.(σt[(zt .>= bnd[i]) .& (zt .< bnd[i+1])]))) for i in 1:length(bnd)-1]
+        cm = SNMRForward.ConductivityModel(σl, diff(bnd)[1:end-1])
         R = T["LOOP_SIDE"] / 2; ϕ = deg2rad(T["INC_DEG"]); Be = T["BE_T"]
         rows = Pair{String,Vector}[]
         # kernels are minutes each on the 0.25 m truth layers; --kcache keeps them
@@ -130,6 +136,10 @@ if haskey(ARGN, "truth")
             isempty(kc) || (mkpath(dirname(kc)); jldsave(kc; Ks = k_))
             k_
         end
+        V0 = abs.(Ks[1] * T["θ_smrgrid"])
+        1e-8 < maximum(V0) < 1e-4 ||
+            error("$col: forward V0 up to $(maximum(V0)) V is not an SNMR amplitude -- the kernel is broken")
+        @printf("\n%s forward V0 on the truth: %.0f-%.0f nV\n", col, 1e9 * minimum(V0), 1e9 * maximum(V0))
         for (tier, level) in TIERS
             σ = sigma_shape(length(QGRID), level)
             push!(rows, "$tier $(round(level*1e9, digits=2)) nV" =>
