@@ -88,7 +88,7 @@ const KNOWN = Dict(
     "kernel"      => ["n_draws"],
     "occam"       => ["regtype", "w0", "lam2_log10", "beta2", "uncertainty"],
     "detect"      => ["theta", "min_thick_m", "occam_chi2_max", "doi_widthfrac",
-                      "doi_widthfrac_alt", "metric"],
+                      "doi_widthfrac_alt", "metric", "detectability"],
     "gate"        => ["thresholds_mgL"],
     "convergence" => ["rhat", "min_ess", "splithalf_dw", "splithalf_max",
                       "trend_sigma", "depths_m"],
@@ -178,7 +178,7 @@ function check_values(c::Dict, path)
     # MethodError from strip(::Int64), and list elements gave
     # MethodError: isless(::Int64, ::String) from the ordering checks.
     for (sec, k) in (("run","name"), ("run","mode"), ("snmr","loop_shape"), ("aem","system"),
-                     ("detect","metric"), ("occam","regtype"), ("occam","uncertainty"),
+                     ("detect","metric"), ("detect","detectability"), ("occam","regtype"), ("occam","uncertainty"),
                      ("noise","sigma_hat_branch"), ("paths","outputs"), ("paths","logs"))
         haskey(c, sec) && haskey(c[sec], k) || continue
         c[sec][k] isa AbstractString ||
@@ -298,6 +298,9 @@ function check_values(c::Dict, path)
     haskey(c, "detect") && haskey(c["detect"], "metric") &&
         chk(c["detect"]["metric"] in ("integral", "threshold"),
             "[detect] metric must be \"integral\" or \"threshold\", got \"$(c["detect"]["metric"])\"")
+    haskey(c, "detect") && haskey(c["detect"], "detectability") &&
+        chk(c["detect"]["detectability"] in ("cell", "block"),
+            "[detect] detectability must be \"cell\" or \"block\", got \"$(c["detect"]["detectability"])\"")
     haskey(c["snmr"], "loop_shape") &&
         chk(c["snmr"]["loop_shape"] in ("square", "circle"),
             "[snmr] loop_shape must be \"square\" or \"circle\", got \"$(c["snmr"]["loop_shape"])\"")

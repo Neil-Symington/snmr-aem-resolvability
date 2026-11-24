@@ -166,6 +166,48 @@ function detectability(K̃, σ, z; θdetect = THETA_DETECT)
 end
 
 """
+The same rule applied to a BLOCK of cells at least `Lmin` thick, not one cell.
+
+`detectability` perturbs cell i alone, so its sum runs over data only and
+dtheta_min scales with cell thickness: on the 1 m SNMR cells near the surface,
+at field noise, no cell passes, `findlast` returns nothing and the constraint
+depth collapses to 0 m (Mulan31 and Mulan32, Birrindudu, 24 Nov). Halving the
+cells moves that limit; it measures the grid, not the data.
+
+Here the change is a uniform dtheta over every cell of a contiguous block, so
+datum q moves by |sum_{i in B} K̃[q,i]| dtheta. Summing the complex kernel over
+the block is its integral over that depth range, which does not depend on how
+finely the block is divided. For a one-cell block this is `detectability`
+exactly. Blocks are the cells from i down until bot - top >= Lmin (the
+`cellsof` geometry `allruns` uses); a block that runs out of column first gets
+Inf. `dmin[i]` belongs to the block starting at cell i, and `zlim` is the BASE
+of the deepest block that passes: a unit of thickness Lmin ending there is
+detectable, and `allruns` admits cells whose base is at or above `zlim`.
+"""
+function detectability_block(K̃, σ, z; θdetect = THETA_DETECT, Lmin = THICK_MIN)
+    g = cellsof(z); nz = size(K̃, 2)
+    dmin = fill(Inf, nz); base = zeros(nz)
+    for i in 1:nz
+        j = i
+        while j < nz && g.bot[j] - g.top[i] < Lmin; j += 1; end
+        g.bot[j] - g.top[i] >= Lmin - 1e-9 || continue
+        kb = vec(sum(view(K̃, :, i:j), dims = 2))
+        dmin[i] = 1 / sqrt(sum(abs2(abs(kb[q]) / σ[q]) for q in eachindex(kb)))
+        base[i] = g.bot[j]
+    end
+    i = findlast(<=(θdetect), dmin)
+    (dmin = dmin, zlim = i === nothing ? 0.0 : base[i])
+end
+
+# [detect] detectability picks the rule; "cell" is the behaviour every run so
+# far has used, and stays the default until someone asks for the block form.
+const DETECT_RULE = String(get(FieldConfig.CFG[]["detect"], "detectability", "cell"))
+constraint_limit(K̃, σ, z) = DETECT_RULE == "block" ?
+    detectability_block(K̃, σ, z) : detectability(K̃, σ, z)
+const DETECT_RULE_LABEL = DETECT_RULE == "block" ?
+    @sprintf("block rule, %.0f m", THICK_MIN) : "cell rule"
+
+"""
 Cumulative noise-normalised sensitivity from the bottom up, and its DOI.
 
 doi_study/doi_sensitivity.jl, in full: C(j) is how many sigma of data change
@@ -249,7 +291,7 @@ function analyse(field_id)
     ppq = [quantile(view(pp, i, :), p) for i in axes(pp, 1), p in (0.05, 0.5, 0.95)]
     chi2n_draws = [mean(((D["V0"] .- abs.(kof(j) * Θ[:, j])) ./
                          (sqrt(exp(D["log_s"][j])) .* σ̂)) .^ 2) for j in jj]
-    det = detectability(K̃, σ_eff, z)
+    det = constraint_limit(K̃, σ_eff, z)
     # the limit is the SHALLOWER of the sensitivity-based depth and the depth at
     # which the posterior stops responding
     #
@@ -276,7 +318,7 @@ function analyse(field_id)
     # the error, so the honest constraint depth uses the INFERRED noise. Both
     # are reported, because the difference is large and it is the reason the
     # criteria see less column here than they do on a synthetic.
-    det_hat = detectability(K̃, σ̂, z)
+    det_hat = constraint_limit(K̃, σ̂, z)
     sd = [sens_doi(K̃, σ_eff, z, wr).doi for wr in (0.02, 0.05, 0.10)]
 
     println("="^100)
@@ -284,8 +326,8 @@ function analyse(field_id)
             field_id, nd, length(σ̂), median(σ_eff) * 1e9, s50)
     @printf("  depth limit %.1f m = min(detectability %.1f m, posterior-responding %.1f m)\n",
             zlim, det.zlim, z_respond)
-    @printf("  constraint depth (detectable dtheta <= %.2f v/v): %.1f m at the inferred\n",
-            THETA_DETECT, det.zlim)
+    @printf("  constraint depth (detectable dtheta <= %.2f v/v, %s): %.1f m at the inferred\n",
+            THETA_DETECT, DETECT_RULE_LABEL, det.zlim)
     @printf("      noise, %.1f m at sigma-hat alone (s = 1, the synthetics' convention)\n",
             det_hat.zlim)
     @printf("  sensitivity DOI at w_ref 0.02/0.05/0.10: %.1f / %.1f / %.1f m\n", sd...)
@@ -564,6 +606,7 @@ function analyse(field_id)
         pred_V0 = ppq, V0 = D["V0"], q = D["q"], chi2n_draws = chi2n_draws,
         zlim_sigmahat = det_hat.zlim, dmin_sigmahat = det_hat.dmin,
         zlim_detectability = det.zlim, z_respond = z_respond,
+        detect_rule = DETECT_RULE, detect_block_m = THICK_MIN,
         width_frac = wfrac, respond_frac = RESPOND_FRAC,
         zsens_labels = [x.label for x in zsens], zsens_zlim = [x.zlim for x in zsens],
         zsens_top = [x.top for x in zsens], zsens_bot = [x.bot for x in zsens],
