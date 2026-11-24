@@ -214,13 +214,30 @@ if haskey(ARGN, "sites")
         D = load(joinpath(OUT, "smr_transd_$(fid).jld2"))
         r = udf_meta(fid)
         b = build_udf_sounding(merge(r, (matpath = udf_matfile(fid)[1],)))
-        cm = haskey(D, "aem_sigma") ?
-            SNMRForward.ConductivityModel(D["aem_sigma"], diff(D["aem_ztop"])) :
-            (A = load(joinpath(OUT, "aem_occam_$(fid).jld2"));
-             SNMRForward.ConductivityModel(A["sigma"], diff(A["zbnd"])))
+        # THE KERNEL THE POSTERIOR WAS INVERTED WITH, not a convenient one. The
+        # stage does not save aem_sigma; it records the draw in cond_source, so
+        # read that draw back from aem_td. This fell back to the Occam model
+        # until 25 Nov, scoring a trans-D-draw posterior on the wrong kernel.
+        cm = if haskey(D, "aem_sigma")
+            SNMRForward.ConductivityModel(D["aem_sigma"], diff(D["aem_ztop"]))
+        elseif (mm = match(r"^trans-D AEM draw (\d+) of (\d+)$", D["cond_source"])) !== nothing
+            A = load(joinpath(OUT, "aem_td_$(fid).jld2")); j = parse(Int, mm[1])
+            size(A["sigma_draws"], 2) == parse(Int, mm[2]) ||
+                error("$fid: aem_td has $(size(A["sigma_draws"], 2)) draws, the posterior names $(mm[2])")
+            SNMRForward.ConductivityModel(A["sigma_draws"][:, j], diff(A["zbnd"]))
+        elseif startswith(D["cond_source"], "AEM Occam smooth model")
+            A = load(joinpath(OUT, "aem_occam_$(fid).jld2"))
+            SNMRForward.ConductivityModel(A["sigma"], diff(A["zbnd"]))
+        else
+            error("$fid: cannot rebuild the kernel from cond_source \"$(D["cond_source"])\"")
+        end
+        D["nensembles"] == 1 ||
+            error("$fid: $(D["nensembles"]) ensembles, each on its own kernel draw; this rebuilds one")
         Ks = [ktilde(SMRPInversion.MRSForward_square(r.loop_side / 2, refine(b.zbnd, k), b.q,
                      deg2rad(r.inc_deg), 0.0, b.Be, cm)) for k in REFINE]
-        # the unrefined kernel must be the stage's own, or this tests something else
+        # ktilde must weight the kernel as SMRDetOperator does. Both sides use the
+        # same cm, so this checks the weighting only; the conductivity is right
+        # because cm is the draw cond_source names, above.
         Kstage = SMRPInversion.SMRDetOperator(sounding_fixed(merge(b, (F = SMRPInversion.MRSForward_square(
                      r.loop_side / 2, b.zbnd, b.q, deg2rad(r.inc_deg), 0.0, b.Be, cm),)))).K̃
         maximum(abs.(Ks[1] .- Kstage)) <= 1e-12 * maximum(abs.(Kstage)) ||
