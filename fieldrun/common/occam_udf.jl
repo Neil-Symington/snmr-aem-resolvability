@@ -60,7 +60,7 @@ end
 """
 function occam(aem, mstart, m0, R, ndata; fixidx = Int[], fixval = 0.0,
                mode = :minimise, ctype = :uniform, nsteps = NSTEPS,
-               bounds::Bounds = Bounds(), verbose = false)
+               bounds::Bounds = Bounds(), verbose = false, trace = nothing)
     LO, HI = bounds.lo, bounds.hi
     n = length(m0)
     meanmode = (ctype === :mean) && !isempty(fixidx)
@@ -112,6 +112,7 @@ function occam(aem, mstart, m0, R, ndata; fixidx = Int[], fixval = 0.0,
                                  ok[argmax([c[2] for c in ok])]
             improved = best[1] < χcur - 1e-9
             m = best[3]; χcur = best[1]
+            trace === nothing || (trace[:l2] = best[2])
             verbose && @printf("   step %2d  chi2/N %.3f\n", step, χcur / ndata)
             (χcur <= target || !improved) && break
         else
@@ -119,21 +120,30 @@ function occam(aem, mstart, m0, R, ndata; fixidx = Int[], fixval = 0.0,
             improved = best[1] < χcur * (1 - 1e-6) - 1e-9
             !improved && break
             m = best[3]; χcur = best[1]
+            trace === nothing || (trace[:l2] = best[2])
             verbose && @printf("   step %2d  chi2/N %.3f\n", step, χcur / ndata)
         end
     end
     m, χcur
 end
 
-"Best of several starts — guards against a local minimum changing the profile."
-function occam_multi(aem, starts, m0, R, ndata; kw...)
-    bm = copy(first(starts)); bχ = Inf
+"""
+Best of several starts — guards against a local minimum changing the profile.
+
+`trace`, if a Dict, receives `:l2`, the lambda^2 of the last step the WINNING
+start accepted (absent if it accepted none) -- the regularisation the returned
+model was actually solved at, which run_aem_occam.jl's noise calibration needs.
+"""
+function occam_multi(aem, starts, m0, R, ndata; trace = nothing, kw...)
+    bm = copy(first(starts)); bχ = Inf; bt = Dict{Symbol,Any}()
     for s in starts
-        m, χ = occam(aem, s, m0, R, ndata; kw...)
+        t = Dict{Symbol,Any}()
+        m, χ = occam(aem, s, m0, R, ndata; trace = t, kw...)
         if χ < bχ
-            bm = m; bχ = χ
+            bm = m; bχ = χ; bt = t
         end
     end
+    trace === nothing || merge!(trace, bt)
     bm, bχ
 end
 

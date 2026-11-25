@@ -81,7 +81,11 @@ function load_gates(field_id)
     else
         all(==("Z"), mom) || error("$field_id.csv: an XCite sounding has only moment \"Z\", found $(unique(mom))")
         issorted(gat) || error("$field_id.csv: gates are not in order")
-        (d = dat, σ = sig, gate = gat, moment = mom)
+        # halt_pV is the MEASURED high-altitude noise; sigma_pV is it combined
+        # with the nominal_unc convention (prep_aem_xcite.jl). The two-term
+        # calibration rescales only the convention, so it needs the floor.
+        halt = haskey(d, "halt_pV") ? parse.(Float64, d["halt_pV"]) : Float64[]
+        (d = dat, σ = sig, gate = gat, moment = mom, halt = halt)
     end
 end
 
@@ -99,9 +103,122 @@ function fit_unconstrained(g, height; grid = build_grid(), σ_scale = 1.0,
     n = length(aem.ρ) - grid.nfixed
     ndata = length(aem.res)
     R = makeR1(n); m0 = fill(m0val, n)
+    tr = Dict{Symbol,Any}()
     m, χ² = occam_multi(aem, [fill(s, n) for s in starts], m0, R, ndata;
-                        mode = :minimise, bounds = bounds)
-    (aem = aem, m = m, chi2 = χ², ndata = ndata, R = R, m0 = m0, n = n)
+                        mode = :minimise, bounds = bounds, trace = tr)
+    (aem = aem, m = m, chi2 = χ², ndata = ndata, R = R, m0 = m0, n = n,
+     l2 = get(tr, :l2, NaN), bounds = bounds)
+end
+
+"""
+    effective_parameters(fit)
+
+p_eff = tr(Jw (Jw'Jw + l2 (R'R + beta2 I))^-1 Jw'), Jw = W J, at the fitted model
+and the lambda^2 it was solved at: the trace of the data-resolution matrix, so
+the expected chi2 of a fit that absorbs only noise is ndata - p_eff, not ndata.
+"""
+function effective_parameters(fit)
+    isfinite(fit.l2) || error("no Occam step was accepted, so lambda^2 is undefined and p_eff with it")
+    chi2(fit.aem, fit.m; computeJ = true)
+    Jw = Matrix(fit.aem.W * fit.aem.J)
+    H = Jw' * Jw .+ fit.l2 .* (Matrix(fit.R' * fit.R) + OccamUDF.Β2 * I)
+    p = tr(Jw * (H \ Jw'))
+    chi2(fit.aem, fit.m)          # leave aem.res at the accepted model
+    p
+end
+
+"Cells of a log10-conductivity model sitting on a bound."
+on_bound(m, b::Bounds) = count(x -> x <= b.lo + 1e-9 || x >= b.hi - 1e-9, m)
+
+"""
+    calibrate_noise_twoterm(g, height; grid, tol, maxit, fmin, bounds)
+
+TWO-SIDED, and only where the delivered noise is a convention. XCite sigma is
+sqrt((u d)^2 + halt^2): u = nominal_unc is a processing convention, halt is the
+MEASURED high-altitude noise, and on the late gates halt is most of sigma. So
+this scales the convention alone,
+
+    sigma_i(f) = sqrt((f u d_i)^2 + halt_i^2),
+
+and never takes a gate below its measured noise, as a whole-sigma scale would.
+f is solved for
+
+    chi2_min(f) = ndata - p_eff(f),
+
+the maximum-likelihood level with the degrees of freedom the fit absorbs:
+calibrating to chi2 = ndata instead ignores p_eff and overtightens. p_eff
+depends on the lambda^2 the fit lands on, which depends on f, so this is a
+fixed point; p_eff is recomputed every pass and every pass is reported.
+
+REFUSES, rather than returning a number, when (1) the passes do not settle in
+`maxit`, (2) f would fall below `fmin`, or (3) the fixed point puts any cell on a
+model bound. (3) is the important one: a rougher model resolves more parameters
+and fits better, so targeting a misfit can drift toward an overfit, and the
+synthetics' lambda^2 = 0.01 models pin 3-28 of 65 cells on the bounds where the
+smoothest fitting models pin none. A noise level calibrated to a bound-pinned
+model is calibrated to an overfit.
+"""
+function calibrate_noise_twoterm(g, height; grid = build_grid(), tol = 0.02, maxit = 8,
+                                 fmin = 0.01, bounds = Bounds(), verbose = true)
+    AEM_SYSTEM == "xcite" || error("the two-term noise calibration is written for XCite only")
+    length(g.halt) == length(g.σ) ||
+        error("no halt_pV column in the sounding file; the two-term calibration needs the measured floor")
+    conv = sqrt.(max.(g.σ .^ 2 .- g.halt .^ 2, 0.0))       # the u*d term, as delivered
+    all(>(0), conv) || error("sigma_pV does not exceed halt_pV at every gate; cannot separate the terms")
+    σof(f) = sqrt.((f .* conv) .^ 2 .+ g.halt .^ 2)
+    hist = NamedTuple[]
+    f = 1.0
+    verbose && @printf("    %4s %8s %9s %7s %8s %7s %9s %10s %6s\n",
+                       "pass", "f", "chi2", "p_eff", "N-p_eff", "ratio", "lambda2", "roughness", "bound")
+    for it in 1:maxit
+        fit = fit_unconstrained(merge(g, (σ = σof(f),)), height; grid = grid, bounds = bounds)
+        p = effective_parameters(fit)
+        target = fit.ndata - p
+        r = fit.chi2 / target
+        h = (pass = it, f = f, chi2 = fit.chi2, p_eff = p, target = target, ratio = r,
+             l2 = fit.l2, roughness = norm(fit.R * fit.m)^2, n_bound = on_bound(fit.m, bounds))
+        push!(hist, h)
+        verbose && @printf("    %4d %8.4f %9.4f %7.2f %8.2f %7.4f %9.3g %10.4g %6d\n",
+                           h.pass, h.f, h.chi2, h.p_eff, h.target, h.ratio, h.l2, h.roughness, h.n_bound)
+        if abs(r - 1) <= tol
+            h.n_bound == 0 || error("the calibrated fixed point (f = $(round(f, sigdigits=4))) puts ",
+                "$(h.n_bound) cells on a model bound: the noise is calibrated to an overfit and is not usable")
+            return (f = f, σ = σof(f), fit = fit, p_eff = p, history = hist)
+        end
+        # Secant in log f on log(ratio) once two passes exist: chi2 responds to f
+        # more weakly than 1/f^2 because halt does not scale. First pass: the
+        # pure-convention guess. Steps are held to a factor of 3.
+        lf = if it == 1
+            log(f) + 0.5 * log(r)
+        else
+            a, b = hist[end-1], hist[end]
+            sl = (log(b.ratio) - log(a.ratio)) / (log(b.f) - log(a.f))
+            isfinite(sl) && sl < 0 ? log(b.f) - log(b.ratio) / sl : log(b.f) + 0.5 * log(b.ratio)
+        end
+        f = exp(clamp(lf, log(f) - log(3), log(f) + log(3)))
+        f < fmin && error("f would fall below $fmin (to $(round(f, sigdigits=3))): the measured floor ",
+                          "alone overstates the misfit, or the fit absorbs it; not calibrating")
+    end
+    error("the noise calibration did not settle in $maxit passes; not calibrating (passes above)")
+end
+
+"""
+    calibrated_gates(g, A)
+
+The gates and sigma scale to build the operator with, from what run_aem_occam.jl
+stored in `A`: the two-term calibrated per-gate sigma, or the delivered sigma and
+the scalar (inflate-only) scale. Every stage that rebuilds the operator goes
+through here, so none can apply the scalar to a two-term calibration.
+"""
+function calibrated_gates(g, A)
+    cal = get(A, "noise_calibration", "inflate")
+    if cal == "two_term"
+        σc = A["sigma_cal"]
+        length(σc) == length(g.σ) || error("sigma_cal has $(length(σc)) gates, the sounding $(length(g.σ))")
+        return merge(g, (σ = σc,)), 1.0
+    end
+    cal == "inflate" || error("unknown noise_calibration \"$cal\" in the Occam output")
+    g, A["noise_scale"]
 end
 
 """

@@ -18,6 +18,13 @@ using JLD2, Printf, Statistics
 
 include(joinpath(COMMON, "aem_lib.jl"))
 
+# [aem] noise_calibration: "inflate" (default, the scalar floored at 1 that
+# calibrate_noise has always applied) or "two_term" (XCite: the nominal_unc
+# convention rescaled either way, the measured halt floor kept, solved for
+# chi2_min = ndata - p_eff; aem_lib.jl calibrate_noise_twoterm). Read here,
+# not merely validated -- the [detect] section was validated and never read.
+const NOISE_CAL = String(get(FCFG["aem"], "noise_calibration", "inflate"))
+
 # --site NAME restricts the run to one site, so the five can run as five
 # independent processes; they share nothing but the manifest.
 
@@ -35,7 +42,22 @@ function main()
         @printf("%s  line %d fid %.1f  sep %.1f m  height %.1f m  (bore %s)\n",
                 s.field_id, s.line, s.fiducial, s.sep_m, s.height_m, s.bore)
         t0 = time()
-        cal = calibrate_noise(g, s.height_m; grid = grid)
+        local cal, calrec
+        if NOISE_CAL == "two_term"
+            println("    two-term noise calibration (nominal_unc rescaled, halt floor kept):")
+            tc = calibrate_noise_twoterm(g, s.height_m; grid = grid)
+            h = tc.history[end]
+            cal = (scale = NaN, fit = tc.fit)
+            calrec = (noise_calibration = "two_term", sigma_cal = tc.σ, noise_conv_factor = tc.f,
+                      p_eff = tc.p_eff, lambda2 = h.l2, roughness = h.roughness, n_on_bound = h.n_bound,
+                      cal_history = [collect(values(x)) for x in tc.history],
+                      cal_history_cols = collect(String.(keys(tc.history[1]))))
+            @printf("    convention x %.4f  chi2 %.3f = ndata %d - p_eff %.2f (ratio %.4f)  lambda2 %.3g  roughness %.4g  %d cells on a bound  (%.1f s)\n",
+                    tc.f, tc.fit.chi2, tc.fit.ndata, tc.p_eff, h.ratio, h.l2, h.roughness, h.n_bound, time() - t0)
+        else
+            cal = calibrate_noise(g, s.height_m; grid = grid)
+            calrec = (noise_calibration = "inflate",)
+        end
         f = cal.fit
         σz = 10 .^ f.m
         @printf("    noise scale %.3f  chi2/N %.4f  ndata %d  (%.1f s)\n",
@@ -63,7 +85,7 @@ function main()
             field_id = s.field_id, zall = grid.zall, zbnd = grid.zbnd,
             m_log10sigma = f.m, sigma = σz,
             chi2 = f.chi2, ndata = f.ndata, chi2n = f.chi2 / f.ndata,
-            noise_scale = cal.scale, aem_system = AEM_SYSTEM,
+            noise_scale = cal.scale, aem_system = AEM_SYSTEM, calrec...,
             d = g.d, sigma_d = g.σ, gate = g.gate, moment = g.moment, pred = pred,
             legacy...,
             height_m = s.height_m,
@@ -71,14 +93,14 @@ function main()
             easting = s.easting, northing = s.northing, dtm_m = s.dtm_m,
             plm = s.plm, bore = s.bore, bore_sep_m = s.bore_sep_m,
             gate_times()...)
-        push!(rows, (s.field_id, cal.scale, f.chi2 / f.ndata, f.ndata,
+        push!(rows, (s.field_id, NOISE_CAL == "two_term" ? calrec.noise_conv_factor : cal.scale, f.chi2 / f.ndata, f.ndata,
                      unit_geomean(f.m, grid.zall, 0, 20),
                      unit_geomean(f.m, grid.zall, 20, 60),
                      unit_geomean(f.m, grid.zall, 60, 120)))
     end
 
     println("="^96)
-    @printf("%-14s %8s %9s %6s %10s %10s %10s\n", "site", "sig x", "chi2/N",
+    @printf("%-14s %8s %9s %6s %10s %10s %10s\n", "site", NOISE_CAL == "two_term" ? "conv x" : "sig x", "chi2/N",
             "ndata", "0-20 m", "20-60 m", "60-120 m")
     for r in rows
         @printf("%-14s %8.3f %9.4f %6d %10.4f %10.4f %10.4f\n", r...)

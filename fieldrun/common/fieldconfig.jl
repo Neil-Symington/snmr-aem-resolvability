@@ -68,7 +68,7 @@ const KNOWN = Dict(
                       # the system switch (absent = "skytem"), and what a
                       # single-moment central-loop system (XCite) needs
                       "system", "gates", "halt_noise_pv", "max_tilt_deg",
-                      "rho_bounds_log10", "use_ml"],
+                      "rho_bounds_log10", "use_ml", "noise_calibration"],
     "grid"        => ["nz", "zstart", "dz", "extendfrac"],
     # nensembles is deliberately absent: it duplicated [kernel] n_draws,
     # which is what run_smr_transd.jl reads. A config still carrying that
@@ -177,7 +177,7 @@ function check_values(c::Dict, path)
     # Strings, before anything calls strip() on them: `name = 5` gave a raw
     # MethodError from strip(::Int64), and list elements gave
     # MethodError: isless(::Int64, ::String) from the ordering checks.
-    for (sec, k) in (("run","name"), ("run","mode"), ("snmr","loop_shape"), ("aem","system"),
+    for (sec, k) in (("run","name"), ("run","mode"), ("snmr","loop_shape"), ("aem","system"), ("aem","noise_calibration"),
                      ("detect","metric"), ("detect","detectability"), ("occam","regtype"), ("occam","uncertainty"),
                      ("noise","sigma_hat_branch"), ("paths","outputs"), ("paths","logs"))
         haskey(c, sec) && haskey(c[sec], k) || continue
@@ -301,6 +301,13 @@ function check_values(c::Dict, path)
     haskey(c, "detect") && haskey(c["detect"], "detectability") &&
         chk(c["detect"]["detectability"] in ("cell", "block"),
             "[detect] detectability must be \"cell\" or \"block\", got \"$(c["detect"]["detectability"])\"")
+    if haskey(c["aem"], "noise_calibration")
+        nc = c["aem"]["noise_calibration"]
+        chk(nc in ("inflate", "two_term"),
+            "[aem] noise_calibration must be \"inflate\" or \"two_term\", got \"$nc\"")
+        chk(nc != "two_term" || get(c["aem"], "system", "skytem") == "xcite",
+            "[aem] noise_calibration = \"two_term\" is written for system = \"xcite\" only")
+    end
     haskey(c["snmr"], "loop_shape") &&
         chk(c["snmr"]["loop_shape"] in ("square", "circle"),
             "[snmr] loop_shape must be \"square\" or \"circle\", got \"$(c["snmr"]["loop_shape"])\"")

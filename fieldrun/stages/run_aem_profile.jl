@@ -97,8 +97,8 @@ function profile_site(field_id; grid = build_grid())
     za, zb = Dt["win"]
     (isfinite(za) && isfinite(zb)) || (println("  $field_id has no target interval"); return nothing)
 
-    g = load_gates(field_id)
-    scale = A["noise_scale"]
+    # the scalar scale, or the two-term per-gate sigma (aem_lib calibrated_gates)
+    g, scale = calibrated_gates(load_gates(field_id), A)
     aem = build_operator(g, A["height_m"];
                          grid = grid, calcjacobian = true, σ_scale = scale)
     n = length(aem.ρ) - grid.nfixed
@@ -140,8 +140,10 @@ function profile_site(field_id; grid = build_grid())
 
     @printf("\n%s  interval %.1f-%.1f m (%d of %d AEM cells, %s)\n", field_id,
             za, zb, length(fixidx), n, Dt["win_source"])
-    @printf("  ndata %d, noise x %.3f, unconstrained chi2/N %.4f, interval sigma %.4f S/m\n",
-            ndata, scale, χu / ndata, σ_unc)
+    @printf("  ndata %d, noise %s, unconstrained chi2/N %.4f, interval sigma %.4f S/m\n",
+            ndata, get(A, "noise_calibration", "inflate") == "two_term" ?
+                @sprintf("two-term, convention x %.4f", A["noise_conv_factor"]) : @sprintf("x %.3f", scale),
+            χu / ndata, σ_unc)
     @printf("  forced grid %.5f to %.5f S/m, %d points, step %.3f dex%s\n",
             targets[1], targets[end], npts, lt[2] - lt[1],
             WIDE ? "  [--wide: floor is the model bound]" : "")

@@ -98,15 +98,18 @@ function main()
     occ = joinpath(OUT, "aem_occam_$(SITE).jld2")
     isfile(occ) || error("run run_aem_occam.jl --site $SITE first (needed for the noise scale)")
     A = load(occ)
-    g = load_gates(SITE)
+    # same operator the Occam and the gate use, at the same calibrated noise --
+    # the scalar scale, or the two-term per-gate sigma (aem_lib calibrated_gates)
+    g, σscale = calibrated_gates(load_gates(SITE), A)
     grid = build_grid()
-    # same operator the Occam and the gate use, at the same calibrated noise
     aem = build_operator(g, A["height_m"];
                          grid = grid, calcjacobian = false,
-                         σ_scale = A["noise_scale"], useML = USE_ML)
+                         σ_scale = σscale, useML = USE_ML)
     ndata = length(aem.res)
-    @printf("%s: %s gates (%s), ndata %d, noise x %.3f\n", SITE, AEM_SYSTEM,
-            join(["$(length(ix)) $b" for (b, ix) in data_blocks(g)], " + "), ndata, A["noise_scale"])
+    @printf("%s: %s gates (%s), ndata %d, noise %s\n", SITE, AEM_SYSTEM,
+            join(["$(length(ix)) $b" for (b, ix) in data_blocks(g)], " + "), ndata,
+            get(A, "noise_calibration", "inflate") == "two_term" ?
+                @sprintf("two-term, convention x %.4f", A["noise_conv_factor"]) : @sprintf("x %.3f", σscale))
     @printf("  %d samples x %d chains, Tmax %.1f, log10rho bounds [%.1f, %.1f], noise level %s\n",
             NSAMPLES, NCHAINS, TMAX, FBOUNDS[1], FBOUNDS[2],
             USE_ML ? "FITTED (useML)" : "fixed"); flush(stdout)
@@ -207,6 +210,7 @@ function main()
         splithalf_first = d1, splithalf_second = d2,
         nsamples = NSAMPLES, nchains = NCHAINS, Tmax = TMAX,
         noise_scale = A["noise_scale"], ndata = ndata,
+        noise_calibration = get(A, "noise_calibration", "inflate"),
         fbounds = FBOUNDS, seed = SEED, secs = time() - t0,
         use_ml = USE_ML, ml_variance_factor = mlf,
         ml_variance_factor_p50 = median(mlf), ml_sigma_factor_p50 = sqrt(median(mlf)))
