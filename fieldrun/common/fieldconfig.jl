@@ -299,8 +299,8 @@ function check_values(c::Dict, path)
         chk(c["detect"]["metric"] in ("integral", "threshold"),
             "[detect] metric must be \"integral\" or \"threshold\", got \"$(c["detect"]["metric"])\"")
     haskey(c, "detect") && haskey(c["detect"], "detectability") &&
-        chk(c["detect"]["detectability"] in ("cell", "block"),
-            "[detect] detectability must be \"cell\" or \"block\", got \"$(c["detect"]["detectability"])\"")
+        chk(c["detect"]["detectability"] in ("cell", "block", "projected"),
+            "[detect] detectability must be \"cell\", \"block\" or \"projected\", got \"$(c["detect"]["detectability"])\"")
     if haskey(c["aem"], "noise_calibration")
         nc = c["aem"]["noise_calibration"]
         chk(nc in ("inflate", "two_term"),

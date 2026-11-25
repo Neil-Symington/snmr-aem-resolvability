@@ -199,13 +199,28 @@ function detectability_block(K̃, σ, z; θdetect = THETA_DETECT, Lmin = THICK_M
     (dmin = dmin, zlim = i === nothing ? 0.0 : base[i])
 end
 
+"""
+The block rule with the kernel projected onto the current response phase: the
+detectable change is the component along the response, so contributions from
+depths whose kernels are out of phase cancel. This is the rule ruled in
+docs/DETECTABILITY_RULE.md, quoted as "the depth to which a 10 m unit is
+detectable". The response is formed at a uniform w_ref, as sens_doi_coherent does.
+"""
+function detectability_projected(K̃, σ, z; w_ref = 0.05, θdetect = THETA_DETECT, Lmin = THICK_MIN)
+    zc = K̃ * fill(w_ref, size(K̃, 2))
+    u = conj.(zc) ./ max.(abs.(zc), eps())
+    detectability_block(real.(u .* K̃), σ, z; θdetect = θdetect, Lmin = Lmin)
+end
+
 # [detect] detectability picks the rule; "cell" is the behaviour every run so
-# far has used, and stays the default until someone asks for the block form.
+# far has used, and stays the default until someone asks for another.
+# "projected" is the ruled one; "block" is |sum K̃|, no cancellation.
 const DETECT_RULE = String(get(FieldConfig.CFG[]["detect"], "detectability", "cell"))
-constraint_limit(K̃, σ, z) = DETECT_RULE == "block" ?
-    detectability_block(K̃, σ, z) : detectability(K̃, σ, z)
-const DETECT_RULE_LABEL = DETECT_RULE == "block" ?
-    @sprintf("block rule, %.0f m", THICK_MIN) : "cell rule"
+constraint_limit(K̃, σ, z) = DETECT_RULE == "projected" ? detectability_projected(K̃, σ, z) :
+                            DETECT_RULE == "block"     ? detectability_block(K̃, σ, z) :
+                                                         detectability(K̃, σ, z)
+const DETECT_RULE_LABEL = DETECT_RULE == "projected" ? @sprintf("depth to which a %.0f m unit is detectable", THICK_MIN) :
+                          DETECT_RULE == "block"     ? @sprintf("block rule, %.0f m", THICK_MIN) : "cell rule"
 
 """
 Cumulative noise-normalised sensitivity from the bottom up, and its DOI.
