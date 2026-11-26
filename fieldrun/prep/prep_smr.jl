@@ -64,7 +64,19 @@ function parse_args(a)
     d
 end
 
-allfiles(dir) = [joinpath(r, f) for (r, _, fs) in walkdir(dir) for f in fs if !startswith(f, ".")]
+# Not walkdir: it trusts the directory entry's type, and an NTFS drive read
+# through a third-party macOS driver (Birrindudu delivery, Nov 2026) reports
+# some folders -- SiteInfo among them -- with no type, which walkdir lists as
+# files and never enters. isdir() stats each entry instead.
+function allfiles(dir)
+    out = String[]
+    for f in readdir(dir)
+        startswith(f, ".") && continue
+        p = joinpath(dir, f)
+        isdir(p) ? append!(out, allfiles(p)) : push!(out, p)
+    end
+    out
+end
 
 function one_match(files, re, what, site)
     m = filter(f -> occursin(re, basename(f)), files)
@@ -107,9 +119,17 @@ function read_params(f)
     zm    = match(r"Zone_(\d+)([NS]?)", proj)
     zm === nothing && error("$f: cannot read a UTM zone from projection '$proj'")
     side  = parse(Float64, val("Side length"))
-    cl    = filter(l -> occursin(r"_c\d+\s+[-\d.]+\s+[-\d.]+", l), L)
+    # Corners from the POINT (E N) geometry column where it is there: it is
+    # never truncated and carries the decimals. The easting/northing columns
+    # are a pandas print, which elides middle columns as "..." when the table
+    # is wide (BDU Mulan37: no northing column at all) and rounds to 1 m.
+    cl    = filter(l -> occursin(r"_c\d+\s", l) &&
+                        (occursin(r"POINT \(", l) || occursin(r"_c\d+\s+[-\d.]+\s+[-\d.]+", l)), L)
     sort!(cl, by = l -> parse(Int, match(r"_c(\d+)", l).captures[1]))
-    xy    = [parse.(Float64, match(r"_c\d+\s+([-\d.]+)\s+([-\d.]+)", l).captures) for l in cl]
+    corner(l) = (m = match(r"POINT \(([-\d.]+) ([-\d.]+)\)", l);
+                 m === nothing && (m = match(r"_c\d+\s+([-\d.]+)\s+([-\d.]+)", l));
+                 parse.(Float64, m.captures))
+    xy    = [corner(l) for l in cl]
     length(xy) == 4 || error("$f: expected 4 antenna corners, found $(length(xy))")
     E = first.(xy); N = last.(xy)
     # every side should be close to the stated side length -- catches a
@@ -164,7 +184,19 @@ function main(args)
     skipped = String[]
     pfiles = filter(f -> occursin(r"_params\.txt$"i, basename(f)) &&
                          !occursin(r"process_params"i, basename(f)), files)
-    isempty(pfiles) && error("no *_params.txt under $src")
+    # Delivery layout: only SiteInfo/*_params.txt names a site. Acquisition
+    # folders can carry their own params copies (BDU Jalywon1/Partial
+    # acquisition/...), which would otherwise be read as flat-layout sites.
+    # And only <src>/<site>/SiteInfo: a nested SiteInfo inside an acquisition
+    # folder is a partial acquisition, not a site.
+    insi = filter(f -> lowercase(basename(dirname(f))) == "siteinfo" &&
+                       dirname(dirname(dirname(f))) in srcs, pfiles)
+    if !isempty(insi) && length(insi) < length(pfiles)
+        println("ignoring params files outside SiteInfo: ",
+                join(relsrc.(setdiff(pfiles, insi)), ", "))
+        pfiles = insi
+    end
+    isempty(pfiles) && error("no *_params.txt under $(join(srcs, ", "))")
 
     mkpath(joinpath(out, "snmr"))
     hdr = ["Field_ID", "easting", "northing", "zone", "azimuth", "bo_inc_angle_deg",
