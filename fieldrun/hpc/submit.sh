@@ -30,7 +30,7 @@
 #                                  slots-aem sites, all in parallel; AEM is the
 #                                  long pole and SNMR waits on it site by site)
 #   --slots-aem N --slots-snmr N --slots-post N   tasks per node (9 / 12 / 24)
-#   --t-aem M --t-snmr M --t-post M               minutes per task, for sizing (120 / 15 / 45)
+#   --t-aem M --t-snmr M --t-post M               minutes per task, for sizing (165 / 12 / 60)
 #   --monitor                      log node CPU in every job
 #
 # SIZING, from the BDU runs (Gadi normal: 48 cores, 190 GB per node).
@@ -40,7 +40,10 @@
 #         84 GB and 46% of the CPU, 43 min for 32 units (run 2, 25 Nov);
 #         6 per node took 70 min. ~7 GB a unit.
 #   post  one process; the profile (~200 Occam solves) is most of it. ~4 GB.
-# Unused walltime is not charged, so the estimates err long.
+# Measured on Gadi, 26 Nov 2026 (BDU Mulan31/32, bdu_batch, two-term AEM noise,
+# marginal s): AEM 138-145 min a site (Occam 6-9 min + 200k-sample trans-D);
+# SNMR 8.3-9.3 min a ladder at 12 a node (84 GB); post 43-53 min a site. The
+# defaults below are those plus margin. Unused walltime is not charged.
 set -u
 die() { echo "submit.sh: $*" >&2; exit 1; }
 [ $# -ge 1 ] || die "usage: submit.sh <config> --env <env.sh> --project <code> [options]"
@@ -49,7 +52,7 @@ CFG=$(cd "$(dirname "$1")" && pwd)/$(basename "$1"); shift
 HERE=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$HERE/../.." && pwd)
 
 ENVSH=""; PROJ=""; PHASES=""; DRY=0; AFTER=""; STORAGE=""; WMAX=10; LOCAL=0; MONITOR=0
-SL_AEM=9; SL_SNMR=12; SL_POST=24; T_AEM=120; T_SNMR=15; T_POST=45; WV_AEM=1
+SL_AEM=9; SL_SNMR=12; SL_POST=24; T_AEM=165; T_SNMR=12; T_POST=60; WV_AEM=1
 while [ $# -gt 0 ]; do
     case "$1" in
         --env) ENVSH=$(cd "$(dirname "$2")" && pwd)/$(basename "$2"); shift 2 ;;
