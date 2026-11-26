@@ -84,7 +84,10 @@ COMBINE_ONLY || @assert nworkers() == NCHAINS_SNMR "need $(NCHAINS_SNMR) workers
     using .FieldConfig
     FieldConfig.load_config($(CFGPATH))
     include(joinpath(COMMON, "prerun_data.jl"))
+    include(joinpath(COMMON, "smr_marginal.jl"))   # the sounding type must exist on workers
 end
+# A separate statement: `using` cannot see a module the same block defines.
+@everywhere using .SMRMarginal
 include(joinpath(COMMON, "prerun_lib.jl"))
 include(joinpath(COMMON, "udf_smr.jl"))
 using .PrerunLib
@@ -313,11 +316,18 @@ The T=1 draws of ONE ladder, two ways, plus the ladder's health.
   slot     the T=1 slot in ITERATION order (t1_slot_order), as gate scalars.
            This is the sample a replicate comparison treats as one chain.
 """
-function t1_streams(opt, optn, zbnd)
+function t1_streams(opt, optn, zbnd, S)
     rows = t1_rows_by_chain(opt.costs_filename; burninfrac = CFG.BURNINFRAC)
-    nrows = t1_rows_by_chain(optn.costs_filename; burninfrac = CFG.BURNINFRAC, Tcol = 4)
-    vals = readdlm(optn.vals_filename, ' ', String)
-    vcid = parse.(Int, vals[:, 1]); vlogs = parse.(Float64, vals[:, end])
+    if optn === nothing
+        # s integrated out: no nuisance files. The chain-id streams carry no s
+        # (they are a diagnostic); the slot gets E[log s | R] below.
+        nrows = [(mask = Bool[],) for _ in rows]
+        vcid = Int[]; vlogs = Float64[]
+    else
+        nrows = t1_rows_by_chain(optn.costs_filename; burninfrac = CFG.BURNINFRAC, Tcol = 4)
+        vals = readdlm(optn.vals_filename, ' ', String)
+        vcid = parse.(Int, vals[:, 1]); vlogs = parse.(Float64, vals[:, end])
+    end
     cr = [split(l) for l in readlines(opt.costs_filename) if !isempty(strip(l))]
     ccid = [parse(Int, r[1]) for r in cr]
     Fs = Vector{Any}(undef, length(rows))
@@ -345,7 +355,10 @@ function t1_streams(opt, optn, zbnd)
     slot = gate_scalars(fslot, zbnd)
     slot["misfit"] = [parse(Float64, crc[c][j][9]) for (j, c, k) in ord]
     slot["k"]      = [parse(Float64, crc[c][j][8]) for (j, c, k) in ord]
-    if all(c -> length(lnc[c]) == length(rows[c].T), eachindex(rows))
+    if optn === nothing
+        # Rao-Blackwellised: E[log s | R(w)], a function of the w chain alone
+        slot["log_s"] = SMRMarginal.mean_log_s(S.Q, SMRMarginal.rss_from_U(S.Q, slot["misfit"]))
+    elseif all(c -> length(lnc[c]) == length(rows[c].T), eachindex(rows))
         slot["log_s"] = [lnc[c][j] for (j, c, k) in ord]
     end
     st, slot, tempering_stats([r.T for r in rows])
@@ -380,25 +393,38 @@ function run_unit(b, sounding_id, e, r, pids)
     Random.seed!(sd)
     S = hier(b)
     opt, optn = make_opts(prefix, b.zbnd)
-    t = @elapsed transD_GP.main(opt, optn, S, pids;
-                                nsamples = NSAMPLES, nchainsatone = NCHAINSATONE,
-                                Tmax = TMAX)
+    t = @elapsed if optn === nothing
+        transD_GP.main(opt, S, pids; nsamples = NSAMPLES,
+                       nchainsatone = NCHAINSATONE, Tmax = TMAX)
+    else
+        transD_GP.main(opt, optn, S, pids; nsamples = NSAMPLES,
+                       nchainsatone = NCHAINSATONE, Tmax = TMAX)
+    end
     set_run_filenames!(opt, optn)
     inv = assert_chains_at_T1(opt.costs_filename, length(pids), NCHAINSATONE)
     opt.xall[:] .= b.zbnd
     F = transD_GP.assembleTat1(opt, :fstar; temperaturenum = 1,
                                burninfrac = CFG.BURNINFRAC)
     fstar = isempty(F) ? zeros(length(b.zbnd), 0) : hcat([f[:] for f in F]...)
-    nu = try
-        transD_GP.assemblenuisancesatT(optn; temperaturenum = 1,
-                                       burninfrac = CFG.BURNINFRAC)
-    catch e2
-        @warn "nuisance assembly failed for $prefix" exception = e2
-        zeros(0, 1)
+    logs = if optn === nothing
+        # one posterior draw of log s per stored T=1 model, in the same order
+        # as fstar (assembleTat1 walks both identically); seeded per unit
+        Ut1 = Float64.(transD_GP.assembleTat1(opt, :U; temperaturenum = 1,
+                                              burninfrac = CFG.BURNINFRAC))
+        @assert length(Ut1) == size(fstar, 2) "$(length(Ut1)) T=1 misfits, $(size(fstar, 2)) models"
+        SMRMarginal.draw_log_s(S.Q, SMRMarginal.rss_from_U(S.Q, Ut1), MersenneTwister(sd))
+    else
+        nu = try
+            transD_GP.assemblenuisancesatT(optn; temperaturenum = 1,
+                                           burninfrac = CFG.BURNINFRAC)
+        catch e2
+            @warn "nuisance assembly failed for $prefix" exception = e2
+            zeros(0, 1)
+        end
+        size(nu, 1) == 0 ? Float64[] : vec(nu[:, end])
     end
-    logs = size(nu, 1) == 0 ? Float64[] : vec(nu[:, end])
     h = nodes_at_T1(opt.costs_filename; burninfrac = CFG.BURNINFRAC)
-    st, slot, tp = t1_streams(opt, optn, b.zbnd)
+    st, slot, tp = t1_streams(opt, optn, b.zbnd, S)
     ci = chainid_check(st, b.zbnd)
     @printf("      ensemble %d replicate %d: %d draws, %.1f s, T=1 %s; T=1 draws by chain %s; swaps %.2f, round trips %s\n",
             e, r, size(fstar, 2), t, inv.ok ? "ok" : inv.why,
@@ -485,7 +511,7 @@ function run_site(field_id, filename, pids)
             NCHAINS, NCHAINSATONE, TMAX, join(G.min_round_trips, "/"), G.stationary,
             G.gates_pass ? "PASS" : "FAIL", G.gate_basis)
     s_draws = vcat([u.logs for u in units if !isempty(u.logs)]...)
-    @printf("    noise scale s: p05 %.2f p50 %.2f p95 %.2f  (x sigma-hat)\n",
+    @printf("    noise scale s (%s; multiplies sigma-hat^2): p05 %.2f p50 %.2f p95 %.2f\n", S_TREATMENT,
             quantile(exp.(s_draws), .05), quantile(exp.(s_draws), .5),
             quantile(exp.(s_draws), .95))
 
@@ -512,6 +538,7 @@ function run_site(field_id, filename, pids)
         rhat_kernel_max = G.rhat_kernel_max, min_round_trips = G.min_round_trips,
         swap_rate = G.swap_rate, frac_at_T1 = G.frac_at_T1,
         nchainsatone = NCHAINSATONE, tmax = TMAX, nreplicates = REPS,
+        s_treatment = S_TREATMENT,
         cond_source = b.cond_source, n_kernel_draws = b.n_kernel_draws,
         nsamples = NSAMPLES, nensembles = NENS, nchains = NCHAINS, s_tau = S_TAU,
         flat_sigmahat = FLAT, supplied_conductivity = SUPPLIED,

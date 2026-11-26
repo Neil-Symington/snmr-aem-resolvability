@@ -101,6 +101,42 @@ end
         @test issorted(first.(o))
     end
 
+    # s integrated out of the SNMR likelihood. Pure maths on the quadrature;
+    # no forward model needed.
+    @testset "fieldrun marginal s" begin
+        isdefined(@__MODULE__, :SMRMarginal) ||
+            Base.include(@__MODULE__, joinpath(FIELDRUN_DIR, "common", "smr_marginal.jl"))
+        M = SMRMarginal
+        N = 22
+        # flat prior on log s, wide bounds: the Jeffreys marginal is analytic,
+        # -log[Gamma(N/2) (2/R)^(N/2)], and Gamma(11) = 10!
+        J = M.MarginalQuad(N, 0.0, Inf, (log(1e-8), log(1e10)))
+        for R in (3.0, 22.0, 300.0, 1e4)
+            @test M.marginal_U(J, R) ≈ -log(factorial(10)) + (N / 2) * log(R / 2) atol = 1e-6
+            # E[log s | R] for s ~ InvGamma(N/2, R/2): log(R/2) - digamma(11)
+            @test M.mean_log_s(J, R) ≈ log(R / 2) - 2.3517525890667211 atol = 1e-5
+        end
+        # the stored misfit inverts back to R
+        Q = M.MarginalQuad(N, 0.0, 2.0, (log(1e-2), log(1e4)))
+        for R in (0.5, 10.0, 22.0, 1e3, 1e5)
+            @test M.rss_from_U(Q, M.marginal_U(Q, R)) ≈ R rtol = 1e-8
+        end
+        # against a much finer direct integral of the hierarchical U, with the
+        # log-normal prior and the bounds
+        Uh(R, u) = 0.5 * (R * exp(-u) + N * u + u^2 / 2.0^2)
+        uu = range(log(1e-2), log(1e4), length = 200_001); hu = step(uu)
+        for R in (5.0, 22.0, 2e3)
+            v = [-Uh(R, u) for u in uu]; m = maximum(v)
+            direct = -(m + log(hu * (sum(exp.(v .- m)) - 0.5 * (exp(v[1] - m) + exp(v[end] - m)))))
+            @test M.marginal_U(Q, R) ≈ direct atol = 1e-5
+        end
+        # posterior draws of s: E[1/s | R] = N / R in the Jeffreys case
+        rng = M.MersenneTwister(7)
+        d = M.draw_log_s(J, fill(50.0, 40_000), rng)
+        @test sum(exp.(-d)) / length(d) ≈ N / 50.0 rtol = 0.02
+        @test all(isfinite, d)
+    end
+
     # Each integration test names the FILES it needs, not a directory. The gate
     # used to be `isdir(ROOT/outputs)`, which is not what any of them read: as
     # soon as a pipeline run created outputs/, two of them fired and died on a
