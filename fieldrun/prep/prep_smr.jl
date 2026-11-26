@@ -1,7 +1,21 @@
 # prep_smr.jl -- turn a GMR field delivery into the fieldrun SNMR inputs.
 #
-#   julia --project=. fieldrun/prep/prep_smr.jl --src <delivery dir> --out <prepared dir>
+#   julia --project=. fieldrun/prep/prep_smr.jl --src <delivery dir>[,<dir>...] --out <prepared dir>
 #         [--sites Mulan31,Mulan32] [--prefix ""] [--year 2026]
+#         [--emi cancelled|uncancelled] [--strict true] [--folder Reprocessed_11_26]
+#
+# --emi picks WHICH processed file per site (default "cancelled", as before).
+# "uncancelled" takes the _noemi file instead -- the comparison set for the
+# reference-loop signal-loss check. With --strict true a site that lacks the
+# asked-for variant is SKIPPED (and listed) rather than falling back to the
+# other, so the two prepared sets hold like-for-like files only.
+# --folder restricts the .mat to one reprocessing folder (a path component),
+# instead of "the newest Reprocessed_* folder".
+#
+# SITE NAMES. In the delivery layout a site is named after its FOLDER (the
+# parent of SiteInfo), not its params file: at Birrindudu, Billiluna09 and
+# Billiluna09_2DCDC both carry Billiluna09_params.txt, S_Mulan02's is
+# S_Mulan0_params.txt and Jalywon1's is Jalywon-v2_params.txt.
 #
 # A SITE is found from its *_params.txt (antenna corners and side length, from
 # the site-layout tool). Two layouts are accepted:
@@ -45,7 +59,8 @@ function parse_args(a)
         i < length(a) || error("$(a[i]) needs a value")
         d[a[i][3:end]] = a[i+1]; i += 2
     end
-    haskey(d, "src") && haskey(d, "out") || error("usage: --src <dir> --out <dir> [--sites A,B] [--prefix P]")
+    haskey(d, "src") && haskey(d, "out") || error("usage: --src <dir>[,<dir>] --out <dir> [--sites A,B] [--prefix P] [--emi cancelled|uncancelled] [--strict true] [--folder F]")
+    get(d, "emi", "cancelled") in ("cancelled", "uncancelled") || error("--emi must be cancelled or uncancelled")
     d
 end
 
@@ -62,19 +77,24 @@ end
 The processed .mat for a site: newest Reprocessed_* folder first, then
 EMI-cancelled (no "_noemi"), then harmonics removed. Returns (chosen, passed_over).
 """
-function pick_mat(mats, root, site)
+function pick_mat(mats, root, site; emi = "cancelled", strict = false)
     isempty(mats) && error("$site: no .mat under $root")
     # newest reprocessing: Reprocessed_<mm>_<yy>, compared as (yy, mm)
     stamp(f) = (m = match(r"Reprocessed_(\d{1,2})_(\d{2})", relpath(f, root));
                 m === nothing ? (-1, -1) : (parse(Int, m[2]), parse(Int, m[1])))
     newest = maximum(stamp.(mats))
     pool = filter(f -> stamp(f) == newest, mats)
-    rank(f) = (occursin("noemi", basename(f)) ? 1 : 0,             # EMI-cancelled first
+    isnoemi(f) = occursin("noemi", basename(f))
+    want_noemi = emi == "uncancelled"
+    rank(f) = (isnoemi(f) == want_noemi ? 0 : 1,                    # the asked-for variant first
                occursin("harmonic_removed", basename(f)) ? 0 : 1)  # then harmonics removed
     best = minimum(rank.(pool))
     c = filter(f -> rank(f) == best, pool)
     length(c) > 1 && error("$site: $(length(c)) equally preferred .mat files:\n  " * join(c, "\n  "))
-    best[1] == 1 && @warn "$site: only files WITHOUT EMI cancellation (_noemi) exist; using $(basename(only(c)))"
+    if best[1] == 1
+        strict && return nothing, mats
+        @warn "$site: no $(emi == "cancelled" ? "EMI-cancelled" : "_noemi (uncancelled)") file; using $(basename(only(c)))"
+    end
     return only(c), setdiff(mats, c)
 end
 
@@ -134,9 +154,14 @@ end
 
 function main(args)
     A   = parse_args(args)
-    src = abspath(A["src"]); out = abspath(A["out"]); pre = get(A, "prefix", "")
+    srcs = abspath.(split(A["src"], ',')); out = abspath(A["out"]); pre = get(A, "prefix", "")
+    emi = get(A, "emi", "cancelled"); strict = get(A, "strict", "false") == "true"
+    folder = get(A, "folder", "")
     want = haskey(A, "sites") ? split(A["sites"], ',') : nothing
-    files = allfiles(src)
+    files = reduce(vcat, allfiles.(srcs))
+    srcof(f) = srcs[findfirst(s -> startswith(f, s * "/"), srcs)]
+    relsrc(f) = (s = srcof(f); length(srcs) > 1 ? joinpath(basename(s), relpath(f, s)) : relpath(f, s))
+    skipped = String[]
     pfiles = filter(f -> occursin(r"_params\.txt$"i, basename(f)) &&
                          !occursin(r"process_params"i, basename(f)), files)
     isempty(pfiles) && error("no *_params.txt under $src")
@@ -147,18 +172,24 @@ function main(args)
            "pulse_sequence", "pulse_width", "year",
            # provenance, not read by the stages
            "site_name", "projection", "latitude", "longitude", "F_nT", "detect_freq_hz",
-           "n_pulse_moments", "live_channels", "mat_layout", "src_mat", "src_params", "src_agrf"]
+           "n_pulse_moments", "live_channels", "mat_layout", "src_mat", "src_params", "src_agrf", "emi"]
     rows = Vector{Vector{String}}()
     for pf in sort(pfiles)
         pdir = dirname(pf)
-        site = replace(basename(pf), r"_params\.txt$"i => "")
-        want !== nothing && site ∉ want && continue
         nested = lowercase(basename(pdir)) == "siteinfo"
         root = nested ? dirname(pdir) : pdir
+        # delivery layout: the site is its folder; flat: its params file
+        site = nested ? basename(root) : replace(basename(pf), r"_params\.txt$"i => "")
+        want !== nothing && site ∉ want && continue
         af = one_match(filter(f -> dirname(f) == pdir, files), r"_agrf25\.txt$"i, "*_agrf25.txt beside $(basename(pf))", site)
         mats = filter(f -> startswith(f, root * "/") && occursin(r"\.mat$"i, f) &&
                            !(nested && startswith(f, pdir * "/")), files)
-        mf, passed = pick_mat(mats, root, site)
+        isempty(folder) || (mats = filter(f -> folder in splitpath(relpath(f, root)), mats))
+        mf, passed = pick_mat(mats, root, site; emi = emi, strict = strict)
+        if mf === nothing
+            println("  $site: SKIPPED, no $emi file (--strict): has ", join(relpath.(passed, root), ", "))
+            push!(skipped, site); continue
+        end
         isempty(passed) || println("  $site: chose $(relpath(mf, root)); passed over ",
                                    join(relpath.(passed, root), ", "))
         p, g, m = read_params(pf), read_agrf(af), read_mat(mf)
@@ -188,12 +219,17 @@ function main(args)
             g.D, round(rel, digits = 3), p.side, m.live[1], 0, m.seq == "FID" || occursin("FID", m.seq) ? "FID" : m.seq,
             round(1e3m.pulse_s, digits = 3), yr,
             site, p.projection, g.lat, g.lon, g.F, m.f0, m.nq, join(m.live, ";"), m.layout,
-            relpath(mf, src), relpath(pf, src), relpath(af, src)]))
+            relsrc(mf), relsrc(pf), relsrc(af),
+            occursin("noemi", basename(mf)) ? "uncancelled" : "cancelled"]))
         @printf("%-10s zone %d%s  E %.0f N %.0f  side %.0f m  I %.2f D %.2f  az %.1f (rel %.2f)  %s %d q, %.0f ms, %.0f Hz, ch %s\n",
                 fid, p.zone, p.hemisphere, p.easting, p.northing, p.side, g.I, g.D, az, rel,
                 m.layout, m.nq, 1e3m.pulse_s, m.f0, join(m.live, ","))
     end
     isempty(rows) && error("no sites selected")
+    sids = [r[1] for r in rows]
+    length(unique(sids)) == length(sids) ||
+        error("duplicate Field_ID: $(join(unique(filter(x -> count(==(x), sids) > 1, sids)), ", "))")
+    isempty(skipped) || println("skipped (no $emi file): ", join(skipped, ", "))
     q(s) = occursin(r"[,\"]", s) ? "\"" * replace(s, "\"" => "\"\"") * "\"" : s
     open(joinpath(out, "snmr_metadata.csv"), "w") do io
         println(io, join(hdr, ","))
