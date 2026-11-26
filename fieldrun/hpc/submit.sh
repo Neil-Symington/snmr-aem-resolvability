@@ -26,6 +26,9 @@
 #   --after JOBID                  the first phase waits for this job too
 #   --storage scratch/ab12+gdata/ab12   PBS storage (default scratch/<project>)
 #   --wmax H                       longest shard walltime, hours (default 10)
+#   --waves-aem N                  AEM waves per shard (default 1: one node per
+#                                  slots-aem sites, all in parallel; AEM is the
+#                                  long pole and SNMR waits on it site by site)
 #   --slots-aem N --slots-snmr N --slots-post N   tasks per node (9 / 12 / 24)
 #   --t-aem M --t-snmr M --t-post M               minutes per task, for sizing (120 / 15 / 45)
 #   --monitor                      log node CPU in every job
@@ -46,7 +49,7 @@ CFG=$(cd "$(dirname "$1")" && pwd)/$(basename "$1"); shift
 HERE=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$HERE/../.." && pwd)
 
 ENVSH=""; PROJ=""; PHASES=""; DRY=0; AFTER=""; STORAGE=""; WMAX=10; LOCAL=0; MONITOR=0
-SL_AEM=9; SL_SNMR=12; SL_POST=24; T_AEM=120; T_SNMR=15; T_POST=45
+SL_AEM=9; SL_SNMR=12; SL_POST=24; T_AEM=120; T_SNMR=15; T_POST=45; WV_AEM=1
 while [ $# -gt 0 ]; do
     case "$1" in
         --env) ENVSH=$(cd "$(dirname "$2")" && pwd)/$(basename "$2"); shift 2 ;;
@@ -56,6 +59,7 @@ while [ $# -gt 0 ]; do
         --after) AFTER=$2; shift 2 ;;
         --storage) STORAGE=$2; shift 2 ;;
         --wmax) WMAX=$2; shift 2 ;;
+        --waves-aem) WV_AEM=$2; shift 2 ;;
         --local) LOCAL=1; shift ;;
         --monitor) MONITOR=1; shift ;;
         --slots-aem) SL_AEM=$2; shift 2 ;;   --t-aem) T_AEM=$2; shift 2 ;;
@@ -141,7 +145,7 @@ spec() {
 }
 prev_phase() { case $1 in snmr) echo aem ;; post) echo snmr ;; index) echo post ;; *) echo "" ;; esac; }
 ceil() { echo $(( ($1 + $2 - 1) / $2 )); }
-FAKE=900000
+FAKE=900000; SU_EST=0
 
 submit_phase() {
     local ph=$1 sl tmin ppt opc gb
@@ -150,6 +154,7 @@ submit_phase() {
     local n; n=$(grep -c . "$RUN/$ph.txt" || true)
     [ "$n" -gt 0 ] || { echo "  $ph: nothing to do"; return; }
     local waves_max=$(( WMAX * 60 / tmin )); [ $waves_max -ge 1 ] || waves_max=1
+    [ "$ph" = aem ] && [ "$WV_AEM" -lt "$waves_max" ] && waves_max=$WV_AEM
     local per=$(( sl * waves_max ))
     local nsh; nsh=$(ceil "$n" "$per")
     # even shards: n tasks over nsh nodes, not full ones and a straggler
@@ -194,6 +199,7 @@ submit_phase() {
         else
             jid=$("${cmd[@]}") || die "qsub failed for $base"
         fi
+        SU_EST=$(( SU_EST + ncpu * waves * tmin * 2 / 60 ))
         printf "  %-5s %-12s %3d tasks  %2d at once  %2d cores %3d GB  %s  %s%s\n" \
             "$ph" "$base" "$nt" "$s" "$ncpu" "$mem" "$h" "$jid" "${deps:+  after $deps}"
         if [ "$ph" = index ]; then printf "index\t%s\n" "$jid" >> "$RUN/jobs_$ph.tsv"
@@ -203,5 +209,6 @@ submit_phase() {
 }
 
 for ph in $PHASES; do submit_phase "$ph"; done
+echo "######## rough cost if every task takes its --t estimate: ~${SU_EST} SU (normal, 2 SU/core-h; unused walltime is not charged)"
 echo "######## submitted. Watch: qstat -u \$USER;  progress: ls $TASKLOG/done | wc -l;  failures: ls $TASKLOG/failed"
 echo "######## the viewer, when post is done: $OUTDIR/viewer/index.html"
