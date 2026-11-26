@@ -25,7 +25,7 @@
 #   --dry-run                      write the task lists and print the qsub lines only
 #   --after JOBID                  the first phase waits for this job too
 #   --storage scratch/ab12+gdata/ab12   PBS storage (default scratch/<project>)
-#   --wmax H                       longest shard walltime, hours (default 10)
+#   --wmax H                       longest shard walltime, hours (default 4: more nodes in parallel, same SU)
 #   --waves-aem N                  AEM waves per shard (default 1: one node per
 #                                  slots-aem sites, all in parallel; AEM is the
 #                                  long pole and SNMR waits on it site by site)
@@ -51,7 +51,7 @@ CFG=$(cd "$(dirname "$1")" && pwd)/$(basename "$1"); shift
 [ -f "$CFG" ] || die "no control file $CFG"
 HERE=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$HERE/../.." && pwd)
 
-ENVSH=""; PROJ=""; PHASES=""; DRY=0; AFTER=""; STORAGE=""; WMAX=10; LOCAL=0; MONITOR=0
+ENVSH=""; PROJ=""; PHASES=""; DRY=0; AFTER=""; STORAGE=""; WMAX=4; LOCAL=0; MONITOR=0
 SL_AEM=9; SL_SNMR=12; SL_POST=24; T_AEM=165; T_SNMR=12; T_POST=60; WV_AEM=1
 while [ $# -gt 0 ]; do
     case "$1" in
