@@ -1,0 +1,197 @@
+<title>@TITLE@</title>
+<style>
+/* FIGURE MODE, ?fig=depth. The paper's figures are drawn by THIS code, so a
+   figure and the page cannot differ in look: same dark ground, same inferno
+   with its square-root per-depth scaling, same smooth percentile curves, same
+   white haloed truth, same cyan selection and amber best fit, same faint
+   admissible fan, same window and sensitivity lines. The mode only HIDES
+   chrome -- header, misfit strip, sliders, buttons, table -- and fixes the
+   depth axis. It changes no drawing code. */
+body.figmode{background:#0b0d10;margin:0}
+body.figmode .head,
+body.figmode .chiw,
+body.figmode .ctl,
+body.figmode #rowbtns,
+body.figmode #say,
+body.figmode #ta{display:none !important}
+body.figmode .app{padding:10px 12px 6px 12px;max-width:none}
+body.figmode .strip{margin-top:2px;grid-template-columns:1fr !important}
+body.figmode .box{border:none;background:none;padding:0;box-shadow:none}
+body.figmode #rowkey{justify-content:center;padding:2px 0 0 0}
+body.figmode .panels{gap:10px;
+  /* the page collapses to one column below 900 px; a figure is always three
+     across, whatever width it is rendered at */
+  grid-template-columns:repeat(3,1fr) !important;min-height:0}
+body.figmode .tab:not(.on){display:none}          /* no tab control in print */
+body.figmode .tabs{border:none}
+body.figmode .tab.on{border-bottom-color:transparent;color:var(--ink)}
+/* 5. panel letters and the column name, drawn by CSS so no canvas code moves */
+body.figmode .pan{position:relative}
+body.figmode .pan::before{content:attr(data-letter);position:absolute;left:9px;top:6px;
+  font-weight:700;font-size:12px;color:var(--ink);z-index:3}
+body.figmode .pt{padding-left:26px}
+body.figmode #colname{display:block;font-weight:700;font-size:12.5px;
+  color:var(--ink);padding:0 0 4px 2px}
+#colname{display:none}
+/* FIELD: the per-site summary line under the title, and the link back */
+.summ{display:flex;flex-wrap:wrap;gap:3px 16px;font-size:11.5px;color:var(--soft)}
+.summ span{white-space:nowrap}
+.summ b{color:var(--ink);font-weight:600}
+.summ a{color:var(--acc)}
+.summ .bad{color:var(--hot);font-weight:600}
+.summ .ok{color:var(--acc);font-weight:600}
+body.figmode .pan{min-height:0}
+:root{
+  --bg:#f1f4f4;--panel:#fff;--ink:#16262b;--soft:#4a5f65;--mute:#7b9095;
+  --rule:#ccd8d8;--line:#9fb3b3;--acc:#0d6a68;--acc2:#1d7fa8;--hot:#b4502f;
+  --warn:#8a5a0c;--warnbg:#f7edd8;--grid:#e3eaea;color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0d1517;--panel:#162023;--ink:#e3ebea;--soft:#aec0c0;--mute:#8098a0;
+  --rule:#2a393d;--line:#4a6066;--acc:#51b5ad;--acc2:#58a9d0;--hot:#dd7d60;
+  --warn:#dcae57;--warnbg:#2a2314;--grid:#223034;color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0d1517;--panel:#162023;--ink:#e3ebea;--soft:#aec0c0;--mute:#8098a0;
+  --rule:#2a393d;--line:#4a6066;--acc:#51b5ad;--acc2:#58a9d0;--hot:#dd7d60;
+  --warn:#dcae57;--warnbg:#2a2314;--grid:#223034;color-scheme:dark;}
+[hidden]{display:none!important}
+img{max-width:100%}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);margin:0;
+  font:13px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.app{display:flex;flex-direction:column;min-height:100%;padding:12px 16px 18px;box-sizing:border-box;gap:10px}
+h1{font-size:15px;font-weight:650;letter-spacing:-.01em;margin:0}
+.head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px}
+.prov{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;color:var(--mute);
+  line-height:1.5;word-break:break-word;flex:1 1 320px;min-width:0}
+.flag{color:var(--warn);background:var(--warnbg);padding:1px 5px;border-radius:3px;font-weight:600}
+.panels{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;flex:1 1 auto;min-height:330px}
+.pan{background:var(--panel);border:1px solid var(--rule);border-radius:4px;
+  display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.pt{font-size:11.5px;font-weight:650;padding:7px 10px 0;color:var(--ink);
+  display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.pt em{font-style:normal;font-weight:400;font-size:10px;color:var(--mute);
+  font-family:ui-monospace,Menlo,Consolas,monospace}
+.tabs{display:inline-flex;gap:2px}
+.tab{font:inherit;font-size:11.5px;font-weight:600;color:var(--mute);background:none;
+  border:none;border-bottom:2px solid transparent;padding:0 2px 2px;cursor:pointer}
+.tab.on{color:var(--ink);border-bottom-color:var(--acc)}
+.tab:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.cw{flex:1 1 auto;position:relative;min-height:0}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.strip{display:grid;grid-template-columns:minmax(260px,1.05fr) minmax(300px,1.35fr);
+  gap:10px;align-items:stretch}
+.box{background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:9px 11px;
+  display:flex;flex-direction:column;gap:7px;min-width:0}
+.chiw{position:relative;height:124px;min-height:124px}
+.ctl{display:flex;align-items:center;gap:9px;font-size:11px;color:var(--soft)}
+.ctl label{white-space:nowrap;font-size:10.5px;color:var(--mute);min-width:88px}
+.ctl output{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--ink);
+  min-width:66px;text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{flex:1 1 auto;min-width:60px;accent-color:var(--acc);height:18px;margin:0}
+/* FIXED layout, explicit column widths and tabular figures: the numbers
+   change on every slider step and nothing may move when they do. */
+#say{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px}
+#say col.k{width:34%} #say col.v{width:36%} #say col.t{width:30%}
+#say th{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--mute);text-align:right;padding:0 0 3px;border-bottom:1px solid var(--rule)}
+#say th.k{text-align:left}
+#say td{padding:3px 0;border-bottom:1px solid var(--rule);vertical-align:baseline}
+#say td.k{color:var(--mute);font-size:11px}
+#say td.v,#say td.t{text-align:right;font-variant-numeric:tabular-nums;
+  font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+#say td.v{color:var(--ink);font-weight:600}
+#say td.t{color:var(--soft)}
+#say td.v em{font-style:normal;font-weight:400;color:var(--mute);font-size:10.5px}
+#say tr:last-child td{border-bottom:none}
+.btn{font:inherit;font-size:11px;padding:4px 10px;border-radius:3px;cursor:pointer;
+  border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+.btn:hover{border-color:var(--acc);color:var(--acc)}
+.btn:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.btn[disabled]{opacity:.45;cursor:not-allowed;border-style:dashed}
+.btn[disabled]:hover{border-color:var(--line);color:var(--ink)}
+.seg{min-width:120px;text-align:left}
+.hint{font-size:10px;color:var(--mute);font-family:ui-monospace,Menlo,Consolas,monospace}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+textarea{width:100%;box-sizing:border-box;height:72px;font-family:ui-monospace,Menlo,Consolas,monospace;
+  font-size:10px;background:var(--bg);color:var(--ink);border:1px solid var(--rule);
+  border-radius:3px;padding:5px;resize:vertical}
+.key{display:flex;flex-wrap:wrap;gap:3px 12px;font-size:10px;color:var(--mute);
+  font-family:ui-monospace,Menlo,Consolas,monospace}
+.key i{display:inline-block;width:13px;height:2.5px;vertical-align:middle;margin-right:4px;border-radius:2px}
+.panels.two{grid-template-columns:repeat(2,1fr)}
+@media (max-width:860px){
+  .panels,.panels.two{grid-template-columns:1fr;min-height:0}
+  .cw{height:260px}
+  .strip{grid-template-columns:1fr}
+}
+</style>
+
+<div class="app">
+  <div class="head">
+    <h1 id="h1">@H1@</h1>
+    <div class="prov" id="prov"></div>
+  </div>
+  <div class="summ" id="summ" hidden></div>
+
+  <div id="colname"></div>
+  <div class="panels">
+    <div class="pan">
+      <div class="pt"><span>Conductivity, AEM ensemble</span><em id="n1"></em></div>
+      <div class="cw"><canvas id="c1"></canvas></div>
+    </div>
+    <div class="pan">
+      <div class="pt">
+        <span class="tabs"><button class="tab on" id="t2a">Water content, SNMR ensemble</button><button class="tab" id="t2b">Data fit</button></span>
+        <em id="n2"></em>
+      </div>
+      <div class="cw"><canvas id="c2"></canvas></div>
+    </div>
+    <div class="pan">
+      <div class="pt"><span id="h3">Conductivity, gate models</span><em id="n3"></em></div>
+      <div class="cw"><canvas id="c3"></canvas></div>
+    </div>
+  </div>
+
+  <div class="strip">
+    <div class="box">
+      <div class="chiw"><canvas id="c4"></canvas></div>
+      <div class="ctl">
+        <label for="sC" id="lC">window conductance</label>
+        <input type="range" id="sC" min="0" max="1" step="1" value="0">
+        <output id="oC"></output>
+      </div>
+      <div class="ctl">
+        <label for="bM">model shown</label>
+        <button class="btn seg" id="bM" aria-pressed="false"></button>
+        <span class="hint" id="hM"></span>
+      </div>
+    </div>
+    <div class="box">
+      <table id="say"><tbody></tbody></table>
+      <div class="ctl">
+        <label for="sP">porosity &theta;</label>
+        <input type="range" id="sP" min="0.25" max="0.40" step="0.005" value="0.325">
+        <output id="oP"></output>
+      </div>
+      <div class="ctl">
+        <label for="sM">exponent m</label>
+        <input type="range" id="sM" min="1.5" max="1.9" step="0.01" value="1.7">
+        <output id="oM"></output>
+      </div>
+      <div class="ctl">
+        <label for="sK">clay carries</label>
+        <input type="range" id="sK" min="0" max="95" step="1" value="0">
+        <output id="oK"></output>
+      </div>
+      <div class="row" id="rowbtns">
+        <button class="btn" id="bC">Export CSV</button>
+        <button class="btn" id="bS" hidden>Select all</button>
+      </div>
+      <div class="row" id="rowkey"><span class="key" id="key"></span></div>
+      <textarea id="ta" hidden readonly aria-label="CSV"></textarea>
+    </div>
+  </div>
+</div>

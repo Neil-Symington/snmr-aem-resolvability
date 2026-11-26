@@ -673,6 +673,7 @@ function main()
     res = []
     nattempt = 0
     for s in sites
+        (!isempty(ONLY) && s != ONLY) && continue       # --site: one site per process
         nattempt += 1
         r = try analyse(s) catch e
             @warn "detection failed for $s" exception = (e, catch_backtrace()); nothing

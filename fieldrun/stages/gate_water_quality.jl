@@ -257,6 +257,7 @@ function main()
     rows = []
     nattempt = 0
     for s in d[1][:, ci["field_id"]]
+        (!isempty(ONLY) && s != ONLY) && continue       # --site: one site per process
         nattempt += 1
         r = try run_site(s) catch e
             @warn "gate failed for $s" exception = (e, catch_backtrace()); nothing

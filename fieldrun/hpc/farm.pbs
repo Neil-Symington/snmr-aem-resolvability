@@ -1,0 +1,30 @@
+#!/bin/bash
+# farm.pbs -- one shard of one phase of a batched field run, on one Gadi node.
+# Submitted by submit.sh, which sets the resources and these variables:
+#   ENVSH     the env.sh to source (Julia, depot, REPO)
+#   CFG       the control file
+#   TASKLIST  this shard's task list
+#   SLOTS     tasks at once
+#   TASKLOG   the batch's bookkeeping folder
+#   MONITOR   1 to log node CPU every 30 s (cpu_<jobid>.txt in TASKLOG)
+#PBS -q normal
+#PBS -l wd
+#PBS -j oe
+set -u
+source "$ENVSH"
+cd "$REPO"
+echo "job ${PBS_JOBID:-local} on $(hostname)  $(date)"
+echo "  $(git log --oneline -1)"
+echo "  ncpus ${PBS_NCPUS:-?}  slots $SLOTS  tasks $(basename "$TASKLIST")"
+
+if [ "${MONITOR:-0}" = 1 ]; then
+    ( set +e; while true; do
+          echo "$(date +%s) $(head -1 /proc/stat) | $(cut -d' ' -f1-3 /proc/loadavg)" \
+              >> "$TASKLOG/cpu_${PBS_JOBID:-local}.txt"
+          sleep 30
+      done ) &
+    MON=$!
+    trap 'kill $MON 2>/dev/null || true' EXIT
+fi
+
+bash fieldrun/hpc/farm.sh "$CFG" "$TASKLIST" "$SLOTS"
