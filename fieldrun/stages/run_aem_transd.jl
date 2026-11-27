@@ -63,10 +63,17 @@ const FBOUNDS  = permutedims(Float64.(get(FCFG["aem"], "rho_bounds_log10", [-1.0
 # what UDF ran with. The fitted level is recorded per retained draw below.
 const USE_ML   = Bool(get(FCFG["aem"], "use_ml", false))
 
+# --reassemble: skip the MCMC and rebuild aem_td_<site>.jld2 from the chain files
+# already in aem_td_<site>/. For re-saving a finished run in a newer output
+# format (e.g. sigma_all, added 27 Nov 2026) without paying for the sampler.
+const REASSEMBLE = haskey(ARG, "reassemble")
+
 isempty(SITE) && error("--site is required")
 
-addprocs(NCHAINS - (nworkers() == 1 ? 0 : nworkers()))
-@assert nworkers() == NCHAINS "need $NCHAINS workers, got $(nworkers())"
+if !REASSEMBLE
+    addprocs(NCHAINS - (nworkers() == 1 ? 0 : nworkers()))
+    @assert nworkers() == NCHAINS "need $NCHAINS workers, got $(nworkers())"
+end
 @everywhere using Distributed, Random, HiQGA.transD_GP
 
 include(joinpath(COMMON, "aem_lib.jl"))
@@ -116,8 +123,17 @@ function main()
 
     rundir = joinpath(OUT, "aem_td_$(SITE)"); mkpath(rundir)
     prefix = "udftd_$(SITE)_"
-    for f in readdir(rundir)
-        occursin(prefix, f) && rm(joinpath(rundir, f), force = true)
+    prev = joinpath(OUT, "aem_td_$(SITE).jld2")
+    # a reassembled file keeps the original run's record, not this config's
+    prevsecs = REASSEMBLE && isfile(prev) ? load(prev, "secs") : NaN
+    nsamp = REASSEMBLE && isfile(prev) ? load(prev, "nsamples") : NSAMPLES
+    if REASSEMBLE
+        any(f -> occursin(prefix, f), readdir(rundir)) ||
+            error("--reassemble: no chain files for $SITE in $rundir")
+    else
+        for f in readdir(rundir)
+            occursin(prefix, f) && rm(joinpath(rundir, f), force = true)
+        end
     end
 
     opt = make_aem_opt(grid.znall, prefix)
@@ -156,13 +172,17 @@ function main()
         end
     end
     Random.seed!(SEED)
-    try
-        transD_GP.main(opt, aem; Tmax = TMAX, nsamples = NSAMPLES,
-                       nchains = NCHAINS, nchainsatone = 1)
-    finally
-        cd(old)
+    if REASSEMBLE
+        cd(old); println("  --reassemble: MCMC skipped, reading the existing chain files")
+    else
+        try
+            transD_GP.main(opt, aem; Tmax = TMAX, nsamples = NSAMPLES,
+                           nchains = NCHAINS, nchainsatone = 1)
+        finally
+            cd(old)
+        end
+        @printf("  MCMC done in %.1f min\n", (time() - t0) / 60); flush(stdout)
     end
-    @printf("  MCMC done in %.1f min\n", (time() - t0) / 60); flush(stdout)
 
     cd(rundir)
     opt.xall[:] .= grid.znall
@@ -175,6 +195,7 @@ function main()
 
     pct(p) = [quantile(view(σ, i, :), p) for i in axes(σ, 1)]
     σ10, σ50, σ90 = pct(0.10), pct(0.50), pct(0.90)
+    σ05, σ95 = pct(0.05), pct(0.95)
     # A separate, deliberate stream for the subsampling, so which draws are
     # retained does not depend on how many proposals the chain happened to
     # make. This line used to be the ONLY seeding in the stage.
@@ -205,16 +226,19 @@ function main()
 
     jldsave(joinpath(OUT, "aem_td_$(SITE).jld2");
         field_id = SITE, zall = grid.zall, zbnd = grid.zbnd,
-        sigma10 = σ10, sigma50 = σ50, sigma90 = σ90,
+        sigma05 = σ05, sigma10 = σ10, sigma50 = σ50, sigma90 = σ90, sigma95 = σ95,
+        # every post-burn-in T = 1 draw (the viewer's density and quantiles);
+        # sigma_draws is the random NDRAWS subset Stage 2 and Stage 5 use
+        sigma_all = σ,
         sigma_draws = σ[:, ix], draw_ix = ix, ndraws_total = n,
         splithalf_first = d1, splithalf_second = d2,
-        nsamples = NSAMPLES, nchains = NCHAINS, Tmax = TMAX,
+        nsamples = nsamp, nchains = NCHAINS, Tmax = TMAX,
         noise_scale = A["noise_scale"], ndata = ndata,
         noise_calibration = get(A, "noise_calibration", "inflate"),
-        fbounds = FBOUNDS, seed = SEED, secs = time() - t0,
+        fbounds = FBOUNDS, seed = SEED, secs = REASSEMBLE ? prevsecs : time() - t0,
         use_ml = USE_ML, ml_variance_factor = mlf,
         ml_variance_factor_p50 = median(mlf), ml_sigma_factor_p50 = sqrt(median(mlf)))
-    println("  wrote aem_td_$(SITE).jld2 ($(length(ix)) intact profiles retained)")
+    println("  wrote aem_td_$(SITE).jld2 ($n draws in sigma_all, $(length(ix)) in sigma_draws)")
 end
 
 main()

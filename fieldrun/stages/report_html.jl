@@ -26,8 +26,9 @@
 # A diff against make_report.jl's blocks shows exactly that.
 #
 # WHAT EACH PANEL IS, at a field site.
-#   AEM       aem_td_<site>.jld2 sigma_draws: the trans-D draws the stage kept
-#             (a thinned subset of the T = 1 chain), on the AEM grid. zbnd is
+#   AEM       aem_td_<site>.jld2 sigma_all: every post-burn-in draw of the T = 1
+#             chain (sigma_draws, a random 200 of them, for runs before 27 Nov
+#             2026), on the AEM grid. Quantiles p05/p50/p95. zbnd is
 #             the layer tops, so the cells are [zbnd[i], zbnd[i+1]].
 #   SNMR      smr_transd_<site>.jld2 theta: every kept draw pooled over kernel
 #             draws and replicate ladders, on the kernel nodes zbnd -- the
@@ -185,7 +186,9 @@ function site_payload(fid)
 
     # ---- AEM ensemble
     A = load(ofile("aem_td", fid))
-    σ = Float64.(A["sigma_draws"]); zall = Float64.(A["zall"]); zb = Float64.(A["zbnd"])
+    # every post-burn-in draw when the run saved them (sigma_all, from 27 Nov
+    # 2026); older runs kept only the NDRAWS subset
+    σ = Float64.(haskey(A, "sigma_all") ? A["sigma_all"] : A["sigma_draws"]); zall = Float64.(A["zall"]); zb = Float64.(A["zbnd"])
     top = zb; bot = vcat(zb[2:end], 2zall[end] - zb[end])
     ah = [binrow(log10.(view(σ, i, :)), AEM_LO, AEM_HI, AEM_NB) for i in axes(σ, 1)]
 
@@ -236,7 +239,7 @@ function site_payload(fid)
     end
 
     ndraw_aem = size(σ, 2)
-    prov = @sprintf("AEM trans-D %s draws kept of %s &middot; SNMR %d kernel draws &times; %d ladders, %s draws, s %s &middot; ",
+    prov = @sprintf("AEM trans-D %s of %s post-burn-in draws shown &middot; SNMR %d kernel draws &times; %d ladders, %s draws, s %s &middot; ",
                     string(ndraw_aem), string(get(A, "ndraws_total", ndraw_aem)),
                     get(S, "nensembles", 0), get(S, "nreplicates", 1), string(size(θ, 2)),
                     h(get(S, "s_treatment", "sampled"))) *
